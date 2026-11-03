@@ -36,7 +36,8 @@ class Artifacts:
                 videos = list(container.streams.video)
                 if len(videos) != 1 or abs(float(videos[0].average_rate or 0) - fps) > .0001: raise ValueError()
                 stream = videos[0]
-                settings = project.get("profile_snapshot", {}).get("output_geometry") or project["prepared"]["settings"]
+                settings = (project["prepared"].get("production_size", {}).get("output_geometry")
+                            or project.get("profile_snapshot", {}).get("output_geometry") or project["prepared"]["settings"])
                 if (stream.width, stream.height) != (settings["width"], settings["height"]): raise ValueError()
                 frames, stamps = 0, []
                 for frame in container.decode(stream):
@@ -177,3 +178,5 @@ class Artifacts:
 # static-configuration-interop-v1
 
 # captured-api-delivery-v2
+
+# configured-production-size-v1

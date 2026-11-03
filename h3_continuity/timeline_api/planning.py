@@ -37,11 +37,69 @@ def native_status(body):
                 "manifest_sha256": digest({"manifest": manifest, "unit_evidence": evidence})}
 
 
+# Orrery box reuse (box_reuse.py), copied by install_timeline_compat.py.
+"""Which project assets belong in every H3 Timeline unit's reuse identity.
+
+Pure functions; no ComfyUI, H3 or Orrery imports. install_timeline_compat.py
+copies this source into the native Timeline planner (timeline_api/planning.py),
+and the tests import it directly.
+
+Native planning gives each box and bridge an input identity: the profile, the
+settings, every bound project asset, and the box's native layout key. Because
+every asset was in every unit's identity, replacing one box's guide changed
+every unit, and the plan rendered the whole film again.
+
+The bindings below write their asset into the prepared Timeline JSON as a
+file named by the asset's SHA-256 (the API re-checks those bytes before every
+plan). The native layout key already names that file for each box that reads
+it: guides through the guide chain, plates through the plate chain, timed audio
+clips, voice clips and Studio pictures (image17 and up) through the files the
+box sends, and reference replacements in every box. Those assets therefore
+leave the project-wide part of the identity and count only for those boxes.
+
+Everything else stays project-wide, as before: pictures and audio wired into
+the Timeline through loader nodes (image1-image16, audio sockets), Whisper
+sources and any binding kind this module does not know.
+"""
+
+# Bindings whose content-addressed file the native layout key carries per box.
+BOX_REUSE_TIMELINE_BINDINGS = frozenset(("guide", "plate", "audio_clip", "voice_clip", "reference_replacement"))
+# The Timeline node has 16 wired picture inputs; Studio pictures are saved from image17 up.
+BOX_REUSE_WIRED_PICTURES = 16
+
+
+def box_reuse_studio_slot(slot):
+    """A Studio picture saved in the Timeline itself (image17 and up), not a wired loader input."""
+    if not isinstance(slot, str) or not slot.startswith("image"):
+        return False
+    number = slot[len("image"):]
+    return number.isdigit() and not number.startswith("0") and int(number) > BOX_REUSE_WIRED_PICTURES
+
+
+def box_reuse_project_wide(binding):
+    """Whether this binding's asset belongs in every unit's identity."""
+    kind = binding.get("kind")
+    if kind == "candidate":
+        return False  # Still candidates never reach a render; native planning already left them out.
+    if kind == "picture":
+        return not box_reuse_studio_slot(binding.get("slot"))
+    return kind not in BOX_REUSE_TIMELINE_BINDINGS
+
+
+def box_reuse_asset_identity(prepared, project):
+    """The project-wide asset part of a unit's identity, shaped like native planning's own list."""
+    identity = sorted({item["sha256"] for item in prepared.get("assets", [])
+                       if any(box_reuse_project_wide(binding) for binding in item["bindings"])})
+    identity += sorted({item["asset_id"] for item in project.get("assets", [])
+                        if any(box_reuse_project_wide(binding) for binding in item["bindings"])})
+    return identity
+
+
 class Planner:
     def __init__(self, profiles, assets, native_status):
         self.profiles, self.assets, self.native_status = profiles, assets, native_status
 
-    def _units(self, project):
+    def _units(self, project, scoped=True):
         prepared = project["prepared"]
         parsed = rules.parse(canonical(prepared["timeline"]).decode("utf-8"))
         context = int(prepared["settings"]["context_frames"])
@@ -49,6 +107,8 @@ class Planner:
                                  if any(binding['kind'] != 'candidate' for binding in item['bindings'])})
         asset_identity += sorted({item["asset_id"] for item in project.get("assets", [])
                                   if any(binding['kind'] != 'candidate' for binding in item['bindings'])})
+        if scoped:
+            asset_identity = box_reuse_asset_identity(prepared, project)
         identity = {"profile_sha256": project["profile_sha256"], "settings": prepared["settings"], "assets": asset_identity}
         units, by_box = [], {}
         for index, box in enumerate(parsed.boxes):
@@ -98,6 +158,8 @@ class Planner:
         if fresh["fingerprint"] != prepared["fingerprint"]:
             raise APIError("prepared_inputs_changed", "Pinned prepared inputs have changed; revise the project.", status=409)
         units = self._units(project)
+        # A record verified before this layer holds the stricter whole-project identity; it still proves its unit.
+        legacy = {unit["id"]: unit["input_sha256"] for unit in self._units(project, scoped=False)}
         selected = selection.get("ids", [])
         known_boxes = {unit["box_id"] for unit in units if unit["kind"] == "box"}
         if set(selected) - known_boxes:
@@ -113,7 +175,7 @@ class Planner:
             record = self._record(project, unit)
             evidence = status.get("unit_evidence", {}).get(unit["id"])
             reusable = (native.get("status") == "done" and record and record.get("verified")
-                        and record.get("input_sha256") == unit["input_sha256"]
+                        and record.get("input_sha256") in (unit["input_sha256"], legacy.get(unit["id"]))
                         and evidence and record.get("native_sha256") == evidence)
             reasons = []
             affected = [source for source in unit["dependencies"] if by_id[source]["action"] != "reuse"]
@@ -132,6 +194,8 @@ class Planner:
                 reasons.append(native.get("reason") or native.get("note") or (
                     "Native media lacks matching verified API input identity; conservatively render." if native.get("status") == "done"
                     else "Full video requires this missing or stale unit."))
+            if action == "reuse":
+                unit["input_sha256"] = record["input_sha256"]  # finalize checks the identity it was verified under
             unit.update(action=action, reasons=reasons, native_sha256=evidence)
             by_id[unit["id"]] = unit
         ranges, offset = [], 0
@@ -154,9 +218,9 @@ class Planner:
         previous = {unit["id"]: unit for unit in self._units(before)}
         units = self._units(after)
         asset_changed = {asset["asset_id"] for asset in before.get("assets", [])
-                         if any(binding['kind'] != 'candidate' for binding in asset['bindings'])} != {
+                         if any(box_reuse_project_wide(binding) for binding in asset['bindings'])} != {
                              asset["asset_id"] for asset in after.get("assets", [])
-                             if any(binding['kind'] != 'candidate' for binding in asset['bindings'])}
+                             if any(box_reuse_project_wide(binding) for binding in asset['bindings'])}
         changed, result = set(), []
         for unit in units:
             old = previous.get(unit["id"])
@@ -187,3 +251,5 @@ class Planner:
             raise APIError("invalid_selection", "Render unit kind is invalid.")
         graph[target]["inputs"]["timeline"] = canonical(line).decode("utf-8")
         return graph
+
+# box-reuse-asset-scope-v1

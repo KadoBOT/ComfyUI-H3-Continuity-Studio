@@ -106,6 +106,8 @@ class TimelineAPI:
         result["active_operation"] = project["lease"]["id"] if project.get("lease",{} ) and project["lease"]["kind"] == "mutation" else None
         prepared = project["prepared"]
         result["inspection"] = {key: copy.deepcopy(prepared[key]) for key in ("timeline", "settings", "boxes", "fingerprint")}
+        if prepared.get("production_size"):
+            result["inspection"]["production_size"] = copy.deepcopy(prepared["production_size"])
         return result
 
     def _prepare(self, profile, sequence, body):
@@ -316,3 +318,9 @@ class TimelineAPI:
             try: self._reconcile_take(operation)
             except APIError:
                 LOGGER.warning("Timeline take mutation remains reserved: %s",operation["id"])
+
+# static-configuration-interop-v1
+
+# captured-api-delivery-v2
+
+# configured-production-size-v1

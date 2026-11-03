@@ -11,6 +11,226 @@ from .. import timeline_prepare
 from .contracts import APIError, canonical, digest
 
 
+# Orrery production size (production_size.py), copied by install_timeline_compat.py.
+"""A saved configured workflow at another aspect ratio, keeping its saved pixel count.
+
+Pure arithmetic over a native profile's API graph; no ComfyUI, H3 or Orrery
+imports. install_timeline_compat.py copies this source into the native Timeline
+profile preparation, and the tests import it directly. Only width and height
+change: the first pass takes the requested size, the second pass follows its
+aspect at its own saved pixel count, and every other technical value stays as saved.
+"""
+
+import copy as production_copy
+import math as production_math
+
+# Both passes may differ from their saved pixel counts by at most 5%.
+PRODUCTION_SIZE_TOLERANCE = 0.05
+# H3 Timeline and the configuration node's size widgets use multiples of 32.
+PRODUCTION_SIZE_MULTIPLE = 32
+PRODUCTION_SIZE_LIMITS = (32, 16384)
+# The configuration node's authoring rule for the two passes.
+PRODUCTION_PASS_ASPECT_TOLERANCE = 0.01
+PRODUCTION_SIZE_ASPECTS = ("16:9", "9:16", "1:1", "4:3", "3:4", "21:9")
+# ComfyUI's core Resolution Selector (comfy_extras/nodes_resolution.py).
+PRODUCTION_SELECTOR_RATIOS = {
+    "1:1 (Square)": (1, 1), "2:3 (Portrait Photo)": (2, 3), "3:2 (Photo)": (3, 2),
+    "3:4 (Portrait Standard)": (3, 4), "4:3 (Standard)": (4, 3),
+    "9:16 (Portrait Widescreen)": (9, 16), "16:9 (Widescreen)": (16, 9), "21:9 (Ultrawide)": (21, 9),
+}
+
+
+class ProductionSizeError(ValueError):
+    def __init__(self, code, message, *, status=422, path="/settings", details=None):
+        super().__init__(message)
+        self.code, self.status, self.path, self.details = code, status, path, details or {}
+
+
+def production_size_at_pixels(pixels, aspect_width, aspect_height, *, larger_than=None, aspect_tolerance=None):
+    """The multiple-of-32 size nearest the aspect and pixel count, or None.
+
+    Candidates keep the pixel count within the tolerance. The smallest sum of
+    aspect and pixel-count deviation wins, then the smaller aspect deviation.
+    """
+    step, (low, high) = PRODUCTION_SIZE_MULTIPLE, PRODUCTION_SIZE_LIMITS
+    ratio = aspect_width / aspect_height
+    ideal_width, ideal_height = production_math.sqrt(pixels * ratio), production_math.sqrt(pixels / ratio)
+    best = None
+    for width in range((int(ideal_width) // step - 3) * step, (int(ideal_width) // step + 5) * step, step):
+        for height in range((int(ideal_height) // step - 3) * step, (int(ideal_height) // step + 5) * step, step):
+            if not (low <= width <= high and low <= height <= high):
+                continue
+            if abs(width * height / pixels - 1) > PRODUCTION_SIZE_TOLERANCE:
+                continue
+            if larger_than and (width <= larger_than[0] or height <= larger_than[1]):
+                continue
+            if aspect_tolerance is not None and not production_math.isclose(width / height, ratio, rel_tol=aspect_tolerance):
+                continue
+            aspect = abs(production_math.log(width / height / ratio))
+            score = (aspect + abs(production_math.log(width * height / pixels)), aspect)
+            if best is None or score < best[0]:
+                best = (score, (width, height))
+    return best and best[1]
+
+
+def nearest_production_size(saved_width, saved_height, aspect_width, aspect_height):
+    """For 960x544 at 3:4 this returns (640, 832)."""
+    return production_size_at_pixels(saved_width * saved_height, aspect_width, aspect_height)
+
+
+def _production_scalar(api, value):
+    if type(value) is int:
+        return value
+    if not (isinstance(value, list) and len(value) == 2 and isinstance(value[0], str)
+            and type(value[1]) is int and value[0] in api):
+        return None
+    node = api[value[0]]
+    kind, inputs = node.get("class_type"), node.get("inputs", {})
+    if kind == "PrimitiveInt" and value[1] == 0 and type(inputs.get("value")) is int:
+        return inputs["value"]
+    if kind == "ResolutionSelector" and value[1] in (0, 1):
+        ratio = PRODUCTION_SELECTOR_RATIOS.get(inputs.get("aspect_ratio"))
+        megapixels, multiple = inputs.get("megapixels"), inputs.get("multiple", 8)
+        if ratio and type(megapixels) in (int, float) and type(multiple) is int and multiple > 0:
+            scale = production_math.sqrt(megapixels * 1024 * 1024 / (ratio[0] * ratio[1]))
+            return round(ratio[value[1]] * scale / multiple) * multiple
+    return None
+
+
+def production_saved_size(profile):
+    """The saved first-pass, second-pass and output sizes, or ProductionSizeError."""
+    workflow = profile.get("workflow") if isinstance(profile, dict) else None
+    api = workflow.get("api") if isinstance(workflow, dict) else None
+    if not isinstance(api, dict):
+        raise ProductionSizeError("immutable_profile", "This saved workflow has no API graph to carry a production size.", status=409)
+    configs = [key for key, node in api.items() if isinstance(node, dict) and node.get("class_type") == "OrreryRenderConfig"]
+    timeline = api.get(workflow.get("timeline_node"), {})
+    if len(configs) != 1 or timeline.get("class_type") != "H3C_Timeline":
+        raise ProductionSizeError("immutable_profile", "This saved workflow has no single Orrery configuration node to carry a production size; upload a new revision.", status=409)
+    config = configs[0]
+    inputs = api[config].get("inputs", {})
+    first = tuple(_production_scalar(api, inputs.get(key)) for key in ("width", "height"))
+    timeline_size = []
+    for key, index in (("width", 2), ("height", 3)):
+        value = timeline.get("inputs", {}).get(key)
+        timeline_size.append(first[index - 2] if value == [config, index] else _production_scalar(api, value))
+    if None in first or tuple(timeline_size) != first:
+        raise ProductionSizeError("immutable_profile", "The saved size is not a literal or Resolution Selector value that also drives the Timeline; upload a new revision.", status=409)
+    if "second_pass_width" in inputs or "second_pass_height" in inputs:
+        second = tuple(_production_scalar(api, inputs.get(key)) for key in ("second_pass_width", "second_pass_height"))
+        if None in second:
+            raise ProductionSizeError("immutable_profile", "The saved second-pass size cannot be read without running its node; upload a new revision.", status=409)
+    elif inputs.get("second_pass_multiplier", 1) == 1:
+        second = first  # The historic multiplier 1 made both passes the base size.
+    else:
+        raise ProductionSizeError("immutable_profile", "The captured second-pass multiplier needs its original size; upload a new revision.", status=409)
+    output = profile.get("output_geometry")
+    output = (output["width"], output["height"]) if isinstance(output, dict) and {"width", "height"} <= set(output) else None
+    return {"config_node": config, "first": first, "second": second,
+            "second_inputs": "second_pass_width" in inputs or "second_pass_height" in inputs, "output": output,
+            "captured": profile.get("captured_api") == 2}
+
+
+def _production_pass(width, height):
+    return {"width": width, "height": height, "pixels": width * height}
+
+
+def production_size_record(saved, width, height):
+    """Derive both passes and the expected output for a requested first pass."""
+    (w1, h1), (w2, h2) = saved["first"], saved["second"]
+    change = width * height / (w1 * h1) - 1
+    if abs(change) > PRODUCTION_SIZE_TOLERANCE:
+        nearest = nearest_production_size(w1, h1, width, height)
+        hint = f" At {width}:{height} use {nearest[0]}x{nearest[1]}." if nearest else ""
+        raise ProductionSizeError(
+            "invalid_production_size",
+            f"{width}x{height} has {width * height} pixels, {change:+.1%} from this saved workflow's {w1}x{h1} "
+            f"({w1 * h1} pixels). Any aspect ratio is allowed within ±{PRODUCTION_SIZE_TOLERANCE:.0%} of the saved pixel count, "
+            f"in multiples of {PRODUCTION_SIZE_MULTIPLE}.{hint}",
+            details={"saved": _production_pass(w1, h1), "nearest": nearest and _production_pass(*nearest)})
+    enabled = w2 > w1 and h2 > h1
+    if (width, height) == (w1, h1):
+        second = (w2, h2) if enabled else (width, height)  # The saved size renders unchanged.
+    elif enabled:
+        second = production_size_at_pixels(w2 * h2, width, height, larger_than=(width, height),
+                                           aspect_tolerance=PRODUCTION_PASS_ASPECT_TOLERANCE)
+        if second is None:
+            raise ProductionSizeError("invalid_production_size",
+                f"No second-pass size near {w2 * h2} pixels matches {width}x{height} within 1% aspect; choose another size.")
+    else:
+        second = (width, height)
+    record = {
+        "tolerance": PRODUCTION_SIZE_TOLERANCE, "multiple": PRODUCTION_SIZE_MULTIPLE, "config_node": saved["config_node"],
+        "saved": {**_production_pass(w1, h1), "second_pass": {**_production_pass(w2, h2), "enabled": enabled}},
+        "production": {**_production_pass(width, height), "pixel_change": round(change, 4),
+                       "second_pass": {**_production_pass(*second), "enabled": enabled,
+                                       "pixel_change": round(second[0] * second[1] / (w2 * h2) - 1, 4)}},
+    }
+    if saved["output"]:
+        final_saved, final = ((w2, h2), second) if enabled else ((w1, h1), (width, height))
+        record["saved_output_geometry"] = {"width": saved["output"][0], "height": saved["output"][1]}
+        record["output_geometry"] = {"width": round(saved["output"][0] * final[0] / final_saved[0]),
+                                     "height": round(saved["output"][1] * final[1] / final_saved[1])}
+    return record
+
+
+def production_size(profile, settings):
+    """None without a size change, else the rewritten workflow and its record."""
+    if not settings:
+        return None
+    if not isinstance(settings, dict) or set(settings) != {"width", "height"}:
+        raise ProductionSizeError(
+            "immutable_profile",
+            "Technical settings belong to this saved workflow; upload a new revision. Only width and height may change, "
+            "together, at the saved pixel count.", status=409)
+    width, height = settings["width"], settings["height"]
+    for key, value in (("width", width), ("height", height)):
+        if (type(value) is not int or value % PRODUCTION_SIZE_MULTIPLE
+                or not PRODUCTION_SIZE_LIMITS[0] <= value <= PRODUCTION_SIZE_LIMITS[1]):
+            raise ProductionSizeError("invalid_production_size",
+                f"settings.{key} must be a multiple of {PRODUCTION_SIZE_MULTIPLE} between 32 and 16384.", path="/settings/" + key)
+    saved = production_saved_size(profile)
+    if (width, height) == saved["first"]:
+        return None
+    record = production_size_record(saved, width, height)
+    workflow = production_copy.deepcopy(profile["workflow"])
+    inputs = workflow["api"][saved["config_node"]]["inputs"]
+    inputs["width"], inputs["height"] = width, height
+    if saved["second_inputs"]:
+        second = record["production"]["second_pass"]
+        inputs["second_pass_width"], inputs["second_pass_height"] = second["width"], second["height"]
+    return {"workflow": workflow, "record": record}
+
+
+def production_size_summary(profile):
+    """Read-only discovery: the saved size and the size for each common aspect ratio."""
+    try:
+        if not isinstance(profile, dict) or profile.get("immutable_settings") is not True:
+            return {}
+        saved = production_saved_size(profile)
+        (w1, h1), (w2, h2) = saved["first"], saved["second"]
+        by_aspect = {}
+        for aspect in PRODUCTION_SIZE_ASPECTS:
+            a, b = (int(part) for part in aspect.split(":"))
+            nearest = nearest_production_size(w1, h1, a, b)
+            try:
+                if nearest is None:
+                    raise ProductionSizeError("invalid_production_size", "No size at this aspect keeps the saved pixel count.")
+                record = production_size_record(saved, *nearest)
+                by_aspect[aspect] = {"width": nearest[0], "height": nearest[1],
+                                     "second_pass": {key: record["production"]["second_pass"][key] for key in ("width", "height", "enabled")},
+                                     **({"output_geometry": record["output_geometry"]} if "output_geometry" in record else {})}
+            except ProductionSizeError as error:
+                by_aspect[aspect] = {"unavailable": str(error)}
+        return {"configured_size": {
+            "tolerance": PRODUCTION_SIZE_TOLERANCE, "multiple": PRODUCTION_SIZE_MULTIPLE,
+            "saved": {**_production_pass(w1, h1), "second_pass": {**_production_pass(w2, h2), "enabled": w2 > w1 and h2 > h1},
+                      **({"output_geometry": {"width": saved["output"][0], "height": saved["output"][1]}} if saved["output"] else {})},
+            "by_aspect": by_aspect}}
+    except (ProductionSizeError, KeyError, TypeError, ValueError, ZeroDivisionError):
+        return {}
+
+
 class Profiles:
     def __init__(self, root, node_info):
         self.root = Path(root).resolve()
@@ -127,7 +347,8 @@ class Profiles:
                 profile = self._snapshot(self._read(path))
                 reasons = self._probe(profile)
                 result.append({"id": profile_id, "title": profile.get("title", profile_id),
-                               "sha256": profile["sha256"], "ready": not reasons, "reasons": reasons})
+                               "sha256": profile["sha256"], "ready": not reasons, "reasons": reasons,
+                               **production_size_summary(profile)})
             except APIError as error:
                 result.append({"id": profile_id, "ready": False, "reasons": [{"code": error.code, "message": str(error)}]})
         return result
@@ -153,16 +374,22 @@ class Profiles:
         return self._snapshot(profile)
 
     def prepare(self, profile, sequence, body, resolved_assets):
+        production = None
         if profile.get("immutable_settings") is True and body.get("settings"):
-            raise APIError("immutable_profile", "Technical settings belong to this saved workflow; upload a new revision.", status=409)
+            try:
+                production = production_size(profile, body["settings"])
+            except ProductionSizeError as error:
+                raise APIError(error.code, str(error), status=error.status, path=error.path, details=error.details) from None
         request = {"version": 1, "name": sequence, "timeline": copy.deepcopy(body["timeline"]),
-                   "settings": copy.deepcopy(body.get("settings", {})), "workflow": copy.deepcopy(profile["workflow"]),
+                   "settings": copy.deepcopy(body.get("settings", {})), "workflow": production["workflow"] if production else copy.deepcopy(profile["workflow"]),
                    "assets": copy.deepcopy(resolved_assets), "semantic_boxes": copy.deepcopy(body.get("semantic_boxes", {}))}
         prepared = timeline_prepare.prepare(request)
         if not prepared.get("ok"):
             error = prepared["errors"][0]
             pointer = "/" + "/".join(error["path"].split(".")) if error["path"] != "$" else ""
             raise APIError("invalid_timeline", error["message"], path=pointer)
+        if production:
+            prepared["production_size"] = production["record"]
         return prepared
 
     def workflow(self, profile, project, *, mode="fork"):
@@ -185,3 +412,5 @@ class Profiles:
 # captured-api-choice-v1
 
 # captured-api-active-outputs-v1
+
+# configured-production-size-v1
