@@ -187,7 +187,7 @@ export function replacePicture(entity, from, to) {
   const rename = (names) => [...new Set(names.map((name) => name === from ? to : name))];
   const swap = (text) => swapMentions(text, {[from]: to});
   return {...structuredClone(entity), pictures: rename(entity.pictures), description: swap(entity.description),
-    looks: entity.looks.map((look) => ({...structuredClone(look), description: swap(look.description),
+    looks: (entity.looks ?? []).map((look) => ({...structuredClone(look), description: swap(look.description),
       ...(look.pictures ? {pictures: rename(look.pictures)} : {})}))};
 }
 
@@ -195,7 +195,7 @@ export function replacePicture(entity, from, to) {
 // else its own. A look whose box is missing has no effect.
 export function picturesAt(entity, boxes, index) {
   let chosen = entity.pictures, start = -1;
-  for (const look of entity.looks) {
+  for (const look of (entity.looks ?? [])) {
     const at = boxes.findIndex((box) => box.id === look.from);
     if (look.pictures?.length && at >= 0 && start < at && at <= index) [chosen, start] = [look.pictures, at];
   }
@@ -203,20 +203,20 @@ export function picturesAt(entity, boxes, index) {
 }
 
 export function withLook(entity, boxId, description, boxes,
-  pictures = entity.looks.find((look) => look.from === boxId)?.pictures) {
+  pictures = (entity.looks ?? []).find((look) => look.from === boxId)?.pictures) {
   const order = (look) => {
     const index = boxes.findIndex((box) => box.id === look.from);
     return index < 0 ? boxes.length : index;
   };
   const look = pictures?.length ? {from: boxId, description, pictures: [...pictures]} : {from: boxId, description};
-  const looks = [...entity.looks.filter((item) => item.from !== boxId), look];
+  const looks = [...(entity.looks ?? []).filter((item) => item.from !== boxId), look];
   return {...structuredClone(entity), looks: looks.sort((a, b) => order(a) - order(b))};
 }
 
 // The look from `boxId` showing `picture`, or no picture of its own when it is empty. Each look whose pictures in
 // force change names the new pictures in place of the old, since Build bible's wording names its picture.
 export function withLookPicture(entity, boxId, picture, boxes) {
-  const looks = entity.looks.map((look) => {
+  const looks = (entity.looks ?? []).map((look) => {
     const copy = structuredClone(look);
     if (look.from !== boxId) return copy;
     delete copy.pictures;
@@ -234,7 +234,7 @@ export function withLookPicture(entity, boxId, picture, boxes) {
 }
 
 export function withoutLook(entity, boxId) {
-  return {...structuredClone(entity), looks: entity.looks.filter((look) => look.from !== boxId)};
+  return {...structuredClone(entity), looks: (entity.looks ?? []).filter((look) => look.from !== boxId)};
 }
 
 // `entity` with the pin {box, frame} last, unless it has that pin.
@@ -598,7 +598,7 @@ export class CastPage {
   // The wording in force at box `index`, as the last status gave it.
   wordingAt(entity, index) {
     const look = this.view?.in_force?.[entity.id]?.[index] ?? 0;
-    return look ? entity.looks[look - 1]?.description ?? entity.description : entity.description;
+    return look ? (entity.looks ?? [])[look - 1]?.description ?? entity.description : entity.description;
   }
 
   // Box `boxId`'s subjects as chips for the Box page: a linked chip opens its entity, an unlinked one offers Link….
@@ -1052,7 +1052,7 @@ export class CastPage {
     const strip = el('div', 'h3cc-strip');
     strip.setAttribute('aria-label', `Where ${entity.name} appears`);
     for (const cell of stripCells(entity, this.view, boxes)) {
-      const look = cell.look ? `look from clip ${numberOf(boxes, entity.looks[cell.look - 1]?.from)}` : 'description';
+      const look = cell.look ? `look from clip ${numberOf(boxes, (entity.looks ?? [])[cell.look - 1]?.from)}` : 'description';
       const title = cell.look == null ? `Clip ${cell.number} · not linked`
         : cell.differs ? `Clip ${cell.number} differs from the bible` : `Clip ${cell.number} · ${look}`;
       const node = button(String(cell.number), title, () => this.editor.select(cell.number - 1), 'h3cc-cell');
@@ -1080,7 +1080,7 @@ export class CastPage {
     parts.push(describe, speaks);
     if (entity.kind === 'character') parts.push(this.voiceClipRow(entity));
 
-    for (const look of entity.looks) {
+    for (const look of (entity.looks ?? [])) {
       const row = el('div', 'h3cc-look');
       row.dataset.lookBox = look.from;
       const where = el('select', 'h3ct-select');
@@ -1090,7 +1090,7 @@ export class CastPage {
       if (!at) where.append(option('', 'clip missing'));
       boxes.forEach((box, index) => {
         const choice = option(box.id, `From clip ${index + 1}`);
-        choice.disabled = box.id !== look.from && entity.looks.some((other) => other.from === box.id);
+        choice.disabled = box.id !== look.from && (entity.looks ?? []).some((other) => other.from === box.id);
         where.append(choice);
       });
       where.value = at ? look.from : '';
@@ -1113,7 +1113,7 @@ export class CastPage {
     const box = boxes[index];
     const addLook = button(`+ Look from clip ${index + 1}`, 'Start a look at the selected clip, from the wording in force there',
       () => this.applyEntity(withLook(entity, box.id, this.wordingAt(entity, index), boxes)));
-    addLook.disabled = !box || entity.looks.some((look) => look.from === box.id);
+    addLook.disabled = !box || (entity.looks ?? []).some((look) => look.from === box.id);
     parts.push(addLook);
     if (entity.kind !== 'prop' || entity.pins?.length) parts.push(this.pinList(entity));
 
