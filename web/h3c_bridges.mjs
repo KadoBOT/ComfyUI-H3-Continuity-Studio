@@ -3,7 +3,7 @@
 // so the video keeps its length and recordings stay in place. Plain DOM without ComfyUI imports; the editor's host
 // queues the run, and Play asks the Studio to show a take or candidate. Every region, protection and choice comes from
 // the Timeline's status.
-import * as model from './h3c_timeline_model.mjs?v=d56ec08c02a0';
+import * as model from './h3c_timeline_model.mjs?v=35c83baff29e';
 
 const STYLE_ID = 'h3cb-style';
 const CSS = `

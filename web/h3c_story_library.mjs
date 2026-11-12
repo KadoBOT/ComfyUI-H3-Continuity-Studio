@@ -1,6 +1,6 @@
-import {parseJSON,stringifyJSON} from './h3c_project.mjs?v=a95eeeccc6cf';
-import {settledPreparation} from './h3c_reference_preparation.mjs?v=5840e91777b9';
-import {applyResult,parseStoryState,serializeStoryState} from './h3c_story_model.mjs?v=13a46b322a85';
+import {parseJSON,stringifyJSON} from './h3c_project.mjs?v=0882b8a6265a';
+import {settledPreparation} from './h3c_reference_preparation.mjs?v=dccc344c3c9a';
+import {applyResult,parseStoryState,serializeStoryState} from './h3c_story_model.mjs?v=66c744a95fea';
 import {reconcileSceneAnchors} from './h3c_still_scene.mjs?v=1ca16919a3f9';
 
 const CONTENT_FIELDS=new Set(['name','timeline','idea','state','idea_images','template']);
@@ -85,6 +85,26 @@ export function savedStoryContent(value,current) {
     sequence:value.sequence,renders:true,wiring,
     project:target.properties?.h3c_project?.mode==='attached'?structuredClone(target.properties.h3c_project):undefined,
     asset_bindings:structuredClone(target.properties?.h3c_asset_bindings)};
+}
+
+const MANAGED_SEQUENCE=/^api_([a-f0-9]{8})([a-f0-9]{4})([a-f0-9]{4})([a-f0-9]{4})([a-f0-9]{12})$/;
+
+/** The managed project a saved story belongs to, from its attachment or its reserved sequence; null for a native story. */
+export function managedProjectId(content) {
+  if(content.project?.mode==='attached'&&content.project.id)return content.project.id;
+  const match=MANAGED_SEQUENCE.exec(content.sequence??'');
+  return match?match.slice(1).join('-'):null;
+}
+
+/** A managed story saves and renders through its project's own saved workflow, never through the open one. Loaded
+ *  into another workflow it therefore becomes an independent copy that runs there: its own sequence, no project,
+ *  that workflow's models and settings. The project itself is left as it is. The story stays attached in the
+ *  project's own workflow: one wired the same, or one whose Timeline is already attached to that project. */
+export function independentStoryContent(content,{attached,sequence=()=>'timeline_'+crypto.randomUUID().replaceAll('-','')}={}) {
+  const id=managedProjectId(content);
+  if(!id||content.wiring||attached===id)return content;
+  const {project,asset_bindings,...copy}=content;
+  return {...copy,sequence:sequence(),renders:false,independent:true};
 }
 
 export function isWiringConflict(error) {

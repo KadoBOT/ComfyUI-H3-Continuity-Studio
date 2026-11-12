@@ -88,6 +88,25 @@ export function seedValue(value) {
   } catch { return undefined; }
 }
 
+const INTEGER_SETTINGS = ['width','height','context_frames','audio_context_frames'];
+
+/** The settings this Timeline node itself holds. A widget fed by a link reads as null: another node owns that value,
+ *  so it is left out. A dropdown stores its number as text; the project contract wants the number. */
+export function ownedSettings(settings) {
+  const result={};
+  for(const [key,value] of Object.entries(settings??{})) {
+    if(value==null) continue;
+    result[key]=INTEGER_SETTINGS.includes(key)&&typeof value==='string'&&/^\d+$/.test(value.trim())?Number(value):value;
+  }
+  return result;
+}
+
+/** A project API refusal as one line, naming the field the server points at. */
+export function projectErrorMessage(result,status) {
+  const error=result?.error,message=error?.message??`Project HTTP ${status}`;
+  return error?.path?`${message} (${error.path})`:message;
+}
+
 export function forkProject(node) {
   const properties = node.properties ??= {};
   const widget = node.widgets?.find(item=>item.name==='name');
@@ -121,7 +140,7 @@ export class ProjectSession {
   value() {
     const local=this.read();
     return {timeline:typeof local.timeline==='string'?parseJSON(local.timeline):cloneJSON(local.timeline),
-      settings:cloneJSON(local.settings),assets:cloneJSON(local.assets??this.project?.assets??[])};
+      settings:ownedSettings(cloneJSON(local.settings)),assets:cloneJSON(local.assets??this.project?.assets??[])};
   }
   body() {
     const value=this.value(),timeline=editedTimeline(this.project.timeline,this.base.timeline,value.timeline);
@@ -130,7 +149,10 @@ export class ProjectSession {
       if(!same(box.prompt,this.base.timeline.boxes.find(item=>item.id===box.id)?.prompt)) delete semantic[box.id];
     }
     return {...Object.fromEntries(['name','consumer'].filter(key=>this.project?.[key]!==undefined)
-      .map(key=>[key,cloneJSON(this.project[key])])),...value,timeline,semantic_boxes:semantic,expected_revision:this.project.revision};
+      .map(key=>[key,cloneJSON(this.project[key])])),...value,
+      // Only what was changed here goes back: the project keeps the settings it was authored with.
+      settings:editFields(this.project.settings,this.base.settings,value.settings),
+      timeline,semantic_boxes:semantic,expected_revision:this.project.revision};
   }
   install(project, before) {
     if(this.gone) return;

@@ -1,4 +1,4 @@
-import {stringifyJSON,seedValue} from './h3c_project.mjs?v=a95eeeccc6cf';
+import {stringifyJSON,seedValue} from './h3c_project.mjs?v=0882b8a6265a';
 import {ImageJobClient} from './h3c_image_jobs.mjs?v=441234615008';
 export const REFERENCE_CATEGORIES = ['cast','locations','props'];
 

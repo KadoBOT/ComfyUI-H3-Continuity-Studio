@@ -12,15 +12,15 @@ import { api } from '../../scripts/api.js';
 import { mountSavedState, AUTOSAVE_SETTING, autosaveEnabled } from './h3c_saved_state.mjs?v=285cb0ac96bb';
 import { migrateStoryDescriptionInputs, migrateSerializedStoryDescriptionInputs } from './h3c_story_inputs.mjs?v=46d6a455ab9a';
 import { showOwnElement } from './h3c_dom_widget.mjs?v=961e6d7f3bb7';
-import * as story from './h3c_story_model.mjs?v=13a46b322a85';
+import * as story from './h3c_story_model.mjs?v=66c744a95fea';
 import { StoryPanel } from './h3c_story_panel.mjs?v=3361c4324f46';
-import { StoryLibrary, isWiringConflict, saveBeforeNewProject, savedStoryContent, recoverSavedStoryContent } from './h3c_story_library.mjs?v=17748eb8a721';
+import { StoryLibrary, isWiringConflict, saveBeforeNewProject, savedStoryContent, recoverSavedStoryContent, independentStoryContent } from './h3c_story_library.mjs?v=18ba90dfa179';
 import { exportStory, importStory, downloadStory } from './h3c_story_archive.mjs?v=b07a438d2dc4';
-import { parseState, serialize } from './h3c_timeline_model.mjs?v=d56ec08c02a0';
+import { parseState, serialize } from './h3c_timeline_model.mjs?v=35c83baff29e';
 
-import {exportGeneration,importGeneration,downloadGeneration,generationControl,setGenerationControl} from './h3c_generation_archive.mjs?v=fcb2ee64960b';
+import {exportGeneration,importGeneration,downloadGeneration,generationControl,setGenerationControl} from './h3c_generation_archive.mjs?v=dcb0de381f51';
 import {captureRecipe,hasVideoOutput as compiledVideoOutput} from './h3c_stills.mjs?v=df999ecd2dcd';
-import {parseJSON,stringifyJSON} from './h3c_project.mjs?v=a95eeeccc6cf';
+import {parseJSON,stringifyJSON} from './h3c_project.mjs?v=0882b8a6265a';
 
 const NODE_TYPE = 'H3C_Story';
 const WRITE_URL = '/h3c/story/write';
@@ -412,7 +412,9 @@ export class StoryHost {
       return;
     }
     const graph=this.node.graph,revision=JSON.stringify(graph.serialize());
-    const content=await recoverSavedStoryContent(savedStoryContent(value,graph.serialize()),async path=>{
+    const attached=this.timelines()[0]?.properties?.h3c_project;
+    const content=await recoverSavedStoryContent(independentStoryContent(savedStoryContent(value,graph.serialize()),
+      {attached:attached?.mode==='attached'?attached.id:undefined}),async path=>{
       const response=await api.fetchApi(path),project=parseJSON(await response.text());
       if(!response.ok)throw Error(project.error?.message??'Could not reconnect the saved story to its managed project.');
       return project;
@@ -422,11 +424,13 @@ export class StoryHost {
       if(this.gone||graph!==(app.rootGraph??app.graph)||revision!==JSON.stringify(graph.serialize()))
         throw Error('The open story changed while loading. Your edits were kept; load again.');
       if(this.libraryBusy())throw Error('Wait for writing, uploads and rendering to finish before switching stories.');
-      const samePair=graph._nodes.filter(node=>['H3C_Story','H3C_Timeline'].includes(node.type)).length===2;
+      // An independent copy starts its own library entry; the managed story keeps its saved workflow.
+      const samePair=!content.independent&&graph._nodes.filter(node=>['H3C_Story','H3C_Timeline'].includes(node.type)).length===2;
       // Continue the saved story itself (its library entry and autosaves), never a new copy of it.
       this.applyGeneration(content,samePair?{graphId:value.graph,revision:value.workflow_revision,libraryId:value.id}:{});
       this.openStudio();
-      this.panel.say(content.wiring?'Story loaded into this workflow.':'Story loaded into this workflow with its rendered clips. The wiring of this workflow differs from the saved one; clips whose render settings changed show as outdated.');
+      this.panel.say(content.independent?'Story loaded into this workflow as an independent copy. It renders with this workflow\u2019s models and settings; the managed project it came from is unchanged.'
+        :content.wiring?'Story loaded into this workflow.':'Story loaded into this workflow with its rendered clips. The wiring of this workflow differs from the saved one; clips whose render settings changed show as outdated.');
     } finally {resume();}
   }
 
