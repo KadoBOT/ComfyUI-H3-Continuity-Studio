@@ -57,6 +57,17 @@ window.run=async()=>{
   saved:{suspend:async()=>()=>{},changed(){}},panel:{say(){},showLibraryConflict(){}},libraryBusy:()=>false,
   openStudio(){},showState(){}});
  try {
+  // A managed story loaded into another workflow runs there as an independent copy; the project is never contacted.
+  await story.loadLibrary(structuredClone(saved));
+  assert(!host.project&&!node.properties.h3c_project&&!node.properties.h3c_asset_bindings,'Another workflow attached to the managed project');
+  assert(/^timeline_[a-f0-9]{32}$/.test(node.properties.h3c_fork_sequence)&&textName.widgets[0].value===node.properties.h3c_fork_sequence,'Independent copy kept the managed sequence');
+  assert(stringifyJSON(parseJSON(host.widget.value))===line&&textLine.widgets[0].value===line,'Independent copy changed the Timeline');
+  assert(graph.extra.h3c_story_id!==saved.graph&&!story.libraryId,'Independent copy took over the managed story entry');
+  assert(node.widgets[2].value===1024&&generator.widgets[0].value===8,'Independent copy changed destination settings');
+  assert(calls.length===0,'Independent copy contacted the managed project');
+
+  // The project's own workflow, already attached to it, keeps the attachment.
+  node.properties.h3c_project=structuredClone(project);
   await story.loadLibrary(structuredClone(saved));
   assert(node.properties.h3c_project?.id===project.id,'Saved stories dropped attached project metadata');
   assert(stringifyJSON(node.properties.h3c_asset_bindings)===stringifyJSON(assets),'Saved stories dropped bindings');
@@ -106,13 +117,14 @@ window.run=async()=>{
   assert(node.properties.h3c_fork_sequence==='native-saved','Native saved sequence changed');
   assert(stringifyJSON(node.properties.h3c_asset_bindings)===stringifyJSON(assets),'Native saved bindings lost');
   assert(calls.length===6,'Native transfers contacted managed project');
+  node.properties.h3c_project=structuredClone(project);
   const beforeFailure=JSON.stringify(graph.serialize());
   window.request=async path=>{calls.push([path,'GET']);return {ok:false,status:404,text:async()=>'{"error":{"message":"Project no longer exists"}}'};};
   let failed=false;try{await story.loadLibrary(stripped);}catch(error){failed=error.message==='Project no longer exists';}
   assert(failed&&JSON.stringify(graph.serialize())===beforeFailure,'Failed recovery changed the destination');
   window.request=async path=>{calls.push([path,'GET']);generator.widgets[0].value=9;return {ok:true,text:async()=>stringifyJSON(server)};};
   let changed=false;try{await story.loadLibrary(stripped);}catch(error){changed=/open story changed while loading/i.test(error.message);}
-  assert(changed&&node.properties.h3c_fork_sequence==='native-saved'&&!node.properties.h3c_project,'Recovery overwrote edits made during lookup');
+  assert(changed&&node.properties.h3c_fork_sequence==='native-saved'&&!host.project&&stringifyJSON(parseJSON(host.widget.value))===line,'Recovery overwrote edits made during lookup');
   assert(calls.length===8,'Unexpected recovery requests');
   return {managed_requests:calls,boxes:8,cues:19,native_import:true,native_saved_fork:true,text_wiring:true};
  } finally {host.saved.destroy();}

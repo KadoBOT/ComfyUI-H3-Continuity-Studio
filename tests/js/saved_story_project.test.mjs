@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {ProjectSession} from '../../web/h3c_project.mjs?v=a95eeeccc6cf';
+import {ProjectSession} from '../../web/h3c_project.mjs?v=0882b8a6265a';
 
 function fixture({cached=false,matching=false}={}) {
   const server={id:'p',profile_sha256:'profile',revision:2,sequence:'api_p',name:'Project',

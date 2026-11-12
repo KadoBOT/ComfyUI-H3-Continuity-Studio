@@ -4,6 +4,18 @@ All notable changes to H3 Continuity Studio are recorded here. Versions follow [
 
 ## [Unreleased]
 
+## [0.22.0] - 2026-11-12
+
+### Changed
+
+- **A saved story runs in the workflow you load it into.** Loading a story that belongs to a managed Timeline API project into a different workflow now makes an independent copy there: it keeps the clips, prompts and pictures, gets its own sequence, and renders with the open workflow's models and settings. The managed project is left unchanged. The story stays attached only in the project's own workflow (one wired the same, or one whose Timeline is already attached to that project). Before, any workflow became attached, so edits and renders went through the project's saved workflow whatever was open.
+
+### Fixed
+
+- **An attached Timeline whose size comes from other nodes can save.** Settings fed by a link are no longer sent as empty values, a dropdown number such as the context length is sent as a number, and only settings changed in the Timeline go back to the project. Such a workflow failed every save with "Value does not satisfy type constraint", which also blocked loading any other story.
+- **A refused project save names the field.** The message now includes the path the server reports, for example `(/settings/width)`.
+- **The Cast page opens for entries saved without looks.** A character, place or prop whose saved entry has no `looks` list no longer stops the Cast page from drawing.
+
 ## [0.21.1] - 2026-11-11
 
 ### Fixed

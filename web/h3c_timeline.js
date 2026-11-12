@@ -1,30 +1,30 @@
-import {ReferenceClient,applyReferenceApproval,requiredAssets,preparationOf} from './h3c_reference_preparation.mjs?v=5840e91777b9';
-import {generationControl,setGenerationControl} from './h3c_generation_archive.mjs?v=fcb2ee64960b';
+import {ReferenceClient,applyReferenceApproval,requiredAssets,preparationOf} from './h3c_reference_preparation.mjs?v=dccc344c3c9a';
+import {generationControl,setGenerationControl} from './h3c_generation_archive.mjs?v=dcb0de381f51';
 // Mounts the H3 Timeline face on H3C_Timeline nodes, edits the Timeline in the Studio, and keeps its status in sync
 // with the server. Browsers may cache the .mjs helpers, so their ?v= tags come from node tools/module_versions.mjs --write.
 import { freshProject } from './h3c_new_project.mjs?v=96adbc29f06d';
-import { saveBeforeNewProject } from './h3c_story_library.mjs?v=17748eb8a721';
+import { saveBeforeNewProject } from './h3c_story_library.mjs?v=18ba90dfa179';
 import { app } from '../../scripts/app.js';
-import {syncImageOutputs,compileImageOutputs} from './h3c_timeline_images.mjs?v=8c4598c1eb4e';
+import {syncImageOutputs,compileImageOutputs} from './h3c_timeline_images.mjs?v=5233cee7eb73';
 import { api } from '../../scripts/api.js';
 import { mountSavedState, autosaveEnabled } from './h3c_saved_state.mjs?v=285cb0ac96bb';
 import {setText} from './h3c_dom.mjs?v=584a9bf55653';
 import { showOwnElement } from './h3c_dom_widget.mjs?v=961e6d7f3bb7';
 import { WATCH_EVENTS, idleWatch, progressText, watchEvent } from './h3c_render_watch.mjs?v=7c8222569836';
 import { DEFAULT_AHEAD, QueueFeed, feedNote, queueAhead } from './h3c_queue_feed.mjs?v=9392f926e4e3';
-import { studio } from './h3c_studio.mjs?v=61f56401e719';
-import { FACE_HEIGHT, TimelineFace } from './h3c_timeline_face.mjs?v=e14e22d476e7';
-import { TimelineEditor } from './h3c_timeline_editor.mjs?v=6d811a8eb012';
-import { referenceFile, referenceSource, referencePools, referenceType, effectiveRefmods, parseState, serialize } from './h3c_timeline_model.mjs?v=d56ec08c02a0';
-import {referenceImageFile} from './h3c_reference_sources.mjs?v=195ba60268f6';
-import { pictureRefs } from './h3c_pictures.mjs?v=8339fa63997c';
-import { voiceRefs } from './h3c_voices.mjs?v=0fbce8e24aba';
+import { studio } from './h3c_studio.mjs?v=71f5084f6a80';
+import { FACE_HEIGHT, TimelineFace } from './h3c_timeline_face.mjs?v=a9cdeb8b8837';
+import { TimelineEditor } from './h3c_timeline_editor.mjs?v=ad00af7c5115';
+import { referenceFile, referenceSource, referencePools, referenceType, effectiveRefmods, parseState, serialize } from './h3c_timeline_model.mjs?v=35c83baff29e';
+import {referenceImageFile} from './h3c_reference_sources.mjs?v=868941a55e84';
+import { pictureRefs } from './h3c_pictures.mjs?v=91a7dc98cd05';
+import { voiceRefs } from './h3c_voices.mjs?v=26fce8516ebd';
 import {captureRecipe,captureTimelineId,captureStillBody,stillTimelineBody,recipeControls,StillClient,isolateVideoPrompt,videoOutputs,hasVideoOutput as compiledVideoOutput,graphWiring} from './h3c_stills.mjs?v=df999ecd2dcd';
-import {boundarySnapshot} from './h3c_frame_images.mjs?v=644176c40c45';
+import {boundarySnapshot} from './h3c_frame_images.mjs?v=649cbc7f1848';
 import {stillPromptSource,sameStillPromptSource} from './h3c_still_prompt_preparation.mjs?v=2e7e25c47bea';
-import { TakesClient } from './h3c_takes.mjs?v=224eadcaf18a';
-import {ProjectSession, forkProject, parseJSON, stringifyJSON} from './h3c_project.mjs?v=a95eeeccc6cf';
-import {TimelineHistory, dropReceipts, withLiveReceipts} from './h3c_history.mjs?v=c1afe9e8f9d7';
+import { TakesClient } from './h3c_takes.mjs?v=b3788fbda389';
+import {ProjectSession, forkProject, parseJSON, projectErrorMessage, stringifyJSON} from './h3c_project.mjs?v=0882b8a6265a';
+import {TimelineHistory, dropReceipts, withLiveReceipts} from './h3c_history.mjs?v=d639ee9ffd57';
 import {confirmRegeneration} from './h3c_regeneration.mjs?v=44ff3a1a199c';
 import {startGeneration,useGeneration} from './h3c_generations.mjs?v=2ed8014b9ec0';
 
@@ -1217,7 +1217,7 @@ export class TimelineHost {
           headers: {'Content-Type': 'application/json', ...options.headers},
           ...(options.body ? {body: stringifyJSON(options.body)} : {})});
         const result = parseJSON(await response.text());
-        if (!response.ok) {const error = new Error(result.error?.message ?? `Project HTTP ${response.status}`);
+        if (!response.ok) {const error = new Error(projectErrorMessage(result, response.status));
           Object.assign(error, {status: response.status, code: result.error?.code}); throw error;}
         return result;
       }});
