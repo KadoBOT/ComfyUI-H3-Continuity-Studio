@@ -3,7 +3,7 @@
 // closes, opens another Timeline or the Timeline's Story changes. Its Story page edits the Story node's inputs.
 import { liveBadge, progressText } from './h3c_render_watch.mjs?v=7c8222569836';
 import { templateRow } from './h3c_templates.mjs?v=ff7103cdcba7';
-import { soundtrackLine, soundtrackSlots } from './h3c_timeline_model.mjs?v=35c83baff29e';
+import { soundtrackLine, soundtrackSlots } from './h3c_timeline_model.mjs?v=25c8aab2bb32';
 
 import { ideaImagesRow } from './h3c_idea_images.mjs?v=3e6280e44a1b';
 import { partialBadge, partialTitle, previewBadge, previewLabel, previewTitle, timelineFrame, videoSeconds } from './h3c_partial_video.mjs?v=201bf0f48645';
@@ -88,6 +88,8 @@ const CSS = `
 .h3cx-bar .h3cx-slot { flex-wrap:wrap; }
 .h3cx-name { white-space: normal; overflow-wrap: anywhere; }
 .h3cx-activity { flex:0 0 auto; display:flex; align-items:center; flex-wrap:wrap; gap:8px; min-height:32px; padding:4px 10px; border-bottom:1px solid #2c313c; }
+.h3cx-notice { flex:0 0 auto; padding:0 10px; }
+.h3cx-notice > .h3ct-hint { margin:6px 0; }
 .h3cx-progress { white-space:normal; }
 .h3cx-title { margin:0; font-size:14px; font-weight:600; overflow-wrap:anywhere; }
 .h3cx-library { min-width:0; min-height:0; overflow:auto; padding:12px; border-right:1px solid #2c313c; background:#1a1c22; }
@@ -365,6 +367,7 @@ export class Studio {
     this.writerMessage = el('span', 'h3cx-writer-message');
     activity.append(this.progressEl, this.stopButton, this.writerCancel, this.writerMessage, el('span', 'h3cx-grow'), this.feedbackButton);
     this.activity = activity;
+    this.notice = el('div', 'h3cx-notice');
 
     const views = el('div', 'h3cx-switch');
     this.fullButton = button('Full video', 'Play the whole Timeline', () => this.setView('full'));
@@ -517,7 +520,7 @@ export class Studio {
     this.track.append(toolbar);
     main.append(this.splitter('lib', 'v', 'References width'), this.splitter('insp', 'v', 'Inspector width'));
     this.splitTrack = this.splitter('track', 'h', 'Timeline height');
-    root.append(bar, activity, main, this.splitTrack, this.track, this.mobileNav);
+    root.append(bar, this.notice, activity, main, this.splitTrack, this.track, this.mobileNav);
     this.applyLayout();
     // Ctrl + scroll over the lane zooms about the pointer; plain scroll still pans.
     this.track.addEventListener('wheel', (event) => {
@@ -1138,6 +1141,7 @@ export class Studio {
     this.place(regions.refmods, this.pages.refmods);
     this.place(regions.sharedPrompt, this.projectPrompt);
     this.place(regions.chainSettings, this.projectChain);
+    this.place(regions.readOnly, this.notice);
     this.place(regions.stillPrompts, this.track);
     this.place(regions.lane, this.track);
     this.place(regions.hint, this.track);

@@ -47,3 +47,11 @@ uv run --with playwright python tests/browser/saved_story_attachment.py
 ```
 
 This checks managed load/status GETs, exact Timeline content, asset bindings, recovery of previously stripped attachments, failed lookups, in-flight edits, conflict preservation, native imports/forks and connected text controls. It never contacts ComfyUI and does not test a full custom-node workflow import or render.
+
+Read-only Timelines from a newer version (real Timeline host, Story writer and Studio editor, with a synthetic graph):
+
+```sh
+uv run --with playwright python tests/browser/read_only_timeline.py
+```
+
+A Timeline whose `requires` names an unknown feature must keep its text byte for byte through editor edits and typing, endpoint adoption on load, a context change, still and reference writes, Story Write and Undo with and without an editor, and undo and redo between whole Timelines. It also checks that the notice is on screen at 1440 and 390 px wide and that **+ Clip**, Render and Generate are off. Screenshots go to `.tmp/read-only-timeline-*.png`.

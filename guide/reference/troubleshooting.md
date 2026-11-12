@@ -10,6 +10,10 @@
 
 The page is still running the frontend it loaded before the update. After updating the node pack, restart ComfyUI and refresh the page. A normal refresh is enough: an update gives every changed frontend file a new address, so the browser fetches it again instead of using a cached copy.
 
+## The Timeline opens read-only
+
+"This Timeline needs a newer H3 Continuity (…)" means the Timeline was saved by a newer version that uses a feature this one doesn't have, named in the brackets. To keep what it doesn't understand, the Studio doesn't save any change to that Timeline: an edit is undone at once, and **+ Clip**, Render and Generate are off. You can still select clips and play their takes. Render, Write and the continuity check refuse it on the server too. Nothing in the Timeline is lost. Update the node pack, restart ComfyUI and refresh the page to edit or render it.
+
 ## A clip says it needs a render
 
 A clip is current only while its prompt, seed, length, join, pictures, RefMods, guides, audio clips, timed text, memory and the node's settings match its saved render, and (for a continuing clip) the clip before it. Point at the clip's marker for the reason. Nothing renders until you ask.

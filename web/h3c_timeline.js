@@ -3,26 +3,26 @@ import {generationControl,setGenerationControl} from './h3c_generation_archive.m
 // Mounts the H3 Timeline face on H3C_Timeline nodes, edits the Timeline in the Studio, and keeps its status in sync
 // with the server. Browsers may cache the .mjs helpers, so their ?v= tags come from node tools/module_versions.mjs --write.
 import { freshProject } from './h3c_new_project.mjs?v=96adbc29f06d';
-import { saveBeforeNewProject } from './h3c_story_library.mjs?v=18ba90dfa179';
+import { saveBeforeNewProject } from './h3c_story_library.mjs?v=e1fa68315842';
 import { app } from '../../scripts/app.js';
-import {syncImageOutputs,compileImageOutputs} from './h3c_timeline_images.mjs?v=5233cee7eb73';
+import {syncImageOutputs,compileImageOutputs} from './h3c_timeline_images.mjs?v=a38bd9adfa82';
 import { api } from '../../scripts/api.js';
 import { mountSavedState, autosaveEnabled } from './h3c_saved_state.mjs?v=285cb0ac96bb';
 import {setText} from './h3c_dom.mjs?v=584a9bf55653';
 import { showOwnElement } from './h3c_dom_widget.mjs?v=961e6d7f3bb7';
 import { WATCH_EVENTS, idleWatch, progressText, watchEvent } from './h3c_render_watch.mjs?v=7c8222569836';
 import { DEFAULT_AHEAD, QueueFeed, feedNote, queueAhead } from './h3c_queue_feed.mjs?v=9392f926e4e3';
-import { studio } from './h3c_studio.mjs?v=71f5084f6a80';
-import { FACE_HEIGHT, TimelineFace } from './h3c_timeline_face.mjs?v=a9cdeb8b8837';
-import { TimelineEditor } from './h3c_timeline_editor.mjs?v=ad00af7c5115';
-import { referenceFile, referenceSource, referencePools, referenceType, effectiveRefmods, parseState, serialize } from './h3c_timeline_model.mjs?v=35c83baff29e';
-import {referenceImageFile} from './h3c_reference_sources.mjs?v=868941a55e84';
-import { pictureRefs } from './h3c_pictures.mjs?v=91a7dc98cd05';
-import { voiceRefs } from './h3c_voices.mjs?v=26fce8516ebd';
+import { studio } from './h3c_studio.mjs?v=93c6c9817b01';
+import { FACE_HEIGHT, TimelineFace } from './h3c_timeline_face.mjs?v=8fd5889133ea';
+import { TimelineEditor } from './h3c_timeline_editor.mjs?v=f36ed16ae092';
+import { referenceFile, referenceSource, referencePools, referenceType, effectiveRefmods, parseState, serialize, unknownFeatures, readOnlyNote } from './h3c_timeline_model.mjs?v=25c8aab2bb32';
+import {referenceImageFile} from './h3c_reference_sources.mjs?v=c0fb70a8be3d';
+import { pictureRefs } from './h3c_pictures.mjs?v=dc4cc22c103c';
+import { voiceRefs } from './h3c_voices.mjs?v=bdd9ba277a2d';
 import {captureRecipe,captureTimelineId,captureStillBody,stillTimelineBody,recipeControls,StillClient,isolateVideoPrompt,videoOutputs,hasVideoOutput as compiledVideoOutput,graphWiring} from './h3c_stills.mjs?v=df999ecd2dcd';
-import {boundarySnapshot} from './h3c_frame_images.mjs?v=649cbc7f1848';
+import {boundarySnapshot} from './h3c_frame_images.mjs?v=8d8951a15681';
 import {stillPromptSource,sameStillPromptSource} from './h3c_still_prompt_preparation.mjs?v=2e7e25c47bea';
-import { TakesClient } from './h3c_takes.mjs?v=b3788fbda389';
+import { TakesClient } from './h3c_takes.mjs?v=5f2c6da90408';
 import {ProjectSession, forkProject, parseJSON, projectErrorMessage, stringifyJSON} from './h3c_project.mjs?v=0882b8a6265a';
 import {TimelineHistory, dropReceipts, withLiveReceipts} from './h3c_history.mjs?v=d639ee9ffd57';
 import {confirmRegeneration} from './h3c_regeneration.mjs?v=44ff3a1a199c';
@@ -495,8 +495,10 @@ export class TimelineHost {
     this.editor.frameImages.refreshControls();
   }
 
+  // A Timeline from a newer Studio is kept as written, or undoing back to it would drop what this one doesn't know.
   historyState() {
-    return {timeline: dropReceipts(parseJSON(serialize(this.readState()))),
+    const state = this.readState(), text = unknownFeatures(state).length ? this.widget.value : serialize(state);
+    return {timeline: dropReceipts(parseJSON(text)),
       settings: Object.fromEntries(SETTINGS.map(name => [name, widgetValue(this.node, name)]))};
   }
 
@@ -508,7 +510,7 @@ export class TimelineHost {
       const widget = findWidget(this.node, name);
       if (widget && !isLinked(this.node, name) && setting != null) widget.value = setting;
     }
-    this.writeTimeline(stringifyJSON(withLiveReceipts(value.timeline, parseState(this.widget.value))));
+    this.writeTimeline(stringifyJSON(withLiveReceipts(value.timeline, parseState(this.widget.value))), false, true);
     this.editor.selected = Math.max(0, (value.timeline.boxes ?? []).findIndex(item => item.id === box));
     this.editor.selectedShot = 1;
     this.editor.load();
@@ -627,14 +629,19 @@ export class TimelineHost {
     return parseJSON(await response.text());
   }
 
-  writeTimeline(text,typing=false) {
+  // A Timeline from a newer Studio is replaced only whole, by undo and redo: every other write is made from
+  // parseState, which drops what this Studio doesn't know. Whether the text was written.
+  writeTimeline(text,typing=false,whole=false) {
+    if(!whole&&text!==this.widget.value&&unknownFeatures(this.readState()).length)return false;
     setGenerationControl(generationControl(this.node,'timeline'),text);
     this.widget.value=text;
     if(!typing)this.history.capture();
+    return true;
   }
 
   async writeStillState(state) {
-    this.writeTimeline(serialize(state));this.node.setDirtyCanvas?.(true,true);
+    if(!this.writeTimeline(serialize(state)))throw Error(readOnlyNote(unknownFeatures(this.readState())));
+    this.node.setDirtyCanvas?.(true,true);
     this.editor.load();this.saved.changed();
     await this.saved.flush();
   }
@@ -1001,7 +1008,7 @@ export class TimelineHost {
   }
 
   replaceTimeline(text) {
-    this.writeTimeline(text);
+    if (!this.writeTimeline(text)) throw Error(readOnlyNote(unknownFeatures(this.readState())));
     this.editor.load();
     this.saved.changed();
     this.schedule(0);

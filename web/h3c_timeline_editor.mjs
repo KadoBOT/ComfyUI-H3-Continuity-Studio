@@ -1,24 +1,24 @@
 // The H3 Timeline editor: a track of boxes, the selected box and the shared prompt.
 // Plain DOM without ComfyUI imports; the host object connects it to the node.
-import { MentionCard, MentionLayer } from './h3c_mentions.mjs?v=01a7706ebbd5';
+import { MentionCard, MentionLayer } from './h3c_mentions.mjs?v=e9af7952269d';
 import { promptSections, promptShots, writePromptSections } from './h3c_prompt_sections.mjs?v=b58f04f78a75';
-import * as model from './h3c_timeline_model.mjs?v=35c83baff29e';
+import * as model from './h3c_timeline_model.mjs?v=25c8aab2bb32';
 import {audioSourceLocked} from './h3c_audio_windows.mjs?v=cdefbd77b246';
-import { AudioLanes } from './h3c_audio_lanes.mjs?v=2389bfb9d076';
-import { shotFrames, frameTargets, syncTargets, acceptedGuideFrames, endpointGuide, endpointReference, adoptEndpointGuides } from './h3c_shot_preview.mjs?v=35c83baff29e';
-import {FrameImages, targetLabel, imageDrop} from './h3c_frame_images.mjs?v=649cbc7f1848';
-import { splitBox, splitTiming } from './h3c_shot_split.mjs?v=41c5d6aa547c';
+import { AudioLanes } from './h3c_audio_lanes.mjs?v=ab9717bd1a0e';
+import { shotFrames, frameTargets, syncTargets, acceptedGuideFrames, endpointGuide, endpointReference, adoptEndpointGuides } from './h3c_shot_preview.mjs?v=25c8aab2bb32';
+import {FrameImages, targetLabel, imageDrop} from './h3c_frame_images.mjs?v=8d8951a15681';
+import { splitBox, splitTiming } from './h3c_shot_split.mjs?v=a3ee4aacea7f';
 import { fillReferenceSwitches } from './h3c_reference_switches.mjs?v=e94b5b02e02b';
-import { ReferenceReplacements } from './h3c_reference_replacements.mjs?v=5f7dcdfefe89';
+import { ReferenceReplacements } from './h3c_reference_replacements.mjs?v=6bab72725d0c';
 import { fillPicturePicker, mentionedReferences, referenceChip } from './h3c_reference_pictures.mjs?v=8198307be3fa';
-import { CastPage } from './h3c_cast.mjs?v=3f5bccfdc62e';
-import { PicturesPanel, highestSlot } from './h3c_pictures.mjs?v=91a7dc98cd05';
+import { CastPage } from './h3c_cast.mjs?v=8c642813a7bc';
+import { PicturesPanel, highestSlot } from './h3c_pictures.mjs?v=dc4cc22c103c';
 import { CheckPanel } from './h3c_check.mjs?v=c69786f95bd5';
-import { BridgePanel, bridgeLine } from './h3c_bridges.mjs?v=c179fda761d5';
-import { DialoguePanel } from './h3c_dialogue.mjs?v=0246efeb7376';
+import { BridgePanel, bridgeLine } from './h3c_bridges.mjs?v=a8f30264538f';
+import { DialoguePanel } from './h3c_dialogue.mjs?v=e969ae1d8a99';
 import { ChainSettings } from './h3c_chain_settings.mjs?v=9f2d4061a6d6';
 import { exportedVideo } from './h3c_partial_video.mjs?v=201bf0f48645';
-import { MAX_TAKES, TakesPanel, followNote, renderLabel } from './h3c_takes.mjs?v=b3788fbda389';
+import { MAX_TAKES, TakesPanel, followNote, renderLabel } from './h3c_takes.mjs?v=5f2c6da90408';
 import { drawsSame, replaceChanged, setText, showImages } from './h3c_dom.mjs?v=584a9bf55653';
 
 const STYLE_ID = 'h3ct-style';
@@ -368,6 +368,8 @@ export class TimelineEditor {
     this.chain = new ChainSettings(this);
     lane.append(this.stillsEl, this.rulerEl, this.trackEl, this.audioLanes.root, this.audioLanes.settings, this.dialogue.root);
     this.hintEl = el('p', 'h3ct-hint');
+    this.readOnlyEl = el('p', 'h3ct-hint problem');
+    this.readOnlyEl.hidden = true;
     this.touchPan = false;
 
     this.panelEl = el('div', 'h3ct-panel');
@@ -644,7 +646,7 @@ export class TimelineEditor {
     this.pictures = new PicturesPanel(this);
     this.cast = new CastPage(this);
     this.castEl = this.cast.root;
-    this.root.append(head, this.feedbackEl, this.referencesEl, this.pictures.root, this.refmodsEl, this.chain.root, this.castEl, this.frameImages.preparation.root, lane, this.hintEl,
+    this.root.append(head, this.readOnlyEl, this.feedbackEl, this.referencesEl, this.pictures.root, this.refmodsEl, this.chain.root, this.castEl, this.frameImages.preparation.root, lane, this.hintEl,
       this.panelEl);
     this.renderRefmods();
   }
@@ -771,7 +773,7 @@ export class TimelineEditor {
   regions() {
     return {summary: this.summaryEl, add: this.addButton, next: this.renderNextButton, all: this.renderButton,
       open: this.fullLink, download: this.fullDownloadLink, feedback: this.feedbackEl, references: this.referencesEl,
-      pictures: this.pictures.root, refmods: this.refmodsEl, lane: this.laneEl, hint: this.hintEl, panel: this.panelEl,
+      pictures: this.pictures.root, refmods: this.refmodsEl, lane: this.laneEl, hint: this.hintEl, readOnly: this.readOnlyEl, panel: this.panelEl,
       cast: this.castEl, sharedPrompt: this.sharedRoot, clipTakes: this.takes.root,
       bridgeTakes: this.takes.bridgeRoot, continuity: this.checks.root, bridgeSettings: this.bridges.root,
       audioSettings: this.audioLanes.settings, dialogueSettings: this.dialogue.root, timedTextSettings: this.audioLanes.textSettings,
@@ -802,7 +804,7 @@ export class TimelineEditor {
     this.replacements.close();
     this.state = model.parseState(this.host.read());
     syncTargets(this.state,this.host.context());
-    if (this.adoptEndpoints()) this.host.write(model.serialize(this.state));
+    if (!this.readOnly.length && this.adoptEndpoints()) this.save(model.serialize(this.state));
     this.selected = Math.min(this.selected, Math.max(0, this.state.boxes.length - 1));
     this.stale = true;
     this.render();
@@ -811,19 +813,39 @@ export class TimelineEditor {
   }
 
   startIfEmpty() {
-    if (this.state.boxes.length) return;
+    if (this.state.boxes.length || this.readOnly.length) return;
     model.addBox(this.state, this.host.context());
-    this.host.write(model.serialize(this.state));
+    this.save(model.serialize(this.state));
     this.render();
   }
 
   contextChanged() {
+    if (this.readOnly.length) return this.render();
     const before = model.serialize(this.state);
     model.normalize(this.state, this.host.context());
     syncTargets(this.state,this.host.context());
     const after = model.serialize(this.state);
-    if (after !== before) this.host.write(after);
+    if (after !== before) this.save(after);
     this.render();
+  }
+
+  // The features of a newer Studio this Timeline needs; with any, it is read-only.
+  get readOnly() {
+    return model.unknownFeatures(this.state);
+  }
+
+  // Every write of the Timeline text. One from a newer Studio is never written, since parseState drops what this
+  // editor doesn't know: the edit is undone from the node's text instead. Whether the text was written.
+  save(text, typing = false) {
+    if (!this.readOnly.length) {
+      this.host.write(text, typing);
+      return true;
+    }
+    this.state = model.parseState(this.host.read());
+    syncTargets(this.state, this.host.context());
+    this.selected = Math.min(this.selected, Math.max(0, this.state.boxes.length - 1));
+    this.render();
+    return false;
   }
 
   setStatus(status) {
@@ -865,7 +887,7 @@ export class TimelineEditor {
   commit(renderPanel = true) {
     clearTimeout(this.typingTimer);
     this.typingTimer = null;
-    this.writeState();
+    if (!this.writeState()) return;
     this.stale = true;
     this.followNote = '';
     this.renderTrack();
@@ -879,7 +901,7 @@ export class TimelineEditor {
   // A key typed into a text field: the Timeline text follows every key, and the rest of commit(), with the edit's
   // place in the undo history, waits for a pause.
   typed() {
-    this.writeState(true);
+    if (!this.writeState(true)) return;
     clearTimeout(this.typingTimer);
     this.typingTimer = setTimeout(() => this.commit(false), TYPING_PAUSE);
   }
@@ -893,7 +915,7 @@ export class TimelineEditor {
     this.adoptEndpoints();
     model.normalize(this.state, this.host.context());
     syncTargets(this.state,this.host.context());
-    this.host.write(model.serialize(this.state), typing);
+    return this.save(model.serialize(this.state), typing);
   }
 
   select(index) {
@@ -944,7 +966,7 @@ export class TimelineEditor {
   // Queues takes using the selected clip's seed mode; stop if its identity or position changes.
   async queueBox(count = 1) {
     const outcome = {requested:count, queued:0, remaining:count, retryable:false};
-    if (!this.box() || this.queuing || this.queueBatch || this.seedInput?.validity?.valid === false) return outcome;
+    if (!this.box() || this.readOnly.length || this.queuing || this.queueBatch || this.seedInput?.validity?.valid === false) return outcome;
     const index = this.selected, id = this.box().id;
     this.queueBatch = true;
     try {
@@ -988,7 +1010,7 @@ export class TimelineEditor {
 
   // Whether the run was queued: false while another is being queued, or when queueing failed.
   async submit(count, box, bridge, receipt) {
-    if (this.queuing || (bridge == null && this.seedInput?.validity?.valid === false)) return false;
+    if (this.readOnly.length || this.queuing || (bridge == null && this.seedInput?.validity?.valid === false)) return false;
     this.queuing = true;
     this.renderHead();
     this.renderPanelInfo();
@@ -1293,7 +1315,9 @@ export class TimelineEditor {
     else if (ok && !this.stale && this.status.preview_error && !this.status.preview_video) summary += ` · ${this.status.preview_error}`;
     setText(this.summaryEl, summary);
     setText(this.renderButton, count && !remaining ? '✓ All rendered' : `▶ Render ${remaining} remaining`);
-    this.renderButton.disabled = this.host.hasVideo?.()===false || !remaining || this.queuing || this.host.feeding?.() || !this.seedInput.validity.valid;
+    this.renderButton.disabled = this.host.hasVideo?.()===false || !remaining || this.queuing || this.host.feeding?.()
+      || !this.seedInput.validity.valid || this.readOnly.length > 0;
+    this.addButton.disabled = this.readOnly.length > 0;
     this.renderButton.title = remaining
       ? `Queue ${remaining} run${remaining === 1 ? '' : 's'}, one per ${what} that has no take yet (outdated takes are kept; regenerate those one by one)`
       : `Every ${what} is rendered`;
@@ -1324,6 +1348,9 @@ export class TimelineEditor {
   }
 
   renderHint() {
+    const note = this.readOnly.length ? model.readOnlyNote(this.readOnly) : '';
+    setText(this.readOnlyEl, note);
+    if (this.readOnlyEl.hidden !== !note) this.readOnlyEl.hidden = !note;
     const conflicts = this.status?.ok && !this.stale ? this.status.timing_conflicts ?? [] : [];
     const unavailable = this.status?.unavailable
       ? `Status is unavailable right now (${this.status.unavailable.replace(/^Status unavailable: /, '')}); the clips shown are the last known ones and are still saved.` : '';
@@ -2084,7 +2111,8 @@ export class TimelineEditor {
     this.dialogueSelect.value = box.dialogue === 'manual' ? 'manual' : 'cues';
     setText(this.boxRenderButton, renderLabel(this.selected + 1, this.takeCount()));
     this.boxRenderButton.title = 'Render only this clip using its seed mode, keeping its saved prompt and neighboring videos';
-    this.boxRenderButton.disabled = this.host.hasVideo?.()===false || this.queuing || blocking.length > 0 || !this.seedInput.validity.valid;
+    this.boxRenderButton.disabled = this.host.hasVideo?.()===false || this.queuing || blocking.length > 0
+      || !this.seedInput.validity.valid || this.readOnly.length > 0;
     const tags = info.tags.map((item) => `${item.tag} = ${item.name}`).join(', ');
     const guides = info.guides.map((item) => ` · ${item.name} guides the ${item.frame} frame`).join('');
     const problems = info.problems.length ? ` · ${info.problems.join(' ')}` : '';

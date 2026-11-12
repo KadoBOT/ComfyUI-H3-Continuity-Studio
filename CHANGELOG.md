@@ -4,6 +4,12 @@ All notable changes to H3 Continuity Studio are recorded here. Versions follow [
 
 ## [Unreleased]
 
+## [0.22.1] - 2026-11-12
+
+### Fixed
+
+- **A Timeline from a newer version opens read-only.** When its `requires` list names a feature this version doesn't know, the Studio says so at the top: "This Timeline needs a newer H3 Continuity (…). It is open read-only so nothing in it is lost; update the node pack to edit or render it." Edits are undone at once; **+ Clip**, Render and Generate are off. Story Write's apply and Undo, still and reference updates, and undo and redo of the Studio's history leave the Timeline's text exactly as it was. Before, this version dropped every field it didn't know as soon as it wrote the Timeline, even without an edit: opening a converted clip or changing the context length was enough.
+
 ## [0.22.0] - 2026-11-12
 
 ### Changed

@@ -3,7 +3,7 @@ import {reconcileSceneAnchors} from './h3c_still_scene.mjs?v=1ca16919a3f9';
 // decide how a box runs. Mirrors h3_continuity/timeline.py.
 import {parseJSON, stringifyJSON, seedValue} from './h3c_project.mjs?v=0882b8a6265a';
 import {imageDescriptionPrompt, imageDescriptionSource} from './h3c_image_descriptions.mjs?v=5f858b2b6a5a';
-import {acceptedGuideFrames} from './h3c_shot_preview.mjs?v=35c83baff29e';
+import {acceptedGuideFrames} from './h3c_shot_preview.mjs?v=25c8aab2bb32';
 import {AUDIO_WINDOWS_FEATURE, pruneWindows, resolveWindows, audioSourceLocked} from './h3c_audio_windows.mjs?v=cdefbd77b246';
 export const FPS = 24;
 export const MAX_FRAMES = 362;
@@ -251,6 +251,17 @@ export function requiredFeatures(state) {
     || (state.audio_clips ?? []).some((clip) => clip.locked === true)) own.push('dialogue-cues-1');
   if (keptBridges(state).some(isReplacement)) own.push('replacement-bridges-1');
   return [...new Set([...(state.requires ?? []).filter((item) => !OWN_FEATURES.includes(item)), ...own])].sort();
+}
+
+// The features a newer Studio wrote that this one can't read: such a Timeline opens read-only, because saving it
+// would drop every field this editor doesn't copy.
+export function unknownFeatures(state) {
+  return [...new Set((state.requires ?? []).filter((item) => !OWN_FEATURES.includes(item)))];
+}
+
+export function readOnlyNote(features) {
+  return `This Timeline needs a newer H3 Continuity (${features.join(', ')}). `
+    + 'It is open read-only so nothing in it is lost; update the node pack to edit or render it.';
 }
 
 export function normalize(state, context) {

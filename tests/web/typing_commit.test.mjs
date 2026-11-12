@@ -106,9 +106,9 @@ test('an edit keeps the full video in the player until the next status', () => {
   const editor = stub();
   const node = (tag) => document.createElement(tag);
   Object.assign(editor, {renderHead: TimelineEditor.prototype.renderHead, frameImages: {preparation: {render() {}}},
-    feedbackEl: node('div'), feedbackButton: node('button'), summaryEl: node('span'), renderButton: node('button'),
+    feedbackEl: node('div'), feedbackButton: node('button'), summaryEl: node('span'), addButton: node('button'), renderButton: node('button'),
     renderNextButton: node('button'), seedInput: {validity: {valid: true}}, fullLink: node('a'), fullDownloadLink: node('a'),
-    hintEl: node('p'), checks: {render() {}}, queuing: false});
+    hintEl: node('p'), readOnlyEl: node('p'), checks: {render() {}}, queuing: false});
   editor.host.viewUrl = (file) => `/view?filename=${file.filename}`;
   editor.setStatus({ok: true, boxes: [{id: 'a', status: 'done'}], full_video: {filename: 'full.mp4'}});
   editor.state.boxes[0].prompt = 'changed';

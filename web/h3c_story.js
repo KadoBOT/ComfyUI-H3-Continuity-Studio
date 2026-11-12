@@ -12,11 +12,11 @@ import { api } from '../../scripts/api.js';
 import { mountSavedState, AUTOSAVE_SETTING, autosaveEnabled } from './h3c_saved_state.mjs?v=285cb0ac96bb';
 import { migrateStoryDescriptionInputs, migrateSerializedStoryDescriptionInputs } from './h3c_story_inputs.mjs?v=46d6a455ab9a';
 import { showOwnElement } from './h3c_dom_widget.mjs?v=961e6d7f3bb7';
-import * as story from './h3c_story_model.mjs?v=66c744a95fea';
+import * as story from './h3c_story_model.mjs?v=42d3455a452c';
 import { StoryPanel } from './h3c_story_panel.mjs?v=3361c4324f46';
-import { StoryLibrary, isWiringConflict, saveBeforeNewProject, savedStoryContent, recoverSavedStoryContent, independentStoryContent } from './h3c_story_library.mjs?v=18ba90dfa179';
+import { StoryLibrary, isWiringConflict, saveBeforeNewProject, savedStoryContent, recoverSavedStoryContent, independentStoryContent } from './h3c_story_library.mjs?v=e1fa68315842';
 import { exportStory, importStory, downloadStory } from './h3c_story_archive.mjs?v=b07a438d2dc4';
-import { parseState, serialize } from './h3c_timeline_model.mjs?v=35c83baff29e';
+import { parseState, serialize, unknownFeatures, readOnlyNote } from './h3c_timeline_model.mjs?v=25c8aab2bb32';
 
 import {exportGeneration,importGeneration,downloadGeneration,generationControl,setGenerationControl} from './h3c_generation_archive.mjs?v=dcb0de381f51';
 import {captureRecipe,hasVideoOutput as compiledVideoOutput} from './h3c_stills.mjs?v=df999ecd2dcd';
@@ -1000,7 +1000,11 @@ export class StoryHost {
       applied: Object.keys(state.undo).length + state.created.filter((id) => state.written[id]).length };
   }
 
+  // Write and Undo make the text from parseState, which drops what this Studio doesn't know, so a Timeline from a
+  // newer one is never replaced.
   replaceTimeline({ node, widget }, text) {
+    const unknown = unknownFeatures(parseState(widget.value));
+    if (unknown.length) throw new Error(readOnlyNote(unknown));
     if (node.h3cTimeline?.replaceTimeline) {
       node.h3cTimeline.replaceTimeline(text);
     } else {
@@ -1027,7 +1031,12 @@ export class StoryHost {
     }
     const timeline = parseState(found.widget.value);
     const { restored, state: next } = story.undo(timeline, state, contextOf(found.node));
-    if (restored) this.replaceTimeline(found, serialize(timeline));
+    try {
+      if (restored) this.replaceTimeline(found, serialize(timeline));
+    } catch (error) {
+      this.panel.say(error.message, true);
+      return;
+    }
     this.setState(next);
     this.panel.say(next.notes.length ? 'Undone, except the boxes in the notes.' : 'Undone.');
   }

@@ -1,6 +1,6 @@
 // Image sockets are compiled into native image readers, keeping video preparation out of image-only graphs.
-import {assemblePrompt,describeBox,droppedFrames,effectivePlates,effectiveRefmods,isFresh,mentions,referenceEnabled,referenceTags} from './h3c_timeline_model.mjs?v=35c83baff29e';
-import {acceptedGuideFrames} from './h3c_shot_preview.mjs?v=35c83baff29e';
+import {assemblePrompt,describeBox,droppedFrames,effectivePlates,effectiveRefmods,isFresh,mentions,referenceEnabled,referenceTags} from './h3c_timeline_model.mjs?v=25c8aab2bb32';
+import {acceptedGuideFrames} from './h3c_shot_preview.mjs?v=25c8aab2bb32';
 const imageName = name => /^image_([1-9]\d*)$/.exec(name ?? '')?.[1];
 
 function pictureTags(state, index, context) {
