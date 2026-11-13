@@ -56,3 +56,19 @@ before that box, then plays straight through (see
 
 If a ticked clip's file is missing, the full video isn't rebuilt, and the Studio names the file. Box and bridge takes
 keep H3's audio, and unticking every clip brings H3's audio back to the full video.
+
+## Imported audio metadata
+
+An audio lane uses `start` (movie seconds), `source_start` (original recording
+seconds) and `duration` (the placed window). `source_duration` is the positive,
+finite duration of the entire recording, not the placed window. Include it when
+known. The API schema and native parser validate it when supplied; older records
+without it remain valid.
+
+The Studio opens those older records without guessing their source bounds. It
+reads metadata from the source file and saves the measured duration without
+changing placement or the selected source window. Until that succeeds, moving
+the clip and editing its description remain available; trimming, source-window
+changes and Fit to video are disabled. An unavailable file leaves a clear
+source-duration message instead of stopping the Studio from opening. Use **Read
+source duration** to retry after a temporary file or server failure.

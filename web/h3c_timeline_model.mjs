@@ -3,7 +3,7 @@ import {reconcileSceneAnchors} from './h3c_still_scene.mjs?v=1ca16919a3f9';
 // decide how a box runs. Mirrors h3_continuity/timeline.py.
 import {parseJSON, stringifyJSON, seedValue} from './h3c_project.mjs?v=0882b8a6265a';
 import {imageDescriptionPrompt, imageDescriptionSource} from './h3c_image_descriptions.mjs?v=5f858b2b6a5a';
-import {acceptedGuideFrames} from './h3c_shot_preview.mjs?v=25c8aab2bb32';
+import {acceptedGuideFrames} from './h3c_shot_preview.mjs?v=9af9091f6757';
 import {AUDIO_WINDOWS_FEATURE, pruneWindows, resolveWindows, audioSourceLocked} from './h3c_audio_windows.mjs?v=cdefbd77b246';
 export const FPS = 24;
 export const MAX_FRAMES = 362;
@@ -411,8 +411,13 @@ export function audioBoxSpans(state) {
   });
 }
 
+export function audioSourceDuration(clip) {
+  return Number.isFinite(clip?.source_duration) && clip.source_duration > 0 ? clip.source_duration : null;
+}
+
 export function editAudioClip(clip, mode, delta) {
   if(clip.box_windows)throw Error('Unlock audio from boxes before changing its placement.');
+  if (mode !== 'move' && audioSourceDuration(clip) === null) throw Error('Source duration unavailable; read the audio file before trimming.');
   const result = {...clip};
   const minimum = Math.min(1 / FPS, clip.source_duration);
   if (mode === 'move') result.start = Math.max(0, clip.start + delta);

@@ -419,6 +419,11 @@ native prompt (the bundled example supplies complete six-section Ref2VA prompts)
 }
 ```
 
+Supply `source_duration` when known: the full recording duration in seconds, not
+the placed window length. It must be finite and positive. Older records without
+it remain valid; the Studio reads the duration from the audio file before
+enabling source trimming. See [Timeline audio](TIMELINE-AUDIO.md#imported-audio-metadata).
+
 An audio lane needs either a `file` descriptor or the flat `audios.audio1`
 connection, never both while enabled. Sparse inputs use ordinary API links:
 `"images.image9":["32",0]`, `"audios.audio1":["40",0]`. Preserve these logical
