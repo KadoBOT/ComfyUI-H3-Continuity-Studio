@@ -171,5 +171,123 @@ class SwitchTest(unittest.TestCase):
         self.assertEqual(layers.closing(parsed, 0), "b2")
 
 
+IMAGES = ["image1", "image2", "image3", "image4"]
+
+
+def three(middle=None, last=None, **extra):
+    """A street, then stacked clip b2 continuing it (85 frames, swap at 27), then a cut."""
+    middle = {**stacked(frames=85), "cut": False} if middle is None else middle
+    return parse([box("a", 107, "Wide street at dusk."), middle, last or box("c", 73, "The lamp burns.", cut=True)],
+                 **extra)
+
+
+class LayerViewTest(unittest.TestCase):
+    def test_view_keeps_clock_and_identity(self):
+        from h3_continuity import dialogue
+        parsed = three(audio_clips=[{"slot": "audio1", "start": 0, "source_start": 0, "duration": 30,
+                                     "file": {"type": "input", "filename": "rain.wav", "subfolder": ""}}])
+        item = parsed.layers["b2"][0]
+        view = layers.view(parsed, 1, item)
+        self.assertEqual(rules.box_start(view, 1), rules.box_start(parsed, 1))
+        self.assertEqual(rules.audio_box_spans(view), rules.audio_box_spans(parsed))
+        self.assertEqual(rules.active_audio_clips(view, 1, 0), rules.active_audio_clips(parsed, 1, 0))
+        self.assertEqual(dialogue.box_events(view, 1, 0), dialogue.box_events(parsed, 1, 0))
+        self.assertTrue(rules.is_fresh(view, 1))
+        self.assertEqual(rules.played_frames(view, 1), 85)
+        self.assertEqual((view.boxes[1].id, view.boxes[1].prompt, view.boxes[1].first),
+                         ("b2", item["prompt"], "image4"))
+        self.assertFalse(layers.stacked(view, 1))
+        self.assertEqual(parsed.boxes[1].prompt, "Slow push-in on the lamplighter at the first lamp.")
+        self.assertFalse(parsed.boxes[1].cut)
+
+    def test_layer_plan_uses_its_own_prompt_seed_and_first(self):
+        parsed = three({**stacked(frames=85, videos=[layer(seed=777)]), "cut": False})
+        plan = layers.plan(parsed, 1, parsed.layers["b2"][0], 39, True, 512, 512, 512, IMAGES, [])
+        self.assertEqual(plan.slots.first, "image4")
+        self.assertEqual(plan.box.seed, 777)
+        self.assertEqual(plan.settings["context_frames"], 0)
+        self.assertEqual((plan.carried, plan.generated), (0, rules.generated_frames(85, True)))
+        self.assertIn("Clip 2 video 2b plays 85 frames; H3 generates 90 and drops the last 5.", plan.notes)
+        self.assertEqual(rules.plan_box(parsed, 1, 39, True, 512, 512, 512, IMAGES, []).settings["context_frames"], 39)
+
+    def test_layer_plan_names_the_video_in_its_errors(self):
+        parsed = three({**stacked(frames=85, videos=[layer(first="image9")]), "cut": False})
+        with self.assertRaises(ValueError) as caught:
+            layers.plan(parsed, 1, parsed.layers["b2"][0], 39, True, 512, 512, 512, IMAGES, [])
+        self.assertIn("box 2 video 2b uses image9 as its first frame, but image9 is not connected", str(caught.exception))
+
+    def test_layer_key_differs_from_main(self):
+        same = layer(prompt="Slow push-in on the lamplighter at the first lamp.", first="image3")
+        parsed = parse([stacked(videos=[same])])
+        key = layers.layer_key(parsed, 0, parsed.layers["b2"][0], 39)
+        self.assertNotEqual(key, rules.layout_key(parsed, 0, 39))
+        other = parse([stacked(videos=[{**same, "prompt": "Close on the wick."}])])
+        self.assertNotEqual(layers.layer_key(other, 0, other.layers["b2"][0], 39), key)
+
+    def test_stems(self):
+        self.assertEqual(layers.stem("b2v1"), "layer@b2v1")
+        self.assertRegex(layers.stem("B2 v1"), r"^layer@_[0-9a-f]{12}$")
+
+    def test_labels(self):
+        parsed = three()
+        self.assertEqual(layers.label(parsed, 1, "b2v1"), "2b")
+
+    def records(self, parsed, layer_entries, index=2):
+        from unittest import mock
+        from h3_continuity import store, visual_memory
+        entries = {2: {"timeline": {"box": "b2"}, "frames": 90, "context_frames": 0, "created": "main"}}
+        with mock.patch.object(store, "has_segment_latents", return_value=True), \
+                mock.patch.object(store, "latent_stamp", return_value=""), \
+                mock.patch.object(store, "played_frames", return_value=90):
+            return visual_memory.records(parsed, index, "", entries, lambda source, entry: True,
+                                         layer_entries=layer_entries)
+
+    def test_memory_reads_the_video_on_screen(self):
+        last = box("c", 73, "The lamp burns.", cut=True, memory="selected",
+                   memories=[{"box": "b2", "frame": 26}, {"box": "b2", "frame": 30}])
+        parsed = three(stacked(), last)
+        entry = {"timeline": {"box": "b2", "layer": "b2v1"}, "frames": 90, "context_frames": 0, "created": "layer"}
+        found = self.records(parsed, {"b2v1": entry})
+        self.assertEqual([(item.get("layer"), item["frame"], item.get("whole", False)) for item in found],
+                         [("b2v1", 0, True), (None, 17, False), ("b2v1", 17, False)])
+        self.assertEqual([item["created"] for item in found], ["layer", "main", "layer"])
+        with self.assertRaises(ValueError) as caught:
+            self.records(parsed, {})
+        self.assertIn("memory source box 2's video 2b needs rendering first, or set box 3's Visual memory to Off",
+                      str(caught.exception))
+
+    def test_memory_of_a_plain_source_has_no_layer(self):
+        from h3_continuity import visual_memory
+        parsed = three(stacked(cuts=[{"at": 80, "to": "b2v1"}, {"at": 86, "to": "b2"}]),
+                       box("c", 73, "The lamp burns.", cut=True, memory="selected", memories=[{"box": "b2", "frame": 26}]))
+        found = self.records(parsed, {})
+        self.assertTrue(all("layer" not in item for item in found))
+        from unittest import mock
+        from h3_continuity import store
+        import torch
+        entry = {"timeline": {"box": "b2", "layer": "b2v1"}, "frames": 90}
+        calls = []
+        window = lambda folder, source, start, tokens: calls.append(source) or torch.zeros(1, 24, tokens, 2, 2)
+        with mock.patch.object(store, "load_video_window", side_effect=window):
+            visual_memory.load("", {2: {"frames": 90}}, [{"index": 2, "frame": 17, "layer": "b2v1"}],
+                               layer_entries={"b2v1": entry})
+        self.assertEqual(calls, [entry])
+
+    def test_layer_memory_is_checked(self):
+        late = {**stacked(videos=[layer(memory="selected", memories=[{"box": "c", "frame": 3}])]), "id": "b2"}
+        with self.assertRaises(ValueError) as caught:
+            parse([box("a", 107), late, box("c", 73, cut=True)])
+        self.assertIn("box 2 video 2b memory must refer to a unique earlier box", str(caught.exception))
+
+    def test_render_layer_target(self):
+        self.assertEqual(three(render_layer="b2v1").render_layer, "b2v1")
+        self.assertIsNone(three().render_layer)
+        for extra, message in (({"render_layer": "zz"}, "render_layer must be the id of one of this Timeline's videos"),
+                               ({"render_layer": "b2v1", "render_box": 1}, "a run renders one box, one bridge or one video")):
+            with self.assertRaises(ValueError) as caught:
+                three(**extra)
+            self.assertIn(message, str(caught.exception))
+
+
 if __name__ == "__main__":
     unittest.main()

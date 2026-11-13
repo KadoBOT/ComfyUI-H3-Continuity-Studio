@@ -102,6 +102,7 @@ class Timeline:
     # The other videos of the clips that hold several, and their switch plans, by clip id; see layers.py.
     layers: dict = field(default_factory=dict)
     switches: dict = field(default_factory=dict)
+    render_layer: str | None = None
 
 
 @dataclass
@@ -374,6 +375,7 @@ def parse(text):
     for index, box in enumerate(parsed.boxes):
         if box.memory != "cast":
             memory_sources(parsed, index)
+    layers.check_memory(parsed)
     parsed.all_bridges = _bridges(data.get("bridges", []), parsed)
     parsed.bridges = [bridge for bridge in parsed.all_bridges if bridge.get("mode") != "replace"]
     parsed.replacements = [bridge for bridge in parsed.all_bridges if bridge.get("mode") == "replace"]
@@ -384,6 +386,13 @@ def parse(text):
         if parsed.render_box is not None:
             raise _error("a run renders one box or one bridge: drop render_box or render_bridge")
         parsed.render_bridge = target
+    target = data.get("render_layer")
+    if target is not None:
+        if not isinstance(target, str) or layers.layer_of(parsed, target) is None:
+            raise _error("render_layer must be the id of one of this Timeline's videos")
+        if parsed.render_box is not None or parsed.render_bridge is not None:
+            raise _error("a run renders one box, one bridge or one video")
+        parsed.render_layer = target
     if any(box.memory == "cast" for box in parsed.boxes):
         from . import cast_memory
         cast_memory.check(parsed)

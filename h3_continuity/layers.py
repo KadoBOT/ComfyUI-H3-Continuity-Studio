@@ -2,7 +2,10 @@
 on screen. The main video is the box itself; the others ("layers" here, "videos" in the Studio) live beside the boxes,
 so the clock, "the clip before" and every box plan stay as they are."""
 
+import dataclasses
+import hashlib
 import math
+import re
 import zlib
 
 # Defined before importing timeline, whose REQUIRES reads it while timeline is first imported.
@@ -12,6 +15,7 @@ MAX_FADE = 12
 FIELDS = ("id", "seed", "prompt", "first", "last", "previews", "memory", "memories", "dialogue")
 CLIP_FIELDS = ("frames", "seconds", "cut", "new_scene", "exact", "join", "plate_changes", "schedule", "source", "cast",
                "flf_refmods", "layers", "switch")
+LETTERS = "bcd"
 
 from . import timeline as rules  # noqa: E402
 
@@ -188,3 +192,74 @@ def on_screen(timeline, index, frame):
 def closing(timeline, index):
     """The video on screen at clip `index`'s last frame."""
     return on_screen(timeline, index, rules.played_frames(timeline, index) - 1)
+
+
+def label(timeline, index, layer_id):
+    """The Studio's name for a layer of clip `index`: "2b", "2c" or "2d"."""
+    ids = [item["id"] for item in timeline.layers[timeline.boxes[index].id]]
+    return f"{index + 1}{LETTERS[ids.index(layer_id)]}"
+
+
+def stem(layer_id):
+    """The layer's file stem, unique the way bridges.stem is."""
+    if re.fullmatch(r"[a-z0-9]{1,40}", layer_id):
+        return f"layer@{layer_id}"
+    return "layer@_" + hashlib.sha1(layer_id.encode("utf-8")).hexdigest()[:12]
+
+
+def view(timeline, index, layer):
+    """The Timeline as the layer's generation sees it: clip `index` replaced by a Cut that plays exactly the clip's
+    frames with the layer's prompt, seed, endpoints and memory. Every other box, and so the clock, audio and dialogue
+    windows, stays the clip's."""
+    clip = timeline.boxes[index]
+    stand_in = rules.Box(clip.id, rules.played_frames(timeline, index), layer["prompt"], layer["seed"], True,
+                         layer["first"], layer["last"], layer["previews"], clip.plate_changes, layer["memory"],
+                         layer["memories"], clip.new_scene)
+    story = timeline.story[index] if index < len(timeline.story) else {}
+
+    def replaced(values, value):
+        values = list(values)
+        if index < len(values):
+            values[index] = value
+        return values
+
+    return dataclasses.replace(
+        timeline, boxes=replaced(timeline.boxes, stand_in), exact=replaced(timeline.exact, True),
+        manual_dialogue=replaced(timeline.manual_dialogue, layer["dialogue"] == "manual"),
+        story=replaced(timeline.story, {"schedule": story.get("schedule"), "source": None, "cast": story.get("cast", {})}),
+        layers={key: value for key, value in timeline.layers.items() if key != clip.id},
+        switches={key: value for key, value in timeline.switches.items() if key != clip.id})
+
+
+def _named(message, index, name):
+    """A box message about the view's stand-in, naming the layer instead."""
+    return re.sub(rf"\b([Bb])ox {index + 1}\b", lambda m: f"{m.group(1)}ox {index + 1} video {name}", message, count=1)
+
+
+def plan(timeline, index, layer, context, carry_audio, width, height, ref_image_size, images, audios, *,
+         audio_context_frames=0):
+    """What to render for `layer` of clip `index`: the clip's box plan, made on the layer view."""
+    name = label(timeline, index, layer["id"])
+    try:
+        result = rules.plan_box(view(timeline, index, layer), index, context, carry_audio, width, height,
+                                ref_image_size, images, audios, audio_context_frames=audio_context_frames)
+    except ValueError as error:
+        raise ValueError(_named(str(error), index, name)) from None
+    result.notes = [re.sub(rf"\bBox {index + 1}\b", f"Clip {index + 1} video {name}", note) for note in result.notes]
+    return result
+
+
+def layer_key(timeline, index, layer, context=39):
+    """Fingerprint of what the Timeline says about the layer; never a main video's, even with the same fields."""
+    return rules._digest({"layer": rules.layout_key(view(timeline, index, layer), index, context)})
+
+
+def check_memory(timeline):
+    """Refuses a layer whose Visual memory names no earlier moment it can see, as parse does for boxes."""
+    for index, box in enumerate(timeline.boxes):
+        for item in timeline.layers.get(box.id, []):
+            if item["memory"] != "off":
+                try:
+                    rules.memory_sources(view(timeline, index, item), index)
+                except ValueError as error:
+                    raise ValueError(_named(str(error), index, label(timeline, index, item["id"]))) from None
