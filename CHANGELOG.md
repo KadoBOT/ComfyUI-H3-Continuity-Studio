@@ -4,6 +4,12 @@ All notable changes to H3 Continuity Studio are recorded here. Versions follow [
 
 ## [Unreleased]
 
+## [0.25.1] - 2026-11-13
+
+### Fixed
+
+- **Empty still prompts no longer fall back to video prompts.** Generate candidates now requires prepared or entered still text. The fallback bypassed still preparation and could introduce an absent character through shared video style instructions, even when the clip's Cast was empty.
+
 ## [0.25.0] - 2026-11-13
 
 ### Added
