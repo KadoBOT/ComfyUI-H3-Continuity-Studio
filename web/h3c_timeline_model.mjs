@@ -3,8 +3,9 @@ import {reconcileSceneAnchors} from './h3c_still_scene.mjs?v=1ca16919a3f9';
 // decide how a box runs. Mirrors h3_continuity/timeline.py.
 import {parseJSON, stringifyJSON, seedValue} from './h3c_project.mjs?v=0882b8a6265a';
 import {imageDescriptionPrompt, imageDescriptionSource} from './h3c_image_descriptions.mjs?v=5f858b2b6a5a';
-import {acceptedGuideFrames} from './h3c_shot_preview.mjs?v=9af9091f6757';
+import {acceptedGuideFrames} from './h3c_shot_preview.mjs?v=6253b9f73744';
 import {AUDIO_WINDOWS_FEATURE, pruneWindows, resolveWindows, audioSourceLocked} from './h3c_audio_windows.mjs?v=cdefbd77b246';
+import {LAYER_FIELDS, clampSwitch, hasLayers, layerIds} from './h3c_layers.mjs?v=6253b9f73744';
 export const FPS = 24;
 export const MAX_FRAMES = 362;
 export const GRID = 17;
@@ -111,7 +112,7 @@ export function newSeed() {
 }
 
 export function newId(state) {
-  const used = new Set(state.boxes.map((box) => box.id));
+  const used = new Set([...state.boxes.map((box) => box.id), ...layerIds(state)]);
   let id = '';
   while (!id || used.has(id)) id = Math.random().toString(36).slice(2, 8);
   return id;
@@ -124,6 +125,26 @@ function slotName(value) {
 }
 
 const record = (value) => !!value && typeof value === 'object' && !Array.isArray(value);
+
+// A clip's other videos with only the fields a video has, and its switch plan; {} for a clip with one video.
+function parseLayers(box) {
+  const items = Array.isArray(box.layers) ? box.layers.filter(record) : [];
+  if (!items.length) return {};
+  const sw = record(box.switch) ? box.switch : {};
+  return {
+    layers: items.map((item) => Object.fromEntries(LAYER_FIELDS.filter((key) => Object.hasOwn(item, key)).map((key) => [
+      key, key === 'first' || key === 'last' ? slotName(item[key]) : key === 'id' ? String(item.id)
+        : key === 'previews' && Array.isArray(item.previews)
+          ? structuredClone(item.previews).filter(record).map(({pending, job, ...p}) => p)
+          : structuredClone(item[key])]))),
+    switch: {
+      cuts: Array.isArray(sw.cuts) ? structuredClone(sw.cuts).filter(record) : [],
+      fade: Number.isInteger(sw.fade) ? sw.fade : 6,
+      sound: typeof sw.sound === 'string' ? sw.sound : 'screen',
+      ...(record(sw.align) ? {align: structuredClone(sw.align)} : {}),
+    },
+  };
+}
 
 export function parseState(text) {
   let data;
@@ -187,6 +208,7 @@ export function parseState(text) {
       ...(record(box.join) ? { join: structuredClone(box.join) } : {}),
       ...(record(box.source) ? { source: structuredClone(box.source) } : {}),
       ...(box.dialogue === 'manual' ? { dialogue: 'manual' } : {}),
+      ...parseLayers(box),
     })),
   };
 }
@@ -236,12 +258,14 @@ export function serialize(state) {
       ...(box.join ? { join: box.join } : {}),
       ...(box.source ? { source: box.source } : {}),
       ...(box.dialogue === 'manual' ? { dialogue: 'manual' } : {}),
+      ...(box.layers?.length ? { layers: box.layers, switch: box.switch } : {}),
     })),
   });
 }
 
+export const LAYERS_FEATURE = 'video-layers-1';
 // Reader features this editor writes into "requires" when the file depends on them, as timeline.REQUIRES lists them.
-export const OWN_FEATURES = ['dialogue-cues-1', 'replacement-bridges-1', AUDIO_WINDOWS_FEATURE];
+export const OWN_FEATURES = ['dialogue-cues-1', 'replacement-bridges-1', AUDIO_WINDOWS_FEATURE, LAYERS_FEATURE];
 
 // What the Timeline needs a reader to understand: this editor's features in use, and any newer one it was given.
 export function requiredFeatures(state) {
@@ -250,6 +274,7 @@ export function requiredFeatures(state) {
   if (state.dialogue?.cues?.length || state.dialogue?.observed?.length
     || (state.audio_clips ?? []).some((clip) => clip.locked === true)) own.push('dialogue-cues-1');
   if (keptBridges(state).some(isReplacement)) own.push('replacement-bridges-1');
+  if (hasLayers(state)) own.push(LAYERS_FEATURE);
   return [...new Set([...(state.requires ?? []).filter((item) => !OWN_FEATURES.includes(item)), ...own])].sort();
 }
 
@@ -271,17 +296,20 @@ export function normalize(state, context) {
     // Only what the box already plays: normalizing never shortens or lengthens a box (lip sync and beat cuts depend
     // on its length). A box past the limit keeps its length and reports the problem.
     box.frames = box.frames == null ? defaultFrames(fresh, context) : playedFrames(box.frames, box.exact, fresh);
+    clampSwitch(state, index);
   });
   if (state.bridges) state.bridges = keptBridges(state);
   return state;
 }
 
-// The bridges timeline.py accepts: the first one into each box after box 1 that starts with Cut or New scene.
+// The bridges timeline.py accepts: the first one into each box after box 1 that starts with Cut or New scene, where
+// neither box beside it holds several videos.
 export function keptBridges(state) {
   const seen = new Set();
   return (state.bridges ?? []).filter((bridge) => {
     const index = state.boxes.findIndex((box) => box.id === bridge.before);
     if (index < 1 || !state.boxes[index].cut || seen.has(bridge.before)) return false;
+    if (state.boxes[index].layers?.length || state.boxes[index - 1].layers?.length) return false;
     seen.add(bridge.before);
     return true;
   });
@@ -499,7 +527,24 @@ export function moveBox(state, index, delta, context) {
 
 export function duplicateBox(state, index, context) {
   state.boxes.splice(index + 1, 0, { ...structuredClone(state.boxes[index]), id: newId(state), seed: newSeed(), cut: false });
-  delete state.boxes[index + 1].new_scene;
+  const copy = state.boxes[index + 1];
+  delete copy.new_scene;
+  // The copy follows a clip with several videos, so it starts with a Cut; its videos get ids of their own.
+  if (copy.layers?.length) {
+    copy.cut = true;
+    const ids = new Map();
+    for (const layer of copy.layers) {
+      const id = newId(state);
+      ids.set(layer.id, id);
+      Object.assign(layer, {id, seed: newSeed()});
+    }
+    const sw = copy.switch;
+    sw.cuts = sw.cuts.map((cut) => ({...cut, to: ids.get(cut.to) ?? copy.id}));
+    if (ids.has(sw.sound)) sw.sound = ids.get(sw.sound);
+    if (sw.align) {
+      sw.align = Object.fromEntries(Object.entries(sw.align).map(([video, shift]) => [ids.get(video) ?? copy.id, shift]));
+    }
+  }
   normalize(state, context);
   return index + 1;
 }

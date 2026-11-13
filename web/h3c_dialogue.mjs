@@ -1,7 +1,7 @@
 // Dialogue cues: a recording's exact words at its own source times, mirroring h3_continuity/dialogue.py. Boxes speak
 // them as <d> lines, and replacement bridges keep the footage where someone speaks on screen. The pure helpers seed
 // cues from a transcript or a Story and compute the check key; DialoguePanel edits them on the Audio page.
-import * as model from './h3c_timeline_model.mjs?v=9af9091f6757';
+import * as model from './h3c_timeline_model.mjs?v=6253b9f73744';
 import {resolveWindows,coalesceWindows} from './h3c_audio_windows.mjs?v=cdefbd77b246';
 import {setText} from './h3c_dom.mjs?v=584a9bf55653';
 
