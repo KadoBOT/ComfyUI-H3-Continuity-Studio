@@ -5,6 +5,7 @@ import os
 import shutil
 import tempfile
 import unittest
+from unittest import mock
 
 import numpy as np
 import torch
@@ -13,7 +14,7 @@ from tests.continuity_support import enable_comfy_cpu
 
 enable_comfy_cpu()
 
-from h3_continuity import layers, media, stacks, store, timeline as rules  # noqa: E402
+from h3_continuity import layers, media, nodes, stacks, store, timeline as rules  # noqa: E402
 from h3_continuity.timing import sample_at_frame  # noqa: E402
 
 from .helpers import box, document  # noqa: E402
@@ -31,7 +32,7 @@ def parse(frames=30, cuts=None, fade=6, sound="screen", **switch):
     return rules.parse(json.dumps(document([clip], requires=["video-layers-1"])))
 
 
-class StackTest(unittest.TestCase):
+class Takes(unittest.TestCase):
     def setUp(self):
         self.folder = tempfile.mkdtemp(prefix="h3c-stacks-")
 
@@ -62,6 +63,8 @@ class StackTest(unittest.TestCase):
         path = os.path.join(self.folder, entry["video"]["file"])
         return media.read_frames(path, range(entry["video"]["frames"]))
 
+
+class StackTest(Takes):
     def test_weights_blend_the_videos(self):
         parsed = parse()
         main, layer_entries = self.videos()
@@ -127,17 +130,13 @@ class StackTest(unittest.TestCase):
     def test_stack_is_reused_until_a_source_changes(self):
         main, layer_entries = self.videos()
         parsed = parse()
-        manifest = {"segments": [main], "layers": list(layer_entries.values())}
-        self.assertIsNone(stacks.current(self.folder, manifest, parsed, 0, main, layer_entries))
+        self.assertIsNone(stacks.current(self.folder, parsed, 0, main, layer_entries))
         entry = self.build(parsed, main, layer_entries)
-        stacks.record(manifest, entry)
-        stacks.record(manifest, dict(entry))
-        self.assertEqual(len(manifest["stacks"]), 1)
-        self.assertEqual(stacks.current(self.folder, manifest, parsed, 0, main, layer_entries), manifest["stacks"][0])
-        self.assertIsNone(stacks.current(self.folder, manifest, parse(fade=4), 0, main, layer_entries))
+        self.assertEqual(stacks.current(self.folder, parsed, 0, main, layer_entries), entry)
+        self.assertIsNone(stacks.current(self.folder, parse(fade=4), 0, main, layer_entries))
         media.write_segment_video(os.path.join(self.folder, layer_entries["b2"]["video"]["file"]),
                                   coded(30, 2, SIZE), 24, 16)
-        self.assertIsNone(stacks.current(self.folder, manifest, parsed, 0, main, layer_entries))
+        self.assertIsNone(stacks.current(self.folder, parsed, 0, main, layer_entries))
 
     def test_stack_copies_into_the_full_video(self):
         main, layer_entries = self.videos()
@@ -148,6 +147,45 @@ class StackTest(unittest.TestCase):
                                                       os.path.join(self.folder, entry["video"]["file"])], None, 16)
         self.assertEqual(note, "")
         self.assertEqual(written, path)
+
+
+class StackOutputTest(Takes):
+    def setUp(self):
+        super().setUp()
+        patcher = mock.patch("h3_continuity.timeline_api.service.authorize_sequence", lambda *args, **kwargs: None)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_saving_rebuilds_the_full_video_with_the_stack(self):
+        parsed = parse()
+        main, layer_entries = self.videos()
+        manifest = {"segments": [main], "layers": list(layer_entries.values())}
+        store.write_manifest(self.folder, manifest)
+        note = nodes.rebuild_full_video(self.folder, "seq", manifest, 16, restack=stacks.restacker(parsed, 1))
+        self.assertTrue(note.startswith("Full video:"), note)
+        self.assertNotIn("re-encoded", note)
+        full = os.path.join(self.folder, store.load_manifest(self.folder)["full_video"]["file"])
+        found = media.read_frames(full, range(30))
+        self.assertEqual([label(found[f]) for f in (5, 20)], [(0, 5), (1, 20)])
+        self.assertTrue(os.path.isfile(os.path.join(self.folder, "stack@b.mp4")))
+
+    def test_substitute_keeps_the_main_video_while_a_video_waits(self):
+        parsed = parse()
+        main, _ = self.videos()
+        manifest = {"segments": [main], "layers": []}
+        joined, notes = stacks.substitute(self.folder, parsed, manifest, 1, 16)
+        self.assertEqual(joined["segments"], [main])
+        self.assertEqual(notes, ["Clip 1's video 1b has no take yet."])
+
+    def test_substitute_places_the_stack_at_its_clips_index(self):
+        parsed = parse()
+        main, layer_entries = self.videos()
+        manifest = {"segments": [main], "layers": list(layer_entries.values())}
+        joined, notes = stacks.substitute(self.folder, parsed, manifest, 1, 16)
+        (stack,) = joined["segments"]
+        self.assertEqual((stack["stack"], stack["index"], notes), ("b", 1, []))
+        self.assertEqual(stacks.substitute(self.folder, parsed, joined, 1, 16, make=False)[0], joined)
+        self.assertEqual(manifest["segments"], [main], "the saved manifest is left as it was")
 
 
 if __name__ == "__main__":

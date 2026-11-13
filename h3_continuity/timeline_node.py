@@ -10,7 +10,7 @@ from comfy_execution.graph_utils import ExecutionBlocker
 
 from . import conditioning, latents, store, timing, shot_preview, refmods, audio_tracks, visual_memory
 from . import box_checks, bridges, dialogue, studio_pictures, voice_clips, reference_replacements, replacement_candidates
-from . import partial_video, replacement, regeneration, layers
+from . import partial_video, replacement, regeneration, layers, stacks
 from . import nodes as continuity
 from . import timeline as rules
 from .story_node import StoryType
@@ -114,12 +114,16 @@ def _clock(parsed, joined, bridges_played, replaced):
         return None
 
 
-def video_so_far(name, folder, parsed, manifest, playable, spliced, replaced, soundtrack, managed_owner=None):
+def video_so_far(name, folder, parsed, manifest, playable, spliced, replaced, soundtrack, managed_owner=None,
+                 restack=None):
     """The video so far: the boxes from the first up to the first one without a take, with their bridges and selected
     replacements, and the marked soundtrack (or their own audio), so timing can be checked before every box renders.
+    A stacked clip plays the stack of the videos with takes; with every box rendered, it plays until the other
+    videos are too. `manifest` holds the stacks in place (stacks.substitute) and `restack` rechecks them.
     Returns ({"record", "boxes", "clock"} or None, building, why it could not be built or "")."""
     count = next((i for i in range(len(parsed.boxes)) if i not in playable), len(parsed.boxes))
-    if count < 1 or count == len(parsed.boxes) or soundtrack is None:
+    waiting = " ".join(stacks.waiting(folder, parsed, manifest, count)) if parsed.layers else ""
+    if count < 1 or (count == len(parsed.boxes) and not waiting) or soundtrack is None:
         return None, False, ""
     indices = {box.id: index for index, box in enumerate(parsed.boxes)}
     joined = {**manifest, "segments": [entry for entry in store.placed(manifest, count)]}
@@ -137,7 +141,7 @@ def video_so_far(name, folder, parsed, manifest, playable, spliced, replaced, so
         try:
             note = continuity.rebuild_full_video(folder, name, joined, FULL_VIDEO_CRF, inside, soundtrack,
                                                  managed_owner=managed_owner, replaced=kept, background=True,
-                                                 kind="preview")
+                                                 kind="preview", restack=restack)
         except (OSError, ValueError) as error:
             note = f"Video so far could not be saved: {error}"
         building = continuity.full_video_state(folder, "preview")["building"]
@@ -154,10 +158,10 @@ def video_so_far(name, folder, parsed, manifest, playable, spliced, replaced, so
             older = {**manifest, "segments": store.placed(manifest, shown)}
             within = [entry for entry in inside if indices.get(entry.get("box"), shown) < shown]
             replacing = [entry for entry in kept if indices.get(entry.get("box"), shown) < shown]
-            return {"record": earlier, "boxes": shown, "clock": _clock(parsed, older, within, replacing)}, True, ""
+            return {"record": earlier, "boxes": shown, "clock": _clock(parsed, older, within, replacing)}, True, waiting
     if record is None:
         return None, building, note
-    return {"record": record, "boxes": count, "clock": _clock(parsed, joined, inside, kept)}, building, ""
+    return {"record": record, "boxes": count, "clock": _clock(parsed, joined, inside, kept)}, building, waiting
 
 
 def _status(name, folder, parsed, manifest, is_done, reasons=None, materialize=False, known=None, managed_owner=None):
@@ -182,8 +186,15 @@ def _status(name, folder, parsed, manifest, is_done, reasons=None, materialize=F
                 return None
             return _view(name, filename, entry.get("created", ""))
 
-        current = bool(count) and len(placed) == count and next_index is None
-        joined = {**manifest, "segments": placed}
+        # A stacked clip plays its stack; one is built only by a materializing status, from the takes there are.
+        view, restack, waiting = manifest, None, []
+        if parsed.layers:
+            restack = stacks.restacker(parsed, count, partial=True)
+            view, waiting = stacks.substitute(folder, parsed, manifest, count, FULL_VIDEO_CRF, partial=True,
+                                              make=materialize)
+        complete = bool(count) and len(placed) == count and next_index is None
+        current = complete and not waiting
+        joined = {**view, "segments": store.placed(view, count)}
         full_video = None
         building = False
         export_error = ""
@@ -194,6 +205,8 @@ def _status(name, folder, parsed, manifest, is_done, reasons=None, materialize=F
             soundtrack = None
         if unchecked and not export_error:
             export_error = unchecked
+        if complete and waiting and not export_error:
+            export_error = " ".join(waiting)
         if current and materialize and not unchecked:
             from .timeline_api.service import authorize_sequence
             authorize_sequence(name, managed_owner, "full_video")
@@ -210,7 +223,8 @@ def _status(name, folder, parsed, manifest, is_done, reasons=None, materialize=F
                 # Built on its own thread: a status request never waits for an encode of every box.
                 try:
                     note = continuity.rebuild_full_video(folder, name, joined, FULL_VIDEO_CRF, spliced, soundtrack,
-                                                         managed_owner=managed_owner, replaced=replaced, background=True)
+                                                         managed_owner=managed_owner, replaced=replaced, background=True,
+                                                         restack=restack)
                 except (OSError, ValueError) as error:
                     note = f"Full video could not be saved: {error}"
                 building = continuity.full_video_state(folder)["building"]
@@ -232,8 +246,8 @@ def _status(name, folder, parsed, manifest, is_done, reasons=None, materialize=F
         if materialize and not current and not partial and not unchecked:
             from .timeline_api.service import authorize_sequence
             authorize_sequence(name, managed_owner, "full_video")
-            so_far, so_far_building, so_far_note = video_so_far(name, folder, parsed, manifest, done | kept, spliced,
-                                                                replaced, soundtrack, managed_owner)
+            so_far, so_far_building, so_far_note = video_so_far(name, folder, parsed, view, done | kept, spliced,
+                                                                replaced, soundtrack, managed_owner, restack)
         status = rules.status_payload(name, parsed, segments, next_index, thumb, full_video,
                                       store.sequence_seconds(joined, spliced), done, kept)
         if building and full_video is None:
@@ -303,12 +317,17 @@ def _status(name, folder, parsed, manifest, is_done, reasons=None, materialize=F
         context = known.get("context_frames")
         checks = box_checks.load(folder)
         placed = {entry["index"]: entry for entry in store.placed(manifest, len(parsed.boxes))}
+        shown = {entry["index"]: entry for entry in joined["segments"] if "stack" in entry}
         for index, (item, box) in enumerate(zip(status["boxes"], parsed.boxes)):
             entry = placed.get(index + 1)
             if entry and entry.get("video"):
                 video = entry["video"]
                 item["video"] = {"file": _view(name, video["file"], entry.get("created", "")),
                                  "frames": video["frames"], "fps": video["fps"]}
+            stack = shown.get(index + 1)
+            if stack is not None:
+                item["stack"] = {"file": _view(name, stack["video"]["file"], stack["created"]),
+                                 "frames": stack["video"]["frames"], "fps": stack["video"]["fps"]}
             check = box_checks.status(checks.get(box.id), entry)
             if check is not None:
                 item["check"] = check
@@ -882,6 +901,7 @@ class H3C_Timeline(io.ComfyNode):
                 raise ValueError(f"H3 Timeline: box {next_index + 2} has no compatible saved overlap; "
                                  "render the remaining boxes to rebuild continuity")
         segment.box_order = [item.id for item in parsed.boxes]
+        segment.restack = stacks.restacker(parsed, len(parsed.boxes)) if parsed.layers else None
         segment.description = box.prompt
         segment.timeline = {"box": box.box.id, "layout": box.layout, "mode": box.slots.mode,
                             "settings": box.settings, "media": hashes[next_index].of(box.slots),
@@ -947,6 +967,7 @@ class H3C_Timeline(io.ComfyNode):
             audio_context_frames=audio_context_frames, audio_feather=parsed.audio_feather)
         segment.preserve_following = True
         segment.box_order = [box.id for box in parsed.boxes]
+        segment.restack = stacks.restacker(parsed, len(parsed.boxes))
         segment.description = plan.prompt
         segment.timeline = {"layer": item["id"], "box": parsed.boxes[index].id,
                             "layout": layers.layer_key(parsed, index, item, context), "mode": plan.slots.mode,
@@ -993,6 +1014,7 @@ class H3C_Timeline(io.ComfyNode):
             latent, next_video, next_audio, frozen, carry_audio, segment.context_frames)
         segment.preserve_following = True
         segment.box_order = [item.id for item in parsed.boxes]
+        segment.restack = stacks.restacker(parsed, len(parsed.boxes)) if parsed.layers else None
         segment.description = plan.prompt
         segment.timeline = {"bridge": state.bridge["before"], "layout": plan.layout, "settings": plan.settings,
                             "from": bridges.link(folder, before), "to": bridges.link(folder, after),

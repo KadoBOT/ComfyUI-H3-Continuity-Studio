@@ -6,6 +6,7 @@ when a video it uses, or the switch, changes."""
 
 import datetime
 import hashlib
+import json
 import os
 import re
 from fractions import Fraction
@@ -15,6 +16,7 @@ import numpy as np
 import torch
 from comfy_api.latest._input_impl.video_types import set_video_color_properties
 from PIL import Image
+from safetensors import safe_open
 
 from . import layers, media, store
 from . import timeline as rules
@@ -58,20 +60,80 @@ def sources(folder, timeline, index, main_entry, layer_entries, switch=None):
     return rules._digest({"switch": switch, "played": rules.played_frames(timeline, index), "videos": stamps})
 
 
-def current(folder, manifest, timeline, index, main_entry, layer_entries, switch=None):
+def saved(folder, clip_id):
+    """The entry of clip `clip_id`'s saved stack, read from its file, or None. Stacks aren't recorded in the manifest,
+    so building one while answering a status request never rewrites it."""
+    path = os.path.join(folder, stem(clip_id) + ".safetensors")
+    try:
+        with safe_open(path, framework="pt") as f:
+            entry = json.loads((f.metadata() or {})["h3c"])
+    except (OSError, KeyError, ValueError):
+        return None
+    return entry if entry.get("stack") == clip_id else None
+
+
+def current(folder, timeline, index, main_entry, layer_entries, switch=None):
     """The saved stack of clip `index` while it is made of these videos and switch and its files exist, or None."""
-    clip_id = timeline.boxes[index].id
-    entry = next((item for item in manifest.get("stacks", []) if item.get("stack") == clip_id), None)
+    entry = saved(folder, timeline.boxes[index].id)
     if entry is None or entry.get("sources") != sources(folder, timeline, index, main_entry, layer_entries, switch):
         return None
-    if not os.path.isfile(os.path.join(folder, entry["video"]["file"])) or not store.has_segment_latents(folder, entry):
-        return None
-    return entry
+    return entry if os.path.isfile(os.path.join(folder, entry["video"]["file"])) else None
 
 
-def record(manifest, entry):
-    """Records stack `entry` in `manifest`, replacing the earlier one of its clip."""
-    manifest["stacks"] = [*(item for item in manifest.get("stacks", []) if item.get("stack") != entry["stack"]), entry]
+def _takes(folder, timeline, manifest, clip_id):
+    """({layer id: saved take} of clip `clip_id`'s other videos, ids of those without one)."""
+    found, waiting = {}, []
+    for item in timeline.layers[clip_id]:
+        entry = layers.saved(manifest, item["id"])
+        if entry is not None and entry.get("video") and store.has_segment_latents(folder, entry):
+            found[item["id"]] = entry
+        else:
+            waiting.append(item["id"])
+    return found, waiting
+
+
+def waiting(folder, timeline, manifest, count):
+    """Notes naming the other videos of the first `count` clips that have no take yet."""
+    return [f"Clip {index + 1}'s video {layers.label(timeline, index, video)} has no take yet."
+            for index, clip in enumerate(timeline.boxes[:count]) if clip.id in timeline.layers
+            for video in _takes(folder, timeline, manifest, clip.id)[1]]
+
+
+def substitute(folder, timeline, manifest, count, crf, partial=False, make=True):
+    """(`manifest` with the placed segment of each stacked clip among the first `count` replaced by the clip's stack,
+    the notes of `waiting`). A clip whose videos aren't all rendered keeps its main video, or with `partial` (the
+    video so far) is composited from the videos that have takes: its switch drops the swaps to the others, so the
+    video before carries on. With `make` False, only a saved stack that is still current is used."""
+    if not timeline.layers:
+        return manifest, []
+    positions = {clip.id: index for index, clip in enumerate(timeline.boxes)}
+    segments = []
+    for entry in manifest["segments"]:
+        clip_id = store.box_of(entry)
+        index = positions.get(clip_id)
+        if ("stack" in entry or clip_id not in timeline.layers or not entry.get("video")
+                or index is None or entry["index"] != index + 1 or index >= count):
+            segments.append(entry)
+            continue
+        found, missing = _takes(folder, timeline, manifest, clip_id)
+        if not found or (missing and not partial):
+            segments.append(entry)
+            continue
+        switch = timeline.switches[clip_id]
+        if missing:
+            switch = {**switch, "cuts": [cut for cut in switch["cuts"] if cut["to"] not in missing],
+                      "sound": "screen" if switch["sound"] in missing else switch["sound"]}
+        stack = current(folder, timeline, index, entry, found, switch)
+        if stack is None and make:
+            stack = build(folder, timeline, index, entry, found, crf, switch)
+        segments.append(entry if stack is None else {**stack, "index": entry["index"]})
+    return {**manifest, "segments": segments}, waiting(folder, timeline, manifest, count)
+
+
+def restacker(timeline, count, partial=False):
+    """`substitute` bound to a Timeline, for nodes.rebuild_full_video: (folder, manifest, crf, make) -> manifest."""
+    return lambda folder, manifest, crf, make=True: substitute(folder, timeline, manifest, count, crf, partial,
+                                                               make)[0]
 
 
 def _frames(path, picks, size, fmt):
@@ -94,18 +156,29 @@ def _frames(path, picks, size, fmt):
         yield last
 
 
-def _aligned(array, shift):
-    """`array` shifted by x, y pixels and scaled about its centre; the uncovered edge is black."""
+def _warp(plane, x, y, scale, fill):
+    height, width = plane.shape
+    middle_x, middle_y = width / 2, height / 2
+    coefficients = (1 / scale, 0, middle_x - (middle_x + x) / scale, 0, 1 / scale, middle_y - (middle_y + y) / scale)
+    return np.asarray(Image.fromarray(plane.astype(np.float32), mode="F").transform(
+        (width, height), Image.Transform.AFFINE, coefficients, resample=Image.Resampling.BILINEAR, fillcolor=fill))
+
+
+def _aligned(array, shift, bits):
+    """Packed 4:2:0 `array` ([H * 3 / 2, W], limited range) shifted by x, y pixels and scaled about its centre; the
+    uncovered edge is black."""
     if shift is None or (shift["x"], shift["y"], shift["scale"]) == (0, 0, 1):
         return array
-    height, width = array.shape[:2]
-    scale, middle_x, middle_y = shift["scale"], width / 2, height / 2
-    coefficients = (1 / scale, 0, middle_x - (middle_x + shift["x"]) / scale,
-                    0, 1 / scale, middle_y - (middle_y + shift["y"]) / scale)
-    channels = [np.asarray(Image.fromarray(array[..., c].astype(np.float32), mode="F").transform(
-        (width, height), Image.Transform.AFFINE, coefficients, resample=Image.Resampling.BILINEAR, fillcolor=0))
-        for c in range(array.shape[2])]
-    return np.clip(np.rint(np.stack(channels, axis=-1)), 0, np.iinfo(array.dtype).max).astype(array.dtype)
+    height, width = array.shape[0] * 2 // 3, array.shape[1]
+    quarter = height // 2 * width // 2
+    chroma = array[height:].reshape(-1)
+    black, neutral = 16 << (bits - 8), 128 << (bits - 8)
+    planes = [_warp(array[:height], shift["x"], shift["y"], shift["scale"], black).reshape(-1)]
+    for part in (chroma[:quarter], chroma[quarter:]):
+        planes.append(_warp(part.reshape(height // 2, width // 2), shift["x"] / 2, shift["y"] / 2, shift["scale"],
+                            neutral).reshape(-1))
+    packed = np.concatenate(planes).reshape(array.shape)
+    return np.clip(np.rint(packed), 0, (1 << bits) - 1).astype(array.dtype)
 
 
 def _sound(folder, clip_id, switch, entries, played):
@@ -123,16 +196,18 @@ def _sound(folder, clip_id, switch, entries, played):
 
 
 def build(folder, timeline, index, main_entry, layer_entries, crf, switch=None):
-    """Writes the stack of clip `index` from its saved videos and returns its entry (not yet recorded). `switch`
-    defaults to the clip's own."""
+    """Writes the stack of clip `index` from its saved videos and returns its entry. `switch` defaults to the clip's
+    own."""
     switch = _switch(timeline, index, switch)
     clip_id = timeline.boxes[index].id
     played = rules.played_frames(timeline, index)
     entries = {**layer_entries, clip_id: main_entry}
     main_path = os.path.join(folder, main_entry["video"]["file"])
     codec, _, width, height, rate, space = media._signature(main_path)
-    hdr = space in ("HDR", "HDR PQ")
-    fmt = "rgb48le" if hdr else "rgb24"
+    # Blended in the encoder's own 4:2:0 format, so a frame showing one video passes through without a colour
+    # conversion and loses only what the re-encode does.
+    bits = 10 if space in ("HDR", "HDR PQ") else 8
+    fmt = "yuv420p10le" if bits == 10 else "yuv420p"
     count = media.window_at_fps(0, played, main_entry["video"].get("fps"))[1]
     used = _used(clip_id, switch)
     streams = {}
@@ -152,7 +227,7 @@ def build(folder, timeline, index, main_entry, layer_entries, crf, switch=None):
                                              media.CODEC_OF_STREAM.get(codec, "H.264"))
             audio_stream = media._add_audio_stream(container, *sound) if sound is not None else None
             for number in range(count):
-                arrays = {video: _aligned(next(frames), align.get(video)) for video, frames in streams.items()}
+                arrays = {video: _aligned(next(frames), align.get(video), bits) for video, frames in streams.items()}
                 frame_time = number * FPS / float(rate)
                 picture = arrays[clip_id]
                 for cut in switch["cuts"]:
@@ -161,9 +236,8 @@ def build(folder, timeline, index, main_entry, layer_entries, crf, switch=None):
                         break
                     incoming = arrays[cut["to"]]
                     picture = incoming if weight >= 1 else picture.astype(np.float32) * (1 - weight) + incoming * weight
-                picture = np.clip(np.rint(picture), 0, 65535 if hdr else 255).astype(np.uint16 if hdr else np.uint8)
-                frame = av.VideoFrame.from_ndarray(picture, format=fmt).reformat(
-                    format=stream.pix_fmt, dst_colorspace=stream.codec_context.colorspace)
+                picture = np.clip(np.rint(picture), 0, (1 << bits) - 1).astype(np.uint16 if bits > 8 else np.uint8)
+                frame = av.VideoFrame.from_ndarray(picture, format=fmt)
                 set_video_color_properties(frame, space)
                 container.mux(stream.encode(frame))
             container.mux(stream.encode(None))

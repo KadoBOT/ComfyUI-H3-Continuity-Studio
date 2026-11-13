@@ -59,6 +59,8 @@ class SegmentPlan:
     box_order: list | None = None
     # One queued regeneration's consent, never persisted into a take's metadata.
     regeneration: dict | None = None
+    # A Timeline with several videos in a clip: puts each clip's stack in its segment's place (stacks.restacker).
+    restack: object = None
 
 
 def _plural(count, word):
@@ -429,7 +431,7 @@ class H3C_SaveSegment(io.ComfyNode):
                                rebuild_full_video(folder, sequence.name, joined, crf, spliced,
                                                  (segment.timeline or {}).get("soundtrack", ()), managed_owner=sequence_owner(cls),
                                                  replaced=_replaced(folder, manifest, segment.timeline),
-                                                 background=segment.timeline is not None))
+                                                 background=segment.timeline is not None, restack=segment.restack))
             if notes:
                 info += " " + " ".join(notes)
             return io.NodeOutput(info, ui=ui.PreviewText(info))
@@ -480,7 +482,8 @@ class H3C_SaveSegment(io.ComfyNode):
                                                   {**manifest, "segments": store.placed(manifest, len(segment.box_order))},
                                                   crf, bridges.spliced(folder, manifest, keys),
                                                  record.get("soundtrack", ()), managed_owner=sequence_owner(cls),
-                                                 replaced=_replaced(folder, manifest, record), background=True))
+                                                 replaced=_replaced(folder, manifest, record), background=True,
+                                                 restack=segment.restack))
             if notes:
                 info += " " + " ".join(notes)
             return io.NodeOutput(info, ui=ui.PreviewText(info))
@@ -534,7 +537,8 @@ class H3C_SaveSegment(io.ComfyNode):
                                                   {**manifest, "segments": store.placed(manifest, len(segment.box_order))},
                                                   crf, bridges.spliced(folder, manifest, keys) if keys else [],
                                                   record.get("soundtrack", ()), managed_owner=sequence_owner(cls),
-                                                  replaced=_replaced(folder, manifest, record), background=True))
+                                                  replaced=_replaced(folder, manifest, record), background=True,
+                                                  restack=segment.restack))
             if notes:
                 info += " " + " ".join(notes)
             return io.NodeOutput(info, ui=ui.PreviewText(info))
@@ -758,7 +762,7 @@ def write_previews(folder, manifest, candidate, crf, spliced=(), soundtrack=()):
 
 
 def rebuild_full_video(folder, name, manifest, crf, spliced=(), soundtrack=(), *, managed_owner=None, replaced=(),
-                       background=False, kind="full"):
+                       background=False, kind="full", restack=None):
     """Joins the saved segments, each `spliced` bridge before the segment of its box and each `replaced` candidate in
     place of the frames it covers. With `soundtrack` clips (`audio_tracks.marked`), it plays them instead of the
     segments' audio, on the Timeline's clock: only spliced bridges add time.
@@ -768,13 +772,17 @@ def rebuild_full_video(folder, name, manifest, crf, spliced=(), soundtrack=(), *
     once; `full_video_state(folder)` says whether it is still building. The result is recorded only when the saved
     segments are still the ones it joined.
     `kind` "preview" joins the first boxes rendered so far (the caller passes only those) into the video so far, which
-    is saved and recorded apart from the full video and builds on its own thread."""
+    is saved and recorded apart from the full video and builds on its own thread.
+    `restack` (stacks.restacker) puts each stacked clip's stack in its segment's place, building it when missing."""
     with SEQUENCE_LOCK:
         from .timeline_api.service import authorize_sequence
         authorize_sequence(name, managed_owner, "full_video")
+        if restack is not None:
+            manifest = restack(folder, manifest, crf)
         plan, note = _plan_full_video(folder, name, manifest, crf, spliced, soundtrack, replaced)
         if plan is not None:
             plan["kind"] = kind
+            plan["restack"] = restack
         if plan is None:
             return note
         if background:
@@ -894,9 +902,11 @@ def _finish_full_video(plan):
         record["boxes"] = len(plan["segments"])
     with SEQUENCE_LOCK:
         latest = store.load_manifest(folder)
-        joined = [entry for entry in latest["segments"] if 1 <= entry["index"] <= len(plan["segments"])]
+        restack = plan.get("restack")
+        view = restack(folder, latest, plan["crf"], make=False) if restack is not None else latest
+        joined = [entry for entry in view["segments"] if 1 <= entry["index"] <= len(plan["segments"])]
         if (joined != plan["segments"] or store.full_video_fingerprint(
-                folder, {**latest, "segments": joined}, plan["bridges"], plan["sources"]) != plan["fingerprint"]):
+                folder, {**view, "segments": joined}, plan["bridges"], plan["sources"]) != plan["fingerprint"]):
             return "Full video not recorded: the saved boxes changed while it was built; it is built again from them."
         latest[key] = record
         store.write_manifest(folder, latest)
