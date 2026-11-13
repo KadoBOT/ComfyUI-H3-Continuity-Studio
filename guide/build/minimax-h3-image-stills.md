@@ -49,13 +49,10 @@ An unconnected or empty stack leaves generation unchanged; entries named `None`
 and entries with both strengths at zero are skipped.
 
 The Studio uses the selected clip's prompt exactly, without adding shared text,
-reference descriptions or the generator's instruction. It fills the seed and reference images for each request. It
-preserves scene and character reference roles, putting the location first when
-one is available. Prompts use native `<Picture 1>`, `<Picture 2>` labels and
-describe a new still composed for the requested camera: every image, including
-Cast sheets and location grids, is a reference for its role, never the image to
-edit. Reference images retain their original canvas until native conditioning
-scales them. Up to eight references are exposed here.
+reference descriptions or the generator's instruction. It fills the seed and
+reference images for each request, putting the location first when one is
+available. Prompts use native `<Picture 1>`, `<Picture 2>` labels. Up to eight
+references are exposed here.
 Sampling follows the [official workflow](https://github.com/Comfy-Org/workflow_templates/blob/main/templates/image_minimax_h3_image_t2i.json):
 six Euler steps, simple schedule, CFG 1. Dimensions are explicit, default to
 2048 × 2048 and must be multiples of 32. Studio generation uses these dimensions
@@ -73,5 +70,46 @@ matching the [official edit workflow](https://github.com/Comfy-Org/workflow_temp
 The requested output remains native resolution: a 20 MP output is sampled at
 20 MP. Candidate metadata records the separate reference resize setting.
 
-No still-prompt preparation or prompt-enhancer download is required. Video rendering does not execute or
-load the connected still model.
+## Prompt enhancer
+
+The prompt is sent as written by default. The official ComfyUI workflows can
+first rewrite it with a Qwen3.5 model and **Generate Text** (`TextGenerateV2`)
+into a detailed description that names each reference picture's role. This
+optional step uses the instructions of the
+[official edit](https://github.com/Comfy-Org/workflow_templates/blob/main/templates/image_minimax_h3_image_edit.json)
+and [text-to-image](https://github.com/Comfy-Org/workflow_templates/blob/main/templates/image_minimax_h3_image_t2i.json)
+templates, unchanged.
+
+**prompt_enhancer** controls this step:
+
+| Setting | Behavior |
+| --- | --- |
+| `off` (default) | Always uses the prompt as written. |
+| `auto` | Rewrites prompts that have reference pictures, as the official edit template does. Text-only prompts are used as written, as in the text-to-image template. |
+| A model file | Also rewrites text-only prompts with that model. |
+
+Download `text_encoders/qwen3.5_9b_w4a8_gptq.safetensors` from
+[Comfy-Org/MiniMax-H3-Image](https://huggingface.co/Comfy-Org/MiniMax-H3-Image)
+into `models/text_encoders`; `auto` also accepts another installed Qwen3.5 text
+model such as `qwen3.5_9b_int8_convrot.safetensors`. Without one, `auto` uses the
+prompt as written. The rewrite runs once per candidate with the candidate's
+seed and adds the enhancer's generation time. If the enhancer returns no
+caption, the candidate fails with its reply instead of generating from an empty
+prompt. Candidate metadata records the **prompt_enhancer** setting.
+
+## Location sheets
+
+With reference pictures MiniMax H3 Image is an editing model: a location sheet
+sent whole as `<Picture 1>` is the canvas being edited, so the still keeps its
+grid, with or without the enhancer. For a clip still,
+the Studio therefore sends a location or scene-layout reference that is a sheet
+of views as one picture per view, cut at the sheet's divider lines, so the
+location takes `<Picture 1>` to `<Picture 4>` for a 2 × 2 sheet and Cast pictures
+follow. A mention of the location in the clip prompt names all its views. Views
+that do not fit the eight reference slots are dropped from the end. Single
+pictures, Cast character sheets and pinned frames are sent whole, as is every
+reference of a still generated for a Cast entry. Candidate metadata lists each
+view's crop. Each view is resized to 4 MP like any other reference, so a 2 × 2
+sheet takes roughly twice as long to generate as the same sheet sent whole.
+
+Video rendering does not execute or load the connected still model.

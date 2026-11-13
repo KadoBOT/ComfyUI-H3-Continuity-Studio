@@ -51,7 +51,7 @@ Still generation needs a **still recipe**: connect a native image-generator subg
 Select models you have installed; nothing is downloaded. Other pixel generators can be connected by declaring where their prompt, seed, size and reference inputs are. This is the **Still Recipe** node's `bindings` input; see the Qwen Story Studio notes in the repository for the schema.
 
 !!! info "Which prompt is used"
-    Generate candidates always uses the selected clip's prompt. Shared text, saved prepared still prompts, extra descriptions and generator instructions are not appended. References remain image inputs; their labels and descriptions remain in candidate metadata. The subgraph's own prompt and instruction are used when you run it standalone.
+    Generate candidates always uses the selected clip's prompt. Shared text, saved prepared still prompts, extra descriptions and generator instructions are not appended. **MiniMax H3 Image Still** sends that text as written unless its optional prompt enhancer is turned on, and splits a location sheet into separate views; see [Stills with MiniMax H3 Image](minimax-h3-image-stills.md#location-sheets). References remain image inputs; their labels and descriptions remain in candidate metadata. The subgraph's own prompt and instruction are used when you run it standalone.
 
 ### Continuity between stills
 

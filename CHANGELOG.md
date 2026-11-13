@@ -9,6 +9,8 @@ All notable changes to H3 Continuity Studio are recorded here. Versions follow [
 ### Fixed
 
 - **Candidate generation uses only the selected clip prompt.** Shared prompts, separate still overrides, automatic reference descriptions and generator instructions no longer add hidden text. The server enforces the same rule for older clients, and the panel shows the actual clip text.
+- **Optional official prompt enhancer for MiniMax H3 Image Still.** The new **prompt_enhancer** setting is `off` by default, so the prompt is sent exactly as written. `auto` or a model file rewrites it first with an installed Qwen3.5 model and the official templates' instructions, as ComfyUI's MiniMax H3 Image workflows can. A missing caption fails the candidate instead of generating from an empty prompt.
+- **Location sheets reach MiniMax clip stills as separate views.** With reference pictures the model edits `<Picture 1>`, so a 2 × 2 location sheet sent whole stayed the canvas and stills kept its grid. A location or scene-layout sheet is now cut at its divider lines and sent as one picture per view, ahead of the Cast pictures. Single pictures, character sheets and Cast-entry stills are unchanged. See [Location sheets](guide/build/minimax-h3-image-stills.md#location-sheets).
 - **MiniMax H3 Image references follow the official edit workflow.** Each reference is resized to 4 MP and aligned to a multiple of 32 before native conditioning. Requested output size remains native, including 20 MP; output images are not downscaled and upscaled as a workaround.
 
 ## [0.25.2] - 2026-11-13

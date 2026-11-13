@@ -125,6 +125,12 @@ describes the bindings.
   Edit the clip prompt itself to change candidate text. The server enforces this
   even for an older client. MiniMax image references separately follow the official
   4 MP resize and 32-pixel alignment; requested output resolution stays native.
+  MiniMax H3 Image Still's optional `prompt_enhancer` (default `off`) can rewrite the
+  prompt with the official templates' Qwen3.5 enhancer; leave it off to keep the clip
+  text exact. With references the model edits `<Picture 1>`, so for MiniMax clip
+  stills a location or scene-layout sheet is sent as one picture per view (cut at its
+  divider lines): a 2 × 2 sheet becomes `<Picture 1>` to `<Picture 4>` instead of a
+  grid to copy. Character sheets and Cast-entry stills stay whole.
 - Still generation receives relevant Cast images, images explicitly mentioned in the clip prompt, and images
   connected to the Still Recipe. Scene anchors and preceding guides are not
   automatically added.
