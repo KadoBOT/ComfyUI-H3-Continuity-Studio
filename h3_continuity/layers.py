@@ -5,6 +5,7 @@ so the clock, "the clip before" and every box plan stay as they are."""
 import dataclasses
 import hashlib
 import math
+import os
 import re
 import zlib
 
@@ -18,6 +19,16 @@ CLIP_FIELDS = ("frames", "seconds", "cut", "new_scene", "exact", "join", "plate_
 LETTERS = "bcd"
 
 from . import timeline as rules  # noqa: E402
+from . import store  # noqa: E402
+
+
+@dataclasses.dataclass
+class State:
+    layer: dict
+    index: int
+    status: str
+    note: str = ""
+    entry: dict | None = None
 
 
 def _error(message):
@@ -252,6 +263,72 @@ def plan(timeline, index, layer, context, carry_audio, width, height, ref_image_
 def layer_key(timeline, index, layer, context=39):
     """Fingerprint of what the Timeline says about the layer; never a main video's, even with the same fields."""
     return rules._digest({"layer": rules.layout_key(view(timeline, index, layer), index, context)})
+
+
+def ids(timeline):
+    return [item["id"] for items in timeline.layers.values() for item in items]
+
+
+def saved(manifest, layer_id):
+    return next((entry for entry in manifest.get("layers", []) if entry.get("layer") == layer_id), None)
+
+
+def archive(folder, manifest, entry, now):
+    """Moves saved layer `entry` to takes/ and out of the manifest."""
+    relative = store.move_take(folder, entry["stem"], now)
+    manifest.setdefault("takes", []).append(
+        {"layer": entry["layer"], "archived": now.isoformat(timespec="seconds"), "folder": relative})
+    manifest["layers"] = [other for other in manifest["layers"] if other is not entry]
+
+
+def keep(folder, manifest, kept, now):
+    """Moves the saved layers whose id isn't in `kept` to takes/; returns how many moved."""
+    gone = [entry for entry in manifest.get("layers", []) if entry["layer"] not in kept]
+    for entry in gone:
+        archive(folder, manifest, entry, now)
+    return len(gone)
+
+
+def settings(timeline, index, layer, known, context):
+    """The node settings a layer's render depends on: a fresh box's, None where they are unknown."""
+    mode = rules.box_slots(view(timeline, index, layer), index, 39 if context is None else context).mode
+    return rules.box_settings(True, mode, known.get("width"), known.get("height"), context, known.get("carry_audio"),
+                              known.get("ref_image_size"), audio_context_frames=known.get("audio_context_frames", 0))
+
+
+def reason(folder, timeline, index, layer, entry, known, context):
+    """Why saved layer `entry` isn't `layer` of clip `index` now, or "" when it is current."""
+    if not store.has_segment_latents(folder, entry):
+        return "Its saved files are missing."
+    if (entry.get("timeline") or {}).get("layout") != layer_key(timeline, index, layer, 39 if context is None else context):
+        return "Its prompt or settings changed since it was rendered."
+    if not rules.settings_match((entry.get("timeline") or {}).get("settings") or {},
+                                settings(timeline, index, layer, known, context)):
+        return "The node's width, height or reference size changed since it was rendered."
+    return ""
+
+
+def states(folder, timeline, manifest, taken, known, context, upto=None):
+    """Each layer's State in Timeline order. A layer waits until its clip's main video has a take (`taken` holds the
+    indices of the boxes with one). Like boxes, only a layer without a take renders on its own: the first one in a
+    clip before `upto` (the next box to render, or every clip) is next."""
+    found = []
+    for index, box in enumerate(timeline.boxes):
+        for item in timeline.layers.get(box.id, []):
+            entry = saved(manifest, item["id"])
+            if index not in taken:
+                note = f"render clip {index + 1} first; its video {label(timeline, index, item['id'])} plays inside it"
+                found.append(State(item, index, "waiting", note, entry))
+            elif entry is None:
+                found.append(State(item, index, "pending"))
+            else:
+                why = reason(folder, timeline, index, item, entry, known, context)
+                found.append(State(item, index, "outdated" if why else "done", why, entry))
+    limit = len(timeline.boxes) if upto is None else upto
+    upcoming = next((state for state in found if state.status == "pending" and state.index < limit), None)
+    if upcoming:
+        upcoming.status = "next"
+    return found
 
 
 def check_memory(timeline):

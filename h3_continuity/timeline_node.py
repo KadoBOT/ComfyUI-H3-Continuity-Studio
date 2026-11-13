@@ -10,7 +10,7 @@ from comfy_execution.graph_utils import ExecutionBlocker
 
 from . import conditioning, latents, store, timing, shot_preview, refmods, audio_tracks, visual_memory
 from . import box_checks, bridges, dialogue, studio_pictures, voice_clips, reference_replacements, replacement_candidates
-from . import partial_video, replacement, regeneration
+from . import partial_video, replacement, regeneration, layers
 from . import nodes as continuity
 from . import timeline as rules
 from .story_node import StoryType
@@ -256,6 +256,24 @@ def _status(name, folder, parsed, manifest, is_done, reasons=None, materialize=F
                                        "rendered": partial["rendered"], "boxes": partial["boxes"]}
             if parsed.all_bridges:
                 status["partial_video"]["note"] = "Bridges and replacements are left out."
+        if parsed.layers:
+            found_layers = layers.states(folder, parsed, manifest, done | kept, known, known.get("context_frames"),
+                                         next_index)
+            for state in found_layers:
+                item = {"id": state.layer["id"], "status": state.status}
+                if state.note:
+                    item["reason"] = state.note
+                video = (state.entry or {}).get("video")
+                if video:
+                    item["video"] = {"file": _view(name, video["file"], state.entry.get("created", "")),
+                                     "frames": video["frames"], "fps": video["fps"]}
+                status["boxes"][state.index].setdefault("videos", []).append(item)
+            status["done_layers"] = [state.layer["id"] for state in found_layers if state.status == "done"]
+            status["layers_remaining"] = sum(state.entry is None for state in found_layers)
+            upcoming = next((state for state in found_layers if state.status == "next"), None)
+            if upcoming is not None:
+                status["message"] = (f"Clip {upcoming.index + 1}'s video "
+                                     f"{layers.label(parsed, upcoming.index, upcoming.layer['id'])} is next.")
         if parsed.all_bridges:
             items = {}
             found = bridges.states(folder, parsed, manifest, done, known)
@@ -335,6 +353,25 @@ def slice_videos(images, audios, slots, start, count, label):
             first, last = timing.sample_at_frame(start, rate), timing.sample_at_frame(start + count, rate)
             audios[slot.replace("video", "video_audio")] = {**sound, "waveform": sound["waveform"][..., first:last]}
     return images, audios
+
+
+def box_media(parsed, index, context, images, audios, loaded, voices):
+    """(images, audios) box `index` of `parsed` receives: the connected ones with its Timeline audio, voices, Studio
+    pictures, sliced videos and appearance plates."""
+    box_audios = audio_tracks.for_box(parsed, index, context, audios)
+    if parsed.voice_clips:
+        box_audios.update(voice_clips.load(parsed, index, voices))
+    box_images = {**images, **studio_pictures.load(parsed, index, loaded)} if parsed.pictures else images
+    if parsed.video_slices:
+        box_images, box_audios = slice_videos(box_images, box_audios, parsed.video_slices,
+                                              *rules.video_window(parsed, index, context), f"box {index + 1}")
+    return shot_preview.plate_images(parsed, index, box_images, context=context), box_audios
+
+
+def layers_taken(folder, parsed, manifest, but=None):
+    """Whether every layer of `parsed` other than `but` has a saved take."""
+    return all(layer_id == but or ((entry := layers.saved(manifest, layer_id)) is not None
+                                   and store.has_segment_latents(folder, entry)) for layer_id in layers.ids(parsed))
 
 
 def read_request(body):
@@ -647,17 +684,12 @@ class H3C_Timeline(io.ComfyNode):
         by_index = {entry["index"]: entry for entry in manifest["segments"]}
         voices = {}
 
+        def media(target, index):
+            return box_media(target, index, context, images, audios, loaded, voices)
+
         def refs(index):
             if index not in effective_images:
-                box_audios = audio_tracks.for_box(parsed, index, context, audios)
-                if parsed.voice_clips:
-                    box_audios.update(voice_clips.load(parsed, index, voices))
-                box_images = {**images, **studio_pictures.load(parsed, index, loaded)} if parsed.pictures else images
-                if parsed.video_slices:
-                    box_images, box_audios = slice_videos(box_images, box_audios, parsed.video_slices,
-                                                          *rules.video_window(parsed, index, context), f"box {index + 1}")
-                effective_images[index] = shot_preview.plate_images(parsed, index, box_images, context=context)
-                effective_audios[index] = box_audios
+                effective_images[index], effective_audios[index] = media(parsed, index)
                 hashes[index] = MediaHashes(effective_images[index], effective_audios[index])
             return effective_images[index]
 
@@ -697,6 +729,23 @@ class H3C_Timeline(io.ComfyNode):
                       else rules.next_box(len(parsed.boxes), by_index,
                                           lambda index, entry: store.has_segment_latents(folder, entry)))
         known = bridges.settings(width, height, context, carry_audio, audio_context_frames=audio_context_frames)
+        taken = {i for i in range(len(parsed.boxes)) if i + 1 in by_index and store.has_segment_latents(folder, by_index[i + 1])}
+        # A clip's other videos render right after its main video, before the next box, bridges and replacements.
+        if parsed.layers and parsed.render_box is None and parsed.render_bridge is None:
+            box_known = dict(width=width, height=height, context_frames=context, carry_audio=carry_audio,
+                             ref_image_size=ref_image_size, audio_context_frames=audio_context_frames)
+            found = layers.states(folder, parsed, manifest, taken, box_known, context, next_index)
+            if parsed.render_layer is not None:
+                chosen = next(state for state in found if state.layer["id"] == parsed.render_layer)
+                if chosen.status == "waiting":
+                    raise ValueError(f"H3 Timeline: {chosen.note}")
+            else:
+                chosen = next((state for state in found if state.status == "next"), None)
+            if chosen is not None:
+                complete = (len(taken) == len(parsed.boxes)
+                            and layers_taken(folder, parsed, manifest, but=chosen.layer["id"]))
+                return cls.layer(chosen, parsed, name, folder, manifest, by_index, is_done, box_known, known, complete,
+                                 media, clip, vae, audio_vae, negative)
         replacing = parsed.render_bridge in {item["before"] for item in parsed.replacements}
         if (parsed.render_bridge is not None and not replacing) or (next_index is None and parsed.bridges):
             done = {i for i in range(len(parsed.boxes)) if i + 1 in by_index and is_done(i, by_index[i + 1])}
@@ -708,8 +757,7 @@ class H3C_Timeline(io.ComfyNode):
             else:
                 chosen = next((state for state in found if state.status == "next"), None)
             if chosen is not None:
-                complete = all(i + 1 in by_index and store.has_segment_latents(folder, by_index[i + 1])
-                               for i in range(len(parsed.boxes)))
+                complete = len(taken) == len(parsed.boxes) and layers_taken(folder, parsed, manifest)
                 return cls.bridge(chosen, parsed, name, folder, manifest, by_index, is_done, known, complete,
                                   clip, vae, audio_vae, ref_image_size, negative)
         if replacing or (next_index is None and parsed.replacements):
@@ -844,9 +892,8 @@ class H3C_Timeline(io.ComfyNode):
         if rules.text_chain(parsed, next_index, context):
             segment.timeline["text_chain"] = rules.text_chain(parsed, next_index, context)
         # Saving the last box without a take starts the full video; outdated boxes play in it until regenerated.
-        segment.timeline_complete = recovery is None and all(i == next_index or (i + 1 in by_index
-                                                            and store.has_segment_latents(folder, by_index[i + 1]))
-                                        for i in range(len(parsed.boxes)))
+        segment.timeline_complete = (recovery is None and all(i == next_index or i in taken for i in range(len(parsed.boxes)))
+                                     and layers_taken(folder, parsed, manifest))
         if rules.plate_chain(parsed, next_index):
             segment.timeline["plate_chain"] = rules.plate_chain(parsed, next_index)
         if memories:
@@ -864,6 +911,66 @@ class H3C_Timeline(io.ComfyNode):
             info += f" Ending frozen to the first {ending} frames of box {next_index + 2}; later boxes are kept."
         status = _status(name, folder, parsed, manifest, is_done, known=known)
         return io.NodeOutput(positive, negative, latent, segment, box.box.seed, box.prompt, info,
+                             ui={"h3c_timeline": [status]})
+
+    @classmethod
+    def layer(cls, state, parsed, name, folder, manifest, by_index, is_done, known, bridge_known, complete, media,
+              clip, vae, audio_vae, negative):
+        """Renders the video of `state` as a fresh generation of its clip's time, planned on the layer view."""
+        index, item = state.index, state.layer
+        width, height, context, carry_audio, ref_image_size, audio_context_frames = (known[key] for key in (
+            "width", "height", "context_frames", "carry_audio", "ref_image_size", "audio_context_frames"))
+        view = layers.view(parsed, index, item)
+        images, audios = media(view, index)
+        plan = layers.plan(parsed, index, item, context, carry_audio, width, height, ref_image_size, images, audios,
+                           audio_context_frames=audio_context_frames)
+        hashes = MediaHashes(images, audios)
+        layer_entries = {entry["layer"]: entry for entry in manifest.get("layers", [])}
+        memories = visual_memory.records(view, index, folder, by_index, is_done, width, height, layer_entries)
+        memory_args = {}
+        if memories:
+            memory_args["memories"] = visual_memory.load(folder, by_index, memories, layer_entries)
+            memory_args["memory_frames"] = [record.get("frames") for record in memories]
+            plan.prompt = visual_memory.box_prompt(view, index, context, plan, memories)
+        guides = rules.frame_guides(view, index, context)
+        end = plan.frames - 1
+        endpoint_files = {("first" if frame == 0 else "last"): file for frame, file in guides if frame in (0, end)}
+        if endpoint_files:
+            memory_args["endpoint_images"] = {key: shot_preview.load_image(file) for key, file in endpoint_files.items()}
+        positive, latent = conditioning.encode(plan, clip, vae, audio_vae, width, height, ref_image_size, images, audios,
+                                               **memory_args)
+        positive = shot_preview.add_guides(positive, latent, vae, [(frame, file) for frame, file in guides
+                                                                   if frame not in (0, end)])
+        sequence = continuity.SequenceRef(name, folder, index + 1, None, None, None)
+        latent, positive, negative, segment, _ = continuity.prepare_segment(
+            sequence, latent, context, carry_audio, positive, negative, node="H3 Timeline",
+            audio_context_frames=audio_context_frames, audio_feather=parsed.audio_feather)
+        segment.preserve_following = True
+        segment.box_order = [box.id for box in parsed.boxes]
+        segment.description = plan.prompt
+        segment.timeline = {"layer": item["id"], "box": parsed.boxes[index].id,
+                            "layout": layers.layer_key(parsed, index, item, context), "mode": plan.slots.mode,
+                            "settings": plan.settings, "media": hashes.of(plan.slots),
+                            "references": hashes.of(plan.slots, keyframes=False), "seed": item["seed"],
+                            "layer_ids": layers.ids(parsed)}
+        if plan.generated > plan.frames:
+            segment.timeline["played"] = plan.frames
+        if memories:
+            segment.timeline["memories"] = memories
+        if parsed.bridges:
+            segment.timeline["splice"] = bridges.splice(parsed, bridge_known)
+        if parsed.replacements:
+            segment.timeline["replace"] = selections(folder, parsed, manifest, by_index, is_done, bridge_known)
+        attach_soundtrack(segment.timeline, parsed, manifest)
+        segment.timeline_complete = complete
+        label = layers.label(parsed, index, item["id"])
+        info = (f"Clip {index + 1} video {label}: {plan.slots.mode.upper()}, a fresh generation of the clip's "
+                f"{plan.frames} frames ({timing.seconds(plan.frames):.2f} s). Seed {item['seed']}.")
+        if state.entry is not None:
+            info += " Saving it moves its earlier take to takes/."
+        info = " ".join([info, *plan.notes])
+        status = _status(name, folder, parsed, manifest, is_done, known=bridge_known)
+        return io.NodeOutput(positive, negative, latent, segment, item["seed"], plan.prompt, info,
                              ui={"h3c_timeline": [status]})
 
     @classmethod
@@ -953,10 +1060,13 @@ class H3C_Timeline(io.ComfyNode):
             info = ("The box" if count == 1 else f"All {count} boxes") + f" of '{name}' {'is' if count == 1 else 'are'} rendered"
             now = datetime.datetime.now()
             moved = bridges.keep(folder, manifest, {bridge["before"] for bridge in parsed.bridges}, now)
-            if moved or aligned:
+            moved_layers = layers.keep(folder, manifest, set(layers.ids(parsed)), now)
+            if moved or moved_layers or aligned:
                 store.write_manifest(folder, manifest)
             if moved:
                 info += f"; moved {moved} bridge{'s' if moved > 1 else ''} the Timeline no longer has to takes/"
+            if moved_layers:
+                info += f"; moved {moved_layers} video{'s' if moved_layers > 1 else ''} the Timeline no longer has to takes/"
             keys = bridges.splice(parsed, known or {})
             spliced = bridges.spliced(folder, manifest, keys) if keys else []
             joined = {**manifest, "segments": store.placed(manifest, count)}
