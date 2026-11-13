@@ -1,7 +1,7 @@
 // Videos in one clip: up to four H3 generations sharing the clip's time, and the switch plan that says which one is
 // on screen. The main video is the box itself; the others live in its `layers`. Mirrors h3_continuity/layers.py.
-import {isFresh, newId, playedFrames} from './h3c_timeline_model.mjs?v=6253b9f73744';
-export {LAYERS_FEATURE as FEATURE} from './h3c_timeline_model.mjs?v=6253b9f73744';
+import {isFresh, newId, playedFrames} from './h3c_timeline_model.mjs?v=f0fa5fc5769c';
+export {LAYERS_FEATURE as FEATURE} from './h3c_timeline_model.mjs?v=f0fa5fc5769c';
 
 export const MAX_VIDEOS = 4;
 export const MAX_FADE = 12;
@@ -116,8 +116,10 @@ export function setSound(state, index, sound) {
 }
 
 // The question for the clip after stacked clip `index` when it continues it, as layers.continue_after words it.
-export function continueAfterStack(state, index) {
-  if (!state.boxes[index]?.layers?.length || index + 1 >= state.boxes.length || isFresh(state, index + 1)) return '';
+// `adding` asks it before clip `index` gets its first other video.
+export function continueAfterStack(state, index, adding = false) {
+  if (!state.boxes[index] || (!adding && !state.boxes[index].layers?.length) || index + 1 >= state.boxes.length
+    || isFresh(state, index + 1)) return '';
   return `Clip ${index + 2} continues from clip ${index + 1}. With several videos in clip ${index + 1}, `
     + `clip ${index + 2} must start with a Cut. Change it?`;
 }

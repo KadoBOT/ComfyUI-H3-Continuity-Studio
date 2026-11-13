@@ -1,25 +1,25 @@
 // The H3 Timeline editor: a track of boxes, the selected box and the shared prompt.
 // Plain DOM without ComfyUI imports; the host object connects it to the node.
-import { MentionCard, MentionLayer } from './h3c_mentions.mjs?v=bdc7b7bfe8f9';
+import { MentionCard, MentionLayer } from './h3c_mentions.mjs?v=fbbbaa0fbc24';
 import { promptSections, promptShots, writePromptSections } from './h3c_prompt_sections.mjs?v=b58f04f78a75';
-import * as model from './h3c_timeline_model.mjs?v=6253b9f73744';
-import * as videoLayers from './h3c_layers.mjs?v=6253b9f73744';
+import * as model from './h3c_timeline_model.mjs?v=f0fa5fc5769c';
+import * as videoLayers from './h3c_layers.mjs?v=f0fa5fc5769c';
 import {audioSourceLocked} from './h3c_audio_windows.mjs?v=cdefbd77b246';
-import { AudioLanes } from './h3c_audio_lanes.mjs?v=6bbc0c5e346e';
-import { shotFrames, frameTargets, syncTargets, acceptedGuideFrames, endpointGuide, endpointReference, adoptEndpointGuides } from './h3c_shot_preview.mjs?v=6253b9f73744';
-import {FrameImages, targetLabel, imageDrop} from './h3c_frame_images.mjs?v=5d57345cba10';
-import { splitBox, splitTiming } from './h3c_shot_split.mjs?v=74898e9df71f';
+import { AudioLanes } from './h3c_audio_lanes.mjs?v=3c51c3d73282';
+import { shotFrames, frameTargets, syncTargets, acceptedGuideFrames, endpointGuide, endpointReference, adoptEndpointGuides } from './h3c_shot_preview.mjs?v=f0fa5fc5769c';
+import {FrameImages, targetLabel, imageDrop} from './h3c_frame_images.mjs?v=8a870d396b5c';
+import { splitBox, splitTiming } from './h3c_shot_split.mjs?v=da13ddacb906';
 import { fillReferenceSwitches } from './h3c_reference_switches.mjs?v=e94b5b02e02b';
-import { ReferenceReplacements } from './h3c_reference_replacements.mjs?v=3b0d4fd7edc5';
+import { ReferenceReplacements } from './h3c_reference_replacements.mjs?v=b21ce6695c43';
 import { fillPicturePicker, mentionedReferences, referenceChip } from './h3c_reference_pictures.mjs?v=8198307be3fa';
-import { CastPage } from './h3c_cast.mjs?v=010780012f93';
-import { PicturesPanel, highestSlot } from './h3c_pictures.mjs?v=23d0b47878a9';
+import { CastPage } from './h3c_cast.mjs?v=a6d72240a6c0';
+import { PicturesPanel, highestSlot } from './h3c_pictures.mjs?v=c1bccad07309';
 import { CheckPanel } from './h3c_check.mjs?v=c69786f95bd5';
-import { BridgePanel, bridgeLine } from './h3c_bridges.mjs?v=a89c4bd02dac';
-import { DialoguePanel } from './h3c_dialogue.mjs?v=0a09e77adbdd';
+import { BridgePanel, bridgeLine } from './h3c_bridges.mjs?v=7e3ad3786b14';
+import { DialoguePanel } from './h3c_dialogue.mjs?v=f64b8b86bc1f';
 import { ChainSettings } from './h3c_chain_settings.mjs?v=9f2d4061a6d6';
 import { exportedVideo } from './h3c_partial_video.mjs?v=201bf0f48645';
-import { MAX_TAKES, TakesPanel, followNote, renderLabel } from './h3c_takes.mjs?v=786f38fdb1c9';
+import { MAX_TAKES, TakesPanel, followNote, renderLabel } from './h3c_takes.mjs?v=f21be2136719';
 import { drawsSame, replaceChanged, setText, showImages } from './h3c_dom.mjs?v=584a9bf55653';
 
 const STYLE_ID = 'h3ct-style';
@@ -44,7 +44,29 @@ const CSS = `
 .h3ct-link { color: #8fbcff; white-space: nowrap; }
 .h3ct-link[hidden] { display: none; }
 .h3ct-lane { overflow-x: auto; flex-shrink: 0; background: #101218; border: 1px solid var(--border-color, #333); border-radius: 6px; }
-.h3ct-lane > .h3ct-stills, .h3ct-lane > .h3ct-ruler, .h3ct-lane > .h3ct-track, .h3ct-lane > .h3ct-audio { width: calc(100% * var(--h3ct-zoom, 1)); }
+.h3ct-lane > .h3ct-stills, .h3ct-lane > .h3ct-ruler, .h3ct-lane > .h3ct-track, .h3ct-lane > .h3ct-stack, .h3ct-lane > .h3ct-audio { width: calc(100% * var(--h3ct-zoom, 1)); }
+.h3ct-stack { position: relative; padding: 6px 0; border-top: 1px solid #262a33; }
+.h3ct-stack[hidden] { display: none; }
+.h3ct-stack-title { position: absolute; left: 6px; top: 6px; font-size: 10px; letter-spacing: .04em; text-transform: uppercase;
+  color: #aab1bd; pointer-events: none; }
+.h3ct-stack-rows { display: flex; flex-direction: column; gap: 6px; min-width: 150px; }
+.h3ct-stack-row { position: relative; border: 1px solid #465066; border-radius: 4px; background: #1a1f29; font-size: 11px; }
+.h3ct-stack-row.main { min-height: 16px; padding: 1px 6px 3px; border-style: dashed; color: #aab1bd; white-space: nowrap; overflow: hidden; }
+.h3ct-stack-row.main b { color: #e6e6e6; }
+.h3ct-stack-row.layer { height: 50px; }
+.h3ct-edge { top: 2px; width: 54px; height: 38px; }
+.h3ct-edge.first { left: 2px; } .h3ct-edge.last { right: 2px; }
+.h3ct-edge img, .h3ct-edge .h3ct-still-empty { height: 22px; }
+.h3ct-stack-heading { position: absolute; left: 62px; top: 4px; white-space: nowrap; }
+.h3ct-onscreen { position: absolute; bottom: 0; height: 4px; pointer-events: none; }
+.h3ct-shot-tick { position: absolute; bottom: 0; width: 2px; height: 10px; margin-left: -1px; background: #66bc90; pointer-events: none; }
+.h3ct-swap { position: absolute; top: 0; bottom: -6px; width: 12px; margin-left: -6px; cursor: ew-resize; touch-action: none; z-index: 2; }
+.h3ct-swap::before { content: ''; position: absolute; left: 5px; top: 0; bottom: 6px; width: 2px; background: #e6e6e6aa; }
+.h3ct-swap::after { content: ''; position: absolute; left: 1px; bottom: 0; width: 9px; height: 9px; transform: rotate(45deg);
+  background: #e6e6e6; border: 1px solid #101218; }
+.h3ct-swap-chip { position: absolute; left: 10px; top: 22px; padding: 0 4px; border: 1px solid #6b7488; border-radius: 3px;
+  background: #101218; font-size: 10px; white-space: nowrap; }
+.h3ct-stack-add { display: flex; align-items: center; gap: 8px; font-size: 11px; color: #aab1bd; white-space: nowrap; }
 .h3ct-stills { position: relative; height: 74px; }
 .h3ct-still { position: absolute; padding: 0; text-align: left; overflow: hidden; white-space: normal; }
 .h3ct-still img, .h3ct-still-empty { width: 100%; height: 42px; object-fit: contain; display: block; background: #181c25; }
@@ -377,10 +399,14 @@ export class TimelineEditor {
     });
     this.trackEl.addEventListener('pointerdown', (event) => this.drawStart(event));
     this.stillsEl = el('div', 'h3ct-stills');
+    // The selected clip's videos, one row each, when it has several.
+    this.stackEl = el('div', 'h3ct-stack');
+    this.stackEl.hidden = true;
     this.audioLanes = new AudioLanes(this);
     this.dialogue = new DialoguePanel(this);
     this.chain = new ChainSettings(this);
-    lane.append(this.stillsEl, this.rulerEl, this.trackEl, this.audioLanes.root, this.audioLanes.settings, this.dialogue.root);
+    lane.append(this.stillsEl, this.rulerEl, this.trackEl, this.stackEl, this.audioLanes.root, this.audioLanes.settings,
+      this.dialogue.root);
     this.hintEl = el('p', 'h3ct-hint');
     this.readOnlyEl = el('p', 'h3ct-hint problem');
     this.readOnlyEl.hidden = true;
@@ -1077,8 +1103,7 @@ export class TimelineEditor {
 
   // Dragging
 
-  capture(event, onMove, onEnd) {
-    const track = this.trackEl;
+  capture(event, onMove, onEnd, track = this.trackEl) {
     const id = event.pointerId;
     try {
       track.setPointerCapture(id);
@@ -1508,6 +1533,7 @@ export class TimelineEditor {
     }
     // Clips' and bridges' listeners use only their place, which their label names.
     replaceChanged(this.trackEl, [...nodes, this.playheads[1]], (node) => node.getAttribute('aria-label'));
+    this.renderStack(span);
     this.renderRuler(span);
     this.renderStills(span, stillsWidth);
     // AudioLanes guards typing by state/clip identity, including after its settings root is borrowed.
@@ -1544,6 +1570,119 @@ export class TimelineEditor {
   played(index) {
     const box = this.state.boxes[index];
     return model.playedFrames(box.frames, box.exact, model.isFresh(this.state, index));
+  }
+
+  // The selected clip's videos, one row each inside the clip's own time: the main video's on-screen bars, then each
+  // other video's First and Last tiles, heading, bars, Shot guides and the swaps into it. Hidden for one video.
+  renderStack(span) {
+    const index = this.selected, box = this.state.boxes[index];
+    const show = !!box?.layers?.length;
+    if (this.stackEl.hidden !== !show) this.stackEl.hidden = !show;
+    if (!show) {
+      if (this.stackEl.firstChild) this.stackEl.replaceChildren();
+      return;
+    }
+    const start = this.state.boxes.slice(0, index).reduce((sum, item) => sum + item.frames, 0);
+    const bars = videoLayers.onScreenBars(box, this.played(index)), status = this.statusOf(box);
+    const rows = el('div', 'h3ct-stack-rows');
+    rows.style.marginLeft = percent(start / span);
+    rows.style.width = percent(box.frames / span);
+    videoLayers.videosOf(this.state, index).forEach((video, number) => {
+      const row = el('div', `h3ct-stack-row ${video.main ? 'main' : 'layer'}`);
+      row.dataset.video = video.id;
+      row.setAttribute('aria-label', video.main ? `Clip ${index + 1}, main video` : `Clip ${index + 1}, video ${video.label}`);
+      if (video.main) row.append(el('b', null, video.label), ' First and Last: marker row ↑');
+      else {
+        const layer = box.layers[number - 1];
+        const take = status?.videos?.find((item) => item.id === video.id);
+        row.append(this.edgeTile(layer, video, 'first'), this.edgeTile(layer, video, 'last'), el('span',
+          'h3ct-stack-heading', hasTake(take) ? `${video.label} ✓ seed ${layer.seed}` : `${video.label} not rendered`));
+        for (const preview of layer.previews ?? []) {
+          if (preview.target?.kind !== 'shot' || !preview.guide || !Number.isFinite(preview.frame)) continue;
+          const tick = el('span', 'h3ct-shot-tick');
+          tick.style.left = percent(preview.frame / box.frames);
+          tick.title = `${video.label} Shot ${preview.target.shot} guide at frame ${preview.frame}`;
+          row.append(tick);
+        }
+      }
+      for (const bar of bars.filter((item) => item.id === video.id)) {
+        const on = el('span', 'h3ct-onscreen');
+        on.style.left = percent(bar.start / box.frames);
+        on.style.width = percent((bar.end - bar.start) / box.frames);
+        on.style.background = `rgb(${VIDEO_COLORS[number]})`;
+        row.append(on);
+      }
+      box.switch.cuts.forEach((cut, n) => { if (cut.to === video.id) row.append(this.swapHandle(box, cut, n)); });
+      rows.append(row);
+    });
+    const blocked = this.addVideoBlocked(index);
+    const add = button('+ Video', blocked || `Add a video to clip ${index + 1}`, () => this.addVideo(), 'h3ct-add-video');
+    add.disabled = !!blocked || this.readOnly.length > 0;
+    const foot = el('div', 'h3ct-stack-add');
+    foot.append(add, el('small', null, `copies clip ${index + 1}'s prompt and seed`));
+    rows.append(foot);
+    replaceChanged(this.stackEl, [el('div', 'h3ct-stack-title', `Clip ${index + 1} videos`), rows],
+      (node) => node.className);
+    this.stackRows = this.stackEl.lastChild;
+  }
+
+  edgeTile(layer, video, kind) {
+    const name = kind === 'first' ? 'First' : 'Last';
+    const tile = button('', `${video.label} ${name}`, () => {}, `h3ct-still h3ct-edge ${kind}`);
+    this.fillStill(tile, layer, {kind}, `${video.label} · ${name}`, this.host.connected().images);
+    return tile;
+  }
+
+  swapHandle(box, cut, number) {
+    const handle = el('div', 'h3ct-swap');
+    handle.dataset.cut = String(number);
+    handle.style.left = percent(cut.at / box.frames);
+    handle.title = 'Drag to move the swap; it snaps to beats like clip edges (Shift drags freely)';
+    handle.append(el('span', 'h3ct-swap-chip', `${cut.at} · fade ${box.switch.fade}`));
+    handle.addEventListener('pointerdown', (event) => this.swapStart(event, number));
+    return handle;
+  }
+
+  // Drags swap `cut` of the selected clip; it snaps to a beat within the reach clip edges use.
+  swapStart(event, cut) {
+    if (event.button !== 0 || this.readOnly.length) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const index = this.selected, box = this.state.boxes[index];
+    const rect = this.stackRows.getBoundingClientRect();
+    const perPixel = box.frames / (rect.width || 1);
+    const start = this.state.boxes.slice(0, index).reduce((sum, item) => sum + item.frames, 0);
+    this.capture(event, (move) => {
+      let frame = (move.clientX - rect.left) * perPixel;
+      const beat = this.audioLanes.snapping && !move.shiftKey ? this.nearestBeat(start + frame, 12 * perPixel) : null;
+      if (beat != null) frame = beat - start;
+      const before = box.switch.cuts[cut].at;
+      videoLayers.setSwap(this.state, index, cut, frame);
+      if (box.switch.cuts[cut].at !== before) this.renderTrack();
+    }, () => this.commit(), this.stackEl);
+  }
+
+  // Why clip `index` can't take another video, or ''.
+  addVideoBlocked(index) {
+    const box = this.state.boxes[index];
+    if (!box) return 'Select a clip first.';
+    if ((box.layers?.length ?? 0) >= videoLayers.MAX_VIDEOS - 1) return `A clip holds at most ${videoLayers.MAX_VIDEOS} videos.`;
+    const trial = model.parseState(model.serialize(this.state));
+    videoLayers.addVideo(trial, index);
+    return videoLayers.clampSwitch(trial, index) ? '' : 'This clip is too short for another swap with this fade.';
+  }
+
+  // Adds a video to the selected clip. A Continue clip after it must become a Cut first, so that is asked.
+  addVideo() {
+    const index = this.selected;
+    if (this.addVideoBlocked(index) || this.readOnly.length) return;
+    const question = videoLayers.continueAfterStack(this.state, index, true);
+    if (question) {
+      if (!globalThis.confirm?.(question)) return;
+      this.state.boxes[index + 1].cut = true;
+    }
+    videoLayers.addVideo(this.state, index);
+    this.commit();
   }
 
   // The Studio sets how wide the lane draws (zoom, 1 = fit the panel).

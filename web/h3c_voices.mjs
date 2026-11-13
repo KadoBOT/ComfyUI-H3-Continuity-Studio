@@ -1,7 +1,7 @@
 // Voice clips: sound files uploaded into the Timeline for a character's voice, in slots numbered after the node's
 // three wired audio inputs. The Cast page gives each to a character, the Studio lists them among the audio
 // references, and the node sends a clip whole to H3 in each box where its character speaks.
-import * as model from './h3c_timeline_model.mjs?v=6253b9f73744';
+import * as model from './h3c_timeline_model.mjs?v=f0fa5fc5769c';
 
 export const LONG_CLIP_SECONDS = 30;
 const FIRST_SLOT = 4;
