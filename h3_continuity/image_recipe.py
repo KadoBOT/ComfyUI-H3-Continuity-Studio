@@ -24,7 +24,7 @@ REFERENCE_USE = {
 QWEN_REFERENCE_USE = {
     **REFERENCE_USE,
     'identity': 'Use this for the named person identity. Reconstruct their pose, expression and lighting for the requested frame; the reference pose and background are not constraints.',
-    'location': 'Use this for the authoritative environment geometry, furniture placement and materials. Adapt its view and illumination to the requested camera and requested lighting; preserve the world layout.',
+    'location': 'Use this for the authoritative environment geometry, landmarks, furniture placement and materials. Any separate panels show the same place from different cameras. Rebuild the place from the requested camera with the requested lighting; preserve the world layout.',
     'scene anchor': 'Use this for established scene layout and visual continuity, with composition adapted to the requested camera.',
     'current action state': 'Use this for applicable action-state details; the requested pose and moment take precedence over its earlier pose and framing.',
 }
@@ -34,14 +34,16 @@ def _roles(ref):
     return {role.split(':', 1)[0].strip() for role in ref['roles']}
 
 
-def _qwen_prompt(prompt, descriptions, canvas):
-    operation = 'Create one coherent still image of the requested visible state. '
-    if canvas:
-        operation += (f'Use {canvas} as the environment canvas. Preserve its world geometry, materials and approved arrangement. '
-                      'Reconstruct that environment for a new viewpoint when the requested camera differs; '
-                      'retain its framing only when it matches the requested camera. ')
+def _scene_prompt(prompt, descriptions, environment):
+    operation = ('The target image is a new still of the requested visible state, composed for the requested camera; '
+                 'it is not an edit, restyle or copy of any reference picture. The reference pictures only supply what is assigned to them. '
+                 'No reference picture contributes its framing, crop, panel grid, gutters, borders, lettering, color grading or rendering: '
+                 'the target image is one continuous full-frame view whose lighting and colors follow the requested scene. ')
+    if environment:
+        operation += (f'The place shown in {environment} is rebuilt from the requested viewpoint, '
+                      'keeping its world geometry, landmarks, materials and arrangement. ')
     else:
-        operation += 'Compose a new scene from the referenced subjects or objects and the requested setting. '
+        operation += 'The scene is composed from the referenced subjects or objects and the requested setting. '
     operation += ('Preserve the assigned identity and designs while adapting pose, expression, wardrobe and lighting to the requested frame. '
                   'Render subjects and environment together with consistent perspective, scale, illumination direction and color, '
                   'reflected light, cast and contact shadows, depth of field and physically plausible occlusion. '
@@ -174,7 +176,7 @@ def prepare(recipe, workflow, request, references):
     ph3 = any(graph[loc['node']]['class_type'] == PH3_IMAGE_CLASS for loc in ports)
     minimax = any(graph[loc['node']]['class_type'] == MINIMAX_IMAGE_CLASS for loc in ports)
     scene = qwen or ph3 or minimax
-    canvas = None
+    environment = None
     if scene:
         owner = 'Qwen' if qwen else 'MiniMax H3 Image' if minimax else 'P-H3-Image'
         if len({loc['node'] for loc in ports}) != 1:
@@ -186,10 +188,10 @@ def prepare(recipe, workflow, request, references):
         ports = sorted(ports, key=lambda loc: int(loc['input'].rsplit('_', 1)[-1]))
         if qwen:
             label = '<image{index}>'
-        canvas = next((ref for role in ('scene_layout', 'location', 'scene anchor', 'current action state') for ref in unique if role in _roles(ref)), None)
+        environment = next((ref for role in ('scene_layout', 'location', 'scene anchor', 'current action state') for ref in unique if role in _roles(ref)), None)
         priority = {'scene_layout': 0, 'location': 1, 'identity': 2, 'additional identity': 2, 'appearance': 3, 'prop': 4,
                     'scene anchor': 5, 'current action state': 6}
-        unique.sort(key=lambda ref: (ref is not canvas, min((priority.get(role, 7) for role in _roles(ref)), default=7)))
+        unique.sort(key=lambda ref: (ref is not environment, min((priority.get(role, 7) for role in _roles(ref)), default=7)))
     if ph3 and not size:
         node = 'h3c_ph3_size'
         if node in graph:
@@ -233,10 +235,10 @@ def prepare(recipe, workflow, request, references):
     prompt=body['prompt']
     if descriptions:
         if scene:
-            named = ('the reference image' if qwen and len(unique) == 1 else canvas['label']) if canvas else None
-            prompt = _qwen_prompt(prompt, descriptions, named)
-            # P-H3-Image edits <Picture 1>; saying so keeps the scene text from being read as a bare request.
-            if ph3 or minimax:
+            named = ('the reference image' if qwen and len(unique) == 1 else environment['label']) if environment else None
+            prompt = _scene_prompt(prompt, descriptions, named)
+            # PH3ImageConditioning prepends this to any prompt that does not start with it.
+            if ph3:
                 prompt = 'Edit <Picture 1>. ' + prompt
         else:
             prompt='Reference roles:\n'+'\n'.join(descriptions)+'\nUse each reference only for its assigned role. Follow the requested camera, pose and action; preserve the approved environment across viewpoints.\n\nRequested frame:\n'+prompt
@@ -256,6 +258,6 @@ def prepare(recipe, workflow, request, references):
     provenance.update(recipe_sha256=digest,adapter='pixels',generator=recipe.get('label','Image generator'),frame=frame,
                       effective_prompt=prompt,seed=_scalar(graph,graph[bindings['seed']['node']]['inputs'][bindings['seed']['input']]),width=width,height=height,references=unique)
     if scene and unique:
-        provenance.update(prompt_policy='qwen-image-2.1-scene-v1' if qwen else 'p-h3-image-scene-v1',
-                          canvas_reference=canvas['label'] if canvas else None)
+        provenance.update(prompt_policy='qwen-image-2.1-scene-v2' if qwen else 'p-h3-image-scene-v2',
+                          environment_reference=environment['label'] if environment else None)
     return {'ok':True,'prompt_id':str(uuid.uuid4()),'prompt':graph,'outputs':['h3c_still_output'],'provenance':provenance}

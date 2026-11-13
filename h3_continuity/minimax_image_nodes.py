@@ -1,4 +1,6 @@
 """Official MiniMax H3 Image native workflow as one Timeline still generator."""
+import math
+
 import folder_paths
 from comfy_api.latest import io
 from comfy_execution.graph_utils import GraphBuilder
@@ -7,6 +9,8 @@ StillRecipeType = io.Custom('H3C_STILL_RECIPE')
 UPSTREAM = 'https://huggingface.co/Comfy-Org/MiniMax-H3-Image'
 MISSING = '(none installed)'
 MAX_REFERENCES = 8
+MAX_MEGAPIXELS = 64.0
+MAX_SIDE = 8192
 COMPONENTS = {
     'diffusion_model': ('diffusion_models', 'minimax_h3_image_pruned_', 'diffusion model'),
     'text_encoder': ('text_encoders', 'qwen3vl_32b_minimax_h3_', 'text encoder'),
@@ -26,6 +30,19 @@ def choose(component, name):
         raise ValueError(f'MiniMax H3 Image {label} {name!r} is not installed. Select an image-model file from '
                          f'{UPSTREAM} in ComfyUI/models/{folder}. The video and P-H3 image VAEs/models are different.')
     return name
+
+
+def size_at(width, height, megapixels):
+    """Keep width:height and scale the area to megapixels, rounding each side to a multiple of 32."""
+    if not 0 < megapixels <= MAX_MEGAPIXELS:
+        raise ValueError(f'MiniMax H3 Image megapixels must be between 0 and {MAX_MEGAPIXELS:g}; got {megapixels}.')
+    if width <= 0 or height <= 0:
+        raise ValueError(f'MiniMax H3 Image needs a positive width and height for its aspect ratio; got {width} x {height}.')
+    sides = [max(256, round(math.sqrt(megapixels * 1e6 * ratio) / 32) * 32) for ratio in (width / height, height / width)]
+    if max(sides) > MAX_SIDE:
+        raise ValueError(f'MiniMax H3 Image at {megapixels:g} MP and {width}:{height} needs a side above {MAX_SIDE}; '
+                         'lower megapixels or use a less extreme aspect ratio.')
+    return tuple(sides)
 
 
 def recipe():
@@ -49,20 +66,26 @@ class H3C_MiniMaxH3ImageStill(io.ComfyNode):
                 io.Int.Input('height', default=2048, min=256, max=8192, step=32),
                 io.Autogrow.Input('images', optional=True, template=io.Autogrow.TemplateNames(
                     io.Image.Input('image'), names=[f'image_{i}' for i in range(1, MAX_REFERENCES + 1)], min=0),
-                    tooltip='image_1 is the edit base; later images supply references. The Studio fills these slots.'),
+                    tooltip='Reference pictures, named <Picture 1>, <Picture 2>, ... in the prompt. The Studio fills these slots.'),
                 io.Custom('LORA_STACK').Input('lora_stack', optional=True,
                     tooltip='Optional LoRA stack (for example Easy Use): filename, model strength and CLIP strength. '
                             'Applied in order to direct images and Studio stills. Use LoRAs compatible with MiniMax H3 Image.'),
+                io.Float.Input('megapixels', default=0.0, min=0.0, max=MAX_MEGAPIXELS, step=0.1, optional=True,
+                    tooltip='0 uses width and height exactly. Above 0, width and height only set the aspect ratio and the image '
+                            'is generated at this many megapixels (1 MP = 1,000,000 pixels), each side a multiple of 32.'),
             ], outputs=[io.Image.Output('image'), StillRecipeType.Output('still_recipe')])
 
     @classmethod
-    def execute(cls, diffusion_model, text_encoder, vae, prompt, instruction, seed, width, height, images=None, lora_stack=None):
+    def execute(cls, diffusion_model, text_encoder, vae, prompt, instruction, seed, width, height, images=None, lora_stack=None,
+                megapixels=0.0):
         import nodes
         if 'MiniMaxH3ImageConditioning' not in nodes.NODE_CLASS_MAPPINGS:
             raise ValueError('Update ComfyUI to a version with MiniMaxH3ImageConditioning (native MiniMax H3 Image '
                              'support added 2026-11-10), then restart ComfyUI.')
         files = {component: choose(component, name) for component, name in
                  [('diffusion_model', diffusion_model), ('text_encoder', text_encoder), ('vae', vae)]}
+        if megapixels:
+            width, height = size_at(width, height, megapixels)
         for label, value in [('width', width), ('height', height)]:
             if not 256 <= value <= 8192 or value % 32:
                 raise ValueError(f'MiniMax H3 Image {label} must be a multiple of 32 between 256 and 8192; got {value}.')

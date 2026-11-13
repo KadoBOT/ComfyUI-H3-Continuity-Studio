@@ -20,7 +20,7 @@ The panel offers:
 | **Generate candidates** | Asks the connected still generator for images (see below). Candidates stay candidates until you accept one. |
 | **Generator settings** | Selects and centres the connected generator's node group in the graph so you can edit models, steps or sampler. |
 | **Edit image prompt** | The still prompt, which explicitly describes a single opening frame (First, Shot) or the ending frame (Last). **Rebuild prompt** recomposes it from the scene text, instruction and extra details. |
-| **Continuity source & seed** | Which video take or earlier accepted guide the new image should follow, and the **Image seed**. |
+| **Image seed** | Leave it empty to give every candidate a new random seed. Enter a number to repeat one exact seed; each candidate records the seed it used. |
 | **Still instructions** | The reusable instruction used for stills. |
 | **Candidates (N)** | Each candidate keeps its prompt, exact seed and source. **Use as guide** assigns it; click a thumbnail for a large preview (**Esc** closes). |
 | **Remove guide** | Removes the assignment. The image stays in your candidates. |

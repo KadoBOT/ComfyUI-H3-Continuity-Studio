@@ -42,6 +42,24 @@ test('a blank still prompt generates with the video prompt', async () => {
   assert.equal((await frames.generate()).request.prompt,'An explicit still.');
 });
 
+test('an empty image seed draws a new random seed for every candidate request', async () => {
+  const {frames, editor} = panel();
+  frames.promptEl.value='A still.';
+  frames.refreshControls=()=>{};
+  frames.host.generateStill=async request=>({state:'complete', request});
+  editor.state.boxes[0].seed=610001;
+  for (const scope of ['native', 'box']) {
+    frames.seedScope=scope;frames.seedEl.value='';
+    const seeds=[];
+    for (let i=0;i<4;i++) seeds.push((await frames.generate()).request.seed);
+    for (const seed of seeds) assert.ok(Number.isSafeInteger(seed) && seed >= 0 && seed < 2 ** 32, `seed ${seed}`);
+    assert.ok(new Set(seeds).size > 1, `${scope} seeds repeat: ${seeds}`);
+    assert.ok(!seeds.includes(610001));
+  }
+  frames.seedEl.value='42';
+  assert.equal((await frames.generate()).request.seed, 42);
+});
+
 test('a newer saved-sources load cancels the one it replaces before the host asks the server', async () => {
   const {frames, asked} = panel();
   const first = frames.loadSources(), second = frames.loadSources();
