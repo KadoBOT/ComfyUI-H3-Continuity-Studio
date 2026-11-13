@@ -29,6 +29,19 @@ function panel() {
 
 const pin = (take) => ({sequence: 's', box: 'a', take, created: '2026-11-01T10:00:00', layout: 'h3', latent_stamp: [1, 2], moment: 0});
 
+test('a blank still prompt generates with the video prompt', async () => {
+  const {frames, editor} = panel();
+  frames.promptEl.value='   ';
+  frames.refreshControls=()=>{};
+  frames.host.generateStill=async request=>({state:'complete', request});
+  frames.renderGenerateControls();
+  assert.equal(frames.generateButton.disabled,false);
+  const receipt=await frames.generate();
+  assert.equal(receipt.request.prompt,model.assemblePrompt(editor.state,0));
+  frames.promptEl.value='An explicit still.';
+  assert.equal((await frames.generate()).request.prompt,'An explicit still.');
+});
+
 test('a newer saved-sources load cancels the one it replaces before the host asks the server', async () => {
   const {frames, asked} = panel();
   const first = frames.loadSources(), second = frames.loadSources();

@@ -1,6 +1,6 @@
 // Marker images own editable still prompts, candidates and the acceptance transaction. Queue recovery belongs to the host.
 import {frameTargets, buildStillPrompt, applyFrameGuide, endpointGuide, endpointReference} from './h3c_shot_preview.mjs?v=9af9091f6757';
-import {parseState, serialize} from './h3c_timeline_model.mjs?v=9af9091f6757';
+import {parseState, serialize, assemblePrompt} from './h3c_timeline_model.mjs?v=9af9091f6757';
 import {StillPromptPreparation,preparedStillPrompt,setPreparedStillPrompt} from './h3c_still_prompt_preparation.mjs?v=2e7e25c47bea';
 
 import {seedValue, stringifyJSON} from './h3c_project.mjs?v=0882b8a6265a';
@@ -208,7 +208,6 @@ export class FrameImages {
   saveField(field,value) {
     this.live();const {box,frame}=this.location();
     if(field==='still_prompt'&&typeof value==='string') {
-      if(!value.trim()) {this.promptEditing=true;this.autoPrompt=undefined;this.note('Enter a still prompt before generating. The last saved prompt was kept.');this.render();return;}
       this.promptEditing=false;
     }
     this.host.undoStep?.();
@@ -349,8 +348,11 @@ export class FrameImages {
       card.append(details);this.candidatesEl.append(card);
     }
   }
+  candidatePrompt() {
+    return this.promptEl.value.trim()?this.promptEl.value:assemblePrompt(this.editor.state,this.location().index);
+  }
   renderGenerateControls() {
-    const empty=!this.promptEl.value.trim();
+    const empty=!this.candidatePrompt().trim();
     this.generateButton.disabled=!!this.generating||empty||typeof this.host.generateStill!=='function'||this.recipeAvailable===false;
     this.generateButton.textContent=this.generating?'Generating candidates…':'Generate candidates';
     this.generateButton.title=this.generating?'Preparing or submitting still candidates.':empty?'Enter a still prompt to generate candidates.':
@@ -465,7 +467,6 @@ export class FrameImages {
   }
   async generate() {
     if(this.generating) return;
-    if(this.promptEl&&!this.promptEl.value.trim()) {this.note('Enter a still prompt before generating candidates.');throw new Error('Enter a still prompt before generating candidates.');}
     const boxId=this.boxId,target=structuredClone(this.target);
     this.generating=true;this.render();this.note('Preparing still candidate generation…');
     try {
@@ -483,7 +484,7 @@ export class FrameImages {
       const {box,frame}=this.location(boxId,target),chosen=box.previews?.find(item=>key(itemTarget(item))===key(target));
       const seed=this.seedEl.value===''?undefined:seedValue(this.seedEl.value);
       if(this.seedEl.value!=='' && seed===undefined) throw new Error('Image seed must be an unsigned 64-bit integer.');
-      const prompt=this.editedPrompt();if(!prompt.trim())throw new Error('Enter a still prompt before generating candidates.');
+      this.editedPrompt();const prompt=this.candidatePrompt();if(!prompt.trim())throw new Error('Enter a still prompt before generating candidates.');
       const request={box:boxId,target,frame,prompt,seed:seed??(this.seedScope==='box'?box.seed:undefined),source:structuredClone(chosen?.still_source??null)};
       this.note('Submitting still candidates…');
       const receipt=await this.host.generateStill(request);
