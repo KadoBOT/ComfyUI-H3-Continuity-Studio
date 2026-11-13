@@ -88,6 +88,7 @@ nav:
       - First and last frames: build/frame-guides.md
       - Stills with P-H3-Image: build/p-h3-image-stills.md
       - Stills with MiniMax H3 Image: build/minimax-h3-image-stills.md
+      - Videos in one clip: build/video-layers.md
       - Exact lengths and long edits: build/exact-lengths.md
       - Long clips with context windows: build/long-clips.md
   - Continuity:

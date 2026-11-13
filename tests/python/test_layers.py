@@ -5,8 +5,11 @@ import json
 import unittest
 
 from h3_continuity import layers, timeline as rules
+from h3_continuity.timeline_api import contracts
+from h3_continuity.timeline_api.contracts import APIError
 
 from .helpers import box, document
+from .test_api_replacement import planner, project
 
 FEATURE = ["video-layers-1"]
 
@@ -287,6 +290,36 @@ class LayerViewTest(unittest.TestCase):
             with self.assertRaises(ValueError) as caught:
                 three(**extra)
             self.assertIn(message, str(caught.exception))
+
+
+class ApiTest(unittest.TestCase):
+    def shot_02(self, **extra):
+        return document([box("a1", 48, "The street."), stacked(**extra)], requires=FEATURE)
+
+    def test_schema_accepts_shot_02(self):
+        value = self.shot_02()
+        self.assertEqual(contracts.validate("timeline", value), value)
+
+    def test_schema_refuses_render_layer(self):
+        with self.assertRaises(APIError):
+            contracts.validate("timeline", {**self.shot_02(), "render_layer": "b2v1"})
+
+    def test_schema_refuses_a_fifth_video(self):
+        videos = [layer(f"b2v{number}") for number in range(1, 5)]
+        value = self.shot_02(videos=videos, cuts=[{"at": at, "to": video["id"]} for at, video in zip((18, 36, 54, 72),
+                                                                                                  videos)])
+        with self.assertRaises(APIError):
+            contracts.validate("timeline", value)
+        unknown = self.shot_02()
+        unknown["boxes"][1]["layers"][0]["frames"] = 90
+        with self.assertRaises(APIError, msg="a video has no length of its own"):
+            contracts.validate("timeline", unknown)
+
+    def test_managed_jobs_refuse_layers(self):
+        with self.assertRaises(ValueError) as caught:
+            planner(None)._units(project(self.shot_02()))
+        self.assertEqual(str(caught.exception), "H3 Timeline API: this Timeline has clips with several videos, which "
+                                                "managed jobs can't render yet. Render it from the Studio.")
 
 
 if __name__ == "__main__":

@@ -166,12 +166,14 @@ show complete data-only compiler inputs.
 
 H3 owns these box keys: `id`, `frames`, `seconds`, `exact`, `prompt`, `seed`,
 `cut`, `new_scene`, `first`, `last`, `memory`, `memories`, `previews`,
-`plate_changes`, `plate_edits`, `cast`, `schedule`, `join` and `source`.
+`plate_changes`, `plate_edits`, `cast`, `schedule`, `join`, `source`, and
+`layers` and `switch` for a clip with several videos (see
+[Videos in one clip](TIMELINE-VIDEO-LAYERS.md)).
 Prepare keeps any other key on a box as it is, so keep your own metadata, such
 as where a cut comes from in your edit, under another key, for example `edit`.
 `source` holds what H3's Story wrote for a box, so Prepare refuses one the Story
 didn't write, at `timeline.boxes.N.source`. At the top level, H3 also owns
-`bridges` and `render_bridge`; see [Bridges](#bridges).
+`bridges` and `render_bridge`; see [Bridges](#bridges), and `render_layer`.
 
 With `cut: true`, `memory: "scene"`, `"cast"` or `"selected"` also supplies the
 full preceding video's original latent as a reference. The target starts fresh,

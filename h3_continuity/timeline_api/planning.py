@@ -125,6 +125,9 @@ class Planner:
     def _units(self, project, scoped=True):
         prepared = project["prepared"]
         parsed = rules.parse(canonical(prepared["timeline"]).decode("utf-8"))
+        if parsed.layers:
+            raise APIError("unsupported_timeline", "H3 Timeline API: this Timeline has clips with several videos, which "
+                           "managed jobs can't render yet. Render it from the Studio.", status=422, path="/timeline")
         context = int(prepared["settings"]["context_frames"])
         asset_identity = sorted({item["sha256"] for item in prepared.get("assets", [])
                                  if any(binding['kind'] != 'candidate' for binding in item['bindings'])})

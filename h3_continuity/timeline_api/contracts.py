@@ -141,12 +141,20 @@ def _schemas():
                       ("request_id", "prompt_id", "box", "target", "state", "provenance"), extra=True)
     change = _object({"slot": IMAGE, "frame": FRAME, "revision": TEXT}, ("slot", "frame", "revision"), extra=True)
     moment = _object({"box": ID, "frame": FRAME, "label": TEXT}, ("box", "frame"), extra=True)
+    endpoint = {"anyOf": [IMAGE, {"const": ""}]}
+    # A clip's other videos: up to three more H3 generations of its time. Native parsing checks the swaps.
+    layer = _object({"id": ID, "seed": SEED, "prompt": TEXT, "first": endpoint, "last": endpoint,
+                     "previews": _array(preview), "memory": {"enum": ["off", "scene", "selected", "cast"]},
+                     "memories": _array(moment, maxItems=3), "dialogue": {"enum": ["cues", "manual"]}}, ("id",))
+    switch = _object({"cuts": _array(_object({"at": FRAME, "to": ID}, ("at", "to")), minItems=1),
+                      "fade": {"type": "integer", "minimum": 0, "maximum": 12}, "sound": ID,
+                      "align": {"type": "object"}}, ("cuts", "fade", "sound"))
     box = _object({"id": ID, "frames": POSITIVE, "seconds": POSITIVE, "seed": SEED, "prompt": TEXT,
                    "cut": BOOL, "new_scene": BOOL, "exact": BOOL, "first": {"anyOf": [IMAGE, {"const": ""}]},
                    "last": {"anyOf": [IMAGE, {"const": ""}]}, "previews": _array(preview),
                    "plate_changes": _array(change), "memory": {"enum": ["off", "scene", "selected", "cast"]},
                    "memories": _array(moment, maxItems=3), "schedule": {}, "source": {}, "cast": {"type": "object"},
-                   "dialogue": {"enum": ["cues", "manual"]}},
+                   "dialogue": {"enum": ["cues", "manual"]}, "layers": _array(layer, maxItems=3), "switch": switch},
                   extra=True)
     box["anyOf"] = [{"required": ["frames"]}, {"required": ["seconds"]}]
     insertion = _object({"before": ID, "mode": {"const": "insert"}, "frames": {"type": "integer", "enum": [12, 29, 46]},
@@ -190,7 +198,7 @@ def _schemas():
                     "video_slices": _array({"type": "string", "pattern": "^video[1-9][0-9]*$"}, uniqueItems=True)},
                    ("boxes",), extra=True)
     line["not"] = {"anyOf": [{"required": ["render_box"]}, {"required": ["render_bridge"]},
-                              {"required": ["rebuild_continuity"]}]}
+                              {"required": ["render_layer"]}, {"required": ["rebuild_continuity"]}]}
     binding = {"oneOf": [
         _object({"kind": {"const": "reference_replacement"}, "slot": SLOT}, ("kind", "slot")),
         _object({"kind": {"const": "picture"}, "slot": IMAGE,
