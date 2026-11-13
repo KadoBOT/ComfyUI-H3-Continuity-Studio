@@ -1,5 +1,13 @@
-"""Official MiniMax H3 Image native workflow as one Timeline still generator."""
+"""Official MiniMax H3 Image native workflow as one Timeline still generator.
+
+minimax_pe/ holds the prompt-enhancer instructions of Comfy-Org/workflow_templates (MIT) commit c8e48bd,
+image_minimax_h3_image_edit.json and image_minimax_h3_image_t2i.json, unchanged.
+"""
+import json
 import math
+import re
+from functools import cache
+from pathlib import Path
 
 import folder_paths
 from comfy_api.latest import io
@@ -11,11 +19,29 @@ MISSING = '(none installed)'
 MAX_REFERENCES = 8
 MAX_MEGAPIXELS = 64.0
 MAX_SIDE = 8192
+REFERENCE_MEGAPIXELS = 4.0
 COMPONENTS = {
     'diffusion_model': ('diffusion_models', 'minimax_h3_image_pruned_', 'diffusion model'),
     'text_encoder': ('text_encoders', 'qwen3vl_32b_minimax_h3_', 'text encoder'),
     'vae': ('vae', 'minimax_h3_image_vae_', 'VAE'),
 }
+ENHANCER_PREFIX = 'qwen3.5_'
+OFFICIAL_ENHANCER = 'qwen3.5_9b_w4a8_gptq.safetensors'
+
+
+def _base(name):
+    return name.replace('\\', '/').rsplit('/', 1)[-1].lower()
+
+
+def enhancers():
+    """Installed prompt-enhancer models, the one the official templates name first."""
+    names = [name for name in folder_paths.get_filename_list('text_encoders') if _base(name).startswith(ENHANCER_PREFIX)]
+    return sorted(names, key=lambda name: _base(name) != OFFICIAL_ENHANCER)
+
+
+@cache
+def enhancer_text(name):
+    return (Path(__file__).with_name('minimax_pe') / name).read_text(encoding='utf-8')
 
 
 def installed(component):
@@ -72,12 +98,19 @@ class H3C_MiniMaxH3ImageStill(io.ComfyNode):
                             'Applied in order to direct images and Studio stills. Use LoRAs compatible with MiniMax H3 Image.'),
                 io.Float.Input('megapixels', default=0.0, min=0.0, max=MAX_MEGAPIXELS, step=0.1, optional=True,
                     tooltip='0 uses width and height exactly. Above 0, width and height only set the aspect ratio and the image '
-                            'is generated at this many megapixels (1 MP = 1,000,000 pixels), each side a multiple of 32.'),
+                            'is generated at this many megapixels (1 MP = 1,000,000 pixels), each side a multiple of 32. '
+                            'Reference images are separately resized to 4 MP as in the official edit workflow.'),
+                io.Combo.Input('prompt_enhancer', options=['off', 'auto', *enhancers()], default='off', optional=True,
+                    tooltip='off (default) sends the prompt exactly as written. The official templates can instead rewrite it '
+                            'with a Qwen3.5 model and Generate Text before MiniMax H3 Image sees it. auto does this for '
+                            f'reference edits, like the official edit template, using {OFFICIAL_ENHANCER} or another installed '
+                            'Qwen3.5 text model (none installed: prompt used as written). A model name also rewrites text-only '
+                            'prompts.'),
             ], outputs=[io.Image.Output('image'), StillRecipeType.Output('still_recipe')])
 
     @classmethod
     def execute(cls, diffusion_model, text_encoder, vae, prompt, instruction, seed, width, height, images=None, lora_stack=None,
-                megapixels=0.0):
+                megapixels=0.0, prompt_enhancer='off'):
         import nodes
         if 'MiniMaxH3ImageConditioning' not in nodes.NODE_CLASS_MAPPINGS:
             raise ValueError('Update ComfyUI to a version with MiniMaxH3ImageConditioning (native MiniMax H3 Image '
@@ -96,6 +129,18 @@ class H3C_MiniMaxH3ImageStill(io.ComfyNode):
         if len(references) > MAX_REFERENCES:
             raise ValueError(f'MiniMax H3 Image Still supports at most {MAX_REFERENCES} references.')
         text = prompt.strip() + ('\n\n' + instruction.strip() if instruction.strip() else '')
+        if prompt_enhancer in (None, 'off'):
+            enhancer = None
+        elif prompt_enhancer == 'auto':
+            enhancer = next(iter(enhancers()), None) if references else None
+        elif prompt_enhancer in enhancers():
+            enhancer = prompt_enhancer
+        else:
+            raise ValueError(f'MiniMax H3 Image prompt enhancer {prompt_enhancer!r} is not installed. Put {OFFICIAL_ENHANCER} '
+                             f'from {UPSTREAM} in ComfyUI/models/text_encoders, or choose auto or off.')
+        if enhancer and 'TextGenerateV2' not in nodes.NODE_CLASS_MAPPINGS:
+            raise ValueError('The MiniMax H3 Image prompt enhancer needs ComfyUI\'s Generate Text node (TextGenerateV2). '
+                             'Update ComfyUI, or set prompt_enhancer to off.')
         g = GraphBuilder()
         model = g.node('UNETLoader', unet_name=files['diffusion_model'], weight_dtype='default')
         clip = g.node('CLIPLoader', clip_name=files['text_encoder'], type='minimax', device='default')
@@ -107,6 +152,27 @@ class H3C_MiniMaxH3ImageStill(io.ComfyNode):
                           strength_model=strength_model, strength_clip=strength_clip)
             model_link, clip_link = lora.out(0), lora.out(1)
         vae_node = g.node('VAELoader', vae_name=files['vae'])
+        for key, value in references.items():
+            # Match the official edit workflow before its native vision/VAE reference scaling.
+            resized = g.node('ResizeImageMaskNode', input=value, resize_type='scale total pixels',
+                             **{'resize_type.megapixels': REFERENCE_MEGAPIXELS}, scale_method='area')
+            aligned = g.node('ResizeImageMaskNode', input=resized.out(0), resize_type='scale to multiple',
+                             **{'resize_type.multiple': 32}, scale_method='area')
+            references[key] = aligned.out(0)
+        if enhancer:
+            if references:
+                ratio = math.gcd(width, height)
+                request = (f'User Editing Instruction: {json.dumps(text, ensure_ascii=False)}\n'
+                           f'User Aspect Ratio Selection: {width // ratio}:{height // ratio}')
+            task = enhancer_text('edit_task.txt' if references else 't2i_task.txt').replace('{input text}', request if references else text)
+            reader = g.node('CLIPLoader', clip_name=enhancer, type='minimax', device='default')
+            sampling = {'temperature': 1.0, 'top_k': 20, 'top_p': 0.95, 'min_p': 0.0, 'repetition_penalty': 1.0,
+                        'presence_penalty': 0.0, 'seed': seed}
+            generated = g.node('TextGenerateV2', clip=reader.out(0), prompt=task, system_prompt=enhancer_text('system.txt'),
+                               max_length=8196, sampling_mode='on', thinking=True, use_default_template=True, mtp='auto',
+                               **{'sampling_mode.' + key: value for key, value in sampling.items()},
+                               **{f'images.image{i}': value for i, value in enumerate(references.values(), 1)})
+            text = g.node('H3C_MiniMaxPromptCaption', text=generated.out(0)).out(0)
         cond = g.node('MiniMaxH3ImageConditioning', clip=clip_link, vae=vae_node.out(0), prompt=text,
                       width=width, height=height, **{'images.' + key: value for key, value in references.items()})
         negative = g.node('ConditioningZeroOut', conditioning=cond.out(0))
@@ -114,3 +180,27 @@ class H3C_MiniMaxH3ImageStill(io.ComfyNode):
                          scheduler='simple', positive=cond.out(0), negative=negative.out(0), latent_image=cond.out(1), denoise=1.0)
         decoded = g.node('VAEDecode', samples=sampled.out(0), vae=vae_node.out(0))
         return io.NodeOutput(decoded.out(0), recipe(), expand=g.finalize())
+
+
+class H3C_MiniMaxPromptCaption(io.ComfyNode):
+    @classmethod
+    def define_schema(cls):
+        return io.Schema(
+            node_id='H3C_MiniMaxPromptCaption', display_name='MiniMax H3 Prompt Caption', category='H3 Continuity',
+            description='The expanded_caption written by the MiniMax H3 Image prompt enhancer. Fails instead of '
+                        'passing on an empty or unreadable caption.',
+            inputs=[io.String.Input('text', multiline=True, force_input=True)], outputs=[io.String.Output('caption')])
+
+    @classmethod
+    def execute(cls, text):
+        decoder = json.JSONDecoder()
+        for start in re.finditer(r'\{', text):
+            try:
+                data, _ = decoder.raw_decode(text, start.start())
+            except json.JSONDecodeError:
+                continue
+            caption = data.get('expanded_caption') if isinstance(data, dict) else None
+            if isinstance(caption, str) and caption.strip():
+                return io.NodeOutput(caption.strip())
+        raise ValueError('The MiniMax H3 Image prompt enhancer returned no expanded_caption, so no image was generated. '
+                         f'Its reply began: {text.strip()[:300]!r}. Run again, or set prompt_enhancer to off.')

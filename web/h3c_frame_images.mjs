@@ -1,6 +1,6 @@
 // Marker images own editable still prompts, candidates and the acceptance transaction. Queue recovery belongs to the host.
 import {frameTargets, buildStillPrompt, applyFrameGuide, endpointGuide, endpointReference} from './h3c_shot_preview.mjs?v=3e1fe9285010';
-import {parseState, serialize, assemblePrompt, newSeed} from './h3c_timeline_model.mjs?v=3e1fe9285010';
+import {parseState, serialize, newSeed} from './h3c_timeline_model.mjs?v=3e1fe9285010';
 import {StillPromptPreparation,preparedStillPrompt,setPreparedStillPrompt} from './h3c_still_prompt_preparation.mjs?v=2e7e25c47bea';
 
 import {seedValue, stringifyJSON} from './h3c_project.mjs?v=0882b8a6265a';
@@ -121,8 +121,8 @@ export class FrameImages {
     instructionDetails.append(el('summary','Still instructions'),field('Reusable still instruction',this.instructionEl),field('Extra still details',this.extraEl));
     this.candidateTitle=el('strong');
     this.candidateHint=el('p','Candidates stay separate until you choose Use as guide.','h3ct-hint');
-    this.root.append(this.titleEl,this.acceptedEl,this.guideSourceEl,this.boundaryHintEl,this.endingEl,actions,this.additionalReferencesEl,this.noteEl,this.promptExcerpt,promptDetails,this.preparation.components,
-      this.candidateTitle,this.candidatesEl,this.candidateHint,sourceDetails,instructionDetails,this.recoveryEl);
+    this.root.append(this.titleEl,this.acceptedEl,this.guideSourceEl,this.boundaryHintEl,this.endingEl,actions,this.additionalReferencesEl,this.noteEl,this.promptExcerpt,
+      this.candidateTitle,this.candidatesEl,this.candidateHint,sourceDetails,this.recoveryEl);
   }
   note(text) {
     this.noteEl.textContent=text;
@@ -277,7 +277,7 @@ export class FrameImages {
     this.uploadButton.disabled=typeof this.host.importGuide!=='function';
     const additionalReferences=this.additionalReferences??[];
     this.additionalReferencesEl.hidden=!additionalReferences.length;
-    this.additionalReferencesEl.textContent=additionalReferences.length?`Additional identity references included: ${additionalReferences.join(', ')}. Use an alias in the still prompt to match it to a subject, e.g. “Use ${additionalReferences[0]} for the person's identity.” These names stay separate from Story references.`:'';
+    this.additionalReferencesEl.textContent=additionalReferences.length?`Additional identity references included: ${additionalReferences.join(', ')}. Use an alias in the clip prompt to match it to a subject, e.g. “Use ${additionalReferences[0]} for the person's identity.” These names stay separate from Story references.`:'';
     const saved=box.previews?.find(item=>key(itemTarget(item))===key(this.target));
     const prepared=preparedStillPrompt(this.editor.state,this.boxId,this.target);
     if(prepared&&!this.promptEditing) {this.promptEl.value=saved?.still_prompt??prepared.prompt;this.autoPrompt=undefined;}
@@ -287,7 +287,7 @@ export class FrameImages {
     this.preparedHintEl.hidden=!prepared||saved?.still_prompt==null;
     this.preparedHintEl.textContent='Earlier saved prompt active. Use prepared prompt to use the new batch result; the earlier text stays saved for Undo.';
     this.preparation.render(this.boxId,this.target);
-    this.promptExcerpt.textContent=this.promptEl.value||this.promptEl.placeholder;
+    this.promptExcerpt.textContent=this.candidatePrompt();
     this.guideSourceEl.hidden=true;
     this.guideSourceEl.textContent=this.previousGuide?`Continuity: ${guideLabel(this.editor.state,this.previousGuide)} accepted guide. The requested scene controls the new image.`:'';
     const index=this.editor.state.boxes.indexOf(box),next=this.editor.state.boxes[index+1];
@@ -324,7 +324,7 @@ export class FrameImages {
       const anchor=sceneAnchor(this.editor.state,this.editor.state.boxes.findIndex(b=>b.id===this.boxId));
       const used=(candidate.references??[]).find(ref=>ref.roles?.includes('scene anchor'));
       if(used&&(used.sha256!==anchor?.sha256||used.revision!==anchor?.revision))changed.push('scene anchor');
-      if ((candidate.prompt??'')!==this.promptEl.value) changed.push('prompt');
+      if ((candidate.prompt??'')!==this.candidatePrompt()) changed.push('prompt');
       if (String(candidate.seed??'')!==this.seedEl.value) changed.push('seed');
       const details=el('details',null,'h3ct-image-details h3ct-hint'),source=candidate.source;
       details.append(el('summary','Render details'),el('p',`Seed: ${candidate.seed??'Native default'} · Batch index ${candidate.batch_index??'unknown'}`),
@@ -342,13 +342,13 @@ export class FrameImages {
     }
   }
   candidatePrompt() {
-    return this.promptEl.value.trim()?this.promptEl.value:assemblePrompt(this.editor.state,this.location().index);
+    return this.location().box.prompt;
   }
   renderGenerateControls() {
     const empty=!this.candidatePrompt().trim();
     this.generateButton.disabled=!!this.generating||empty||typeof this.host.generateStill!=='function'||this.recipeAvailable===false;
     this.generateButton.textContent=this.generating?'Generating candidates…':'Generate candidates';
-    this.generateButton.title=this.generating?'Preparing or submitting still candidates.':empty?'Enter a still prompt to generate candidates.':
+    this.generateButton.title=this.generating?'Preparing or submitting still candidates.':empty?'Write a prompt for this clip to generate candidates.':
       this.generateButton.disabled?'Configure a local still recipe to generate images.':'';
   }
   renderRecovery() {
@@ -477,7 +477,7 @@ export class FrameImages {
       const {box,frame}=this.location(boxId,target),chosen=box.previews?.find(item=>key(itemTarget(item))===key(target));
       const seed=this.seedEl.value===''?undefined:seedValue(this.seedEl.value);
       if(this.seedEl.value!=='' && seed===undefined) throw new Error('Image seed must be an unsigned 64-bit integer.');
-      this.editedPrompt();const prompt=this.candidatePrompt();if(!prompt.trim())throw new Error('Enter a still prompt before generating candidates.');
+      const prompt=this.candidatePrompt();if(!prompt.trim())throw new Error('Write a prompt for this clip before generating candidates.');
       const request={box:boxId,target,frame,prompt,seed:seed??newSeed(),source:null};
       this.note('Submitting still candidates…');
       const receipt=await this.host.generateStill(request);

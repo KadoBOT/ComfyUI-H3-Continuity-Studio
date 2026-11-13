@@ -1,4 +1,5 @@
 import asyncio
+import json
 import unittest
 from unittest import mock
 
@@ -7,7 +8,7 @@ import torch
 from tests.continuity_support import enable_comfy_cpu
 enable_comfy_cpu()
 
-from h3_continuity import minimax_image_nodes as image, image_recipe, story_context
+from h3_continuity import minimax_image_nodes as image, image_recipe, story_context, stills
 from tests.python.test_ph3_image_recipe import recipe, reference
 
 FILES = {'diffusion_models': ['minimax_h3_image_pruned_w4a8.safetensors', 'p-h3-image_int8_convrot.safetensors'],
@@ -22,6 +23,136 @@ class MiniMaxImageTest(unittest.TestCase):
         self.files = mock.patch('folder_paths.get_filename_list', lambda folder: FILES.get(folder, []))
         self.files.start()
         self.addCleanup(self.files.stop)
+
+    def test_clip_candidate_model_text_is_only_the_clip_even_with_reference_metadata_and_node_instruction(self):
+        clip = 'integrated_multimodal_description:\n[Shot 1] An empty field. Nobody.\n\noverall_soundscape:\nWind.\n\nnon_diegetic_music:\nN/A'
+        saved = {'api': {'5': {'class_type': 'H3C_MiniMaxH3ImageStill', 'inputs': {**ARGS, 'instruction': 'Add a person.'}}}}
+        ref = {**reference('image20', ['location: Field'], 'a' * 64), 'description': 'Shared hidden style with STRAY in an orange jacket.'}
+        with mock.patch.dict('nodes.NODE_CLASS_MAPPINGS', {'H3C_MiniMaxH3ImageStill': image.H3C_MiniMaxH3ImageStill}):
+            result = image_recipe.prepare(recipe(), saved, {'box': 'b1', 'prompt': clip}, [ref])
+        native = result['prompt']['5']['inputs']
+        self.assertEqual(native['prompt'], clip)
+        self.assertEqual(native['instruction'], '')
+        self.assertEqual(native['images.image_1'], ['h3c_still_source_0', 0])
+        self.assertEqual(result['provenance']['effective_prompt'], clip)
+        self.assertEqual(result['provenance']['prompt_policy'], 'clip-verbatim-v1')
+        self.assertEqual(result['provenance']['prompt_enhancer'], 'off')
+
+    def test_reference_stills_run_the_official_edit_prompt_enhancer_before_conditioning(self):
+        files = {**FILES, 'text_encoders': [*FILES['text_encoders'], 'qwen3.5_9b_int8_convrot.safetensors']}
+        pixels = torch.zeros(1, 8, 8, 3)
+        with mock.patch('folder_paths.get_filename_list', lambda folder: files.get(folder, [])), \
+             mock.patch.dict('nodes.NODE_CLASS_MAPPINGS', {'MiniMaxH3ImageConditioning': object, 'TextGenerateV2': object}):
+            result = image.H3C_MiniMaxH3ImageStill.execute(**{**ARGS, 'prompt': 'An empty "field".', 'width': 1152, 'height': 640},
+                                                           megapixels=16, images={'image_1': pixels}, prompt_enhancer='auto')
+        graph = result.expand
+        by_class = {node['class_type']: (key, node['inputs']) for key, node in graph.items()}
+        loader = next(key for key, node in graph.items()
+                      if node['class_type'] == 'CLIPLoader' and node['inputs']['clip_name'].startswith('qwen3.5_'))
+        _, generate = by_class['TextGenerateV2']
+        caption_id, caption = by_class['H3C_MiniMaxPromptCaption']
+        _, cond = by_class['MiniMaxH3ImageConditioning']
+        task = image.enhancer_text('edit_task.txt').replace(
+            '{input text}', 'User Editing Instruction: "An empty \\"field\\"."\nUser Aspect Ratio Selection: 56:31')
+        self.assertEqual(generate['prompt'], task)
+        self.assertEqual(generate['system_prompt'], image.enhancer_text('system.txt'))
+        self.assertEqual(generate['clip'], [loader, 0])
+        self.assertEqual(graph[loader]['inputs'], {'clip_name': 'qwen3.5_9b_int8_convrot.safetensors', 'type': 'minimax', 'device': 'default'})
+        self.assertEqual(generate['images.image1'], cond['images.image_1'])
+        self.assertEqual({key: generate[key] for key in ('max_length', 'sampling_mode', 'sampling_mode.temperature', 'sampling_mode.top_k',
+                          'sampling_mode.top_p', 'sampling_mode.min_p', 'sampling_mode.repetition_penalty',
+                          'sampling_mode.presence_penalty', 'sampling_mode.seed', 'thinking', 'use_default_template')},
+                         {'max_length': 8196, 'sampling_mode': 'on', 'sampling_mode.temperature': 1.0, 'sampling_mode.top_k': 20,
+                          'sampling_mode.top_p': 0.95, 'sampling_mode.min_p': 0.0, 'sampling_mode.repetition_penalty': 1.0,
+                          'sampling_mode.presence_penalty': 0.0, 'sampling_mode.seed': 42, 'thinking': True,
+                          'use_default_template': True})
+        self.assertEqual(caption['text'], [by_class['TextGenerateV2'][0], 0])
+        self.assertEqual(cond['prompt'], [caption_id, 0])
+        self.assertEqual((cond['width'], cond['height']), (5376, 2976))
+
+    def test_enhancer_is_off_by_default_and_auto_prefers_the_official_model(self):
+        files = {**FILES, 'text_encoders': ['qwen3.5_9b_int8_convrot.safetensors', 'qwen3.5_9b_w4a8_gptq.safetensors', *FILES['text_encoders']]}
+        pixels = torch.zeros(1, 8, 8, 3)
+        with mock.patch('folder_paths.get_filename_list', lambda folder: files.get(folder, [])), \
+             mock.patch.dict('nodes.NODE_CLASS_MAPPINGS', {'MiniMaxH3ImageConditioning': object, 'TextGenerateV2': object}):
+            options = next(item for item in image.H3C_MiniMaxH3ImageStill.define_schema().inputs if item.id == 'prompt_enhancer')
+            self.assertEqual(options.options, ['off', 'auto', 'qwen3.5_9b_w4a8_gptq.safetensors', 'qwen3.5_9b_int8_convrot.safetensors'])
+            self.assertEqual(options.default, 'off')
+            self.assertTrue(options.optional)
+            def run(**kwargs):
+                return {node['class_type']: node['inputs'] for node in image.H3C_MiniMaxH3ImageStill.execute(**ARGS, **kwargs).expand.values()}
+            for setting in ({}, {'prompt_enhancer': None}, {'prompt_enhancer': 'off'}):
+                with self.subTest(setting=setting):
+                    plain = run(images={'image_1': pixels}, **setting)
+                    self.assertNotIn('TextGenerateV2', plain)
+                    self.assertEqual(plain['MiniMaxH3ImageConditioning']['prompt'], ARGS['prompt'])
+            graph = image.H3C_MiniMaxH3ImageStill.execute(**ARGS, images={'image_1': pixels}, prompt_enhancer='auto').expand
+            loaders = [n['inputs']['clip_name'] for n in graph.values() if n['class_type'] == 'CLIPLoader']
+            self.assertEqual(loaders, [FILES['text_encoders'][0], 'qwen3.5_9b_w4a8_gptq.safetensors'])
+            self.assertNotIn('TextGenerateV2', run(prompt_enhancer='auto'))
+            text_only = run(prompt_enhancer='qwen3.5_9b_int8_convrot.safetensors')
+            self.assertEqual(text_only['TextGenerateV2']['prompt'], image.enhancer_text('t2i_task.txt').replace('{input text}', ARGS['prompt']))
+            self.assertNotIn('images.image1', text_only['TextGenerateV2'])
+            with self.assertRaisesRegex(ValueError, 'prompt enhancer'):
+                run(prompt_enhancer='qwen3.5_missing.safetensors')
+        with mock.patch('folder_paths.get_filename_list', lambda folder: files.get(folder, [])), \
+             mock.patch.dict('nodes.NODE_CLASS_MAPPINGS', {'MiniMaxH3ImageConditioning': object}, clear=True):
+            with self.assertRaisesRegex(ValueError, 'TextGenerateV2'):
+                image.H3C_MiniMaxH3ImageStill.execute(**ARGS, images={'image_1': pixels}, prompt_enhancer='auto')
+
+    def test_enhancer_caption_is_required(self):
+        caption = image.H3C_MiniMaxPromptCaption.execute
+        self.assertEqual(caption('{"expanded_caption":"An empty field.","target_aspect_ratio":"16:9"}').result[0], 'An empty field.')
+        self.assertEqual(caption('Done.\n```json\n{"expanded_caption": " A \\"quiet\\" field. "}\n```').result[0], 'A "quiet" field.')
+        for text in ('', 'An empty field.', '{"expanded_caption": ""}', '{"aspect_ratio": "16:9"}', '{"expanded_caption": "unterminated'):
+            with self.subTest(text=text), self.assertRaisesRegex(ValueError, 'expanded_caption'):
+                caption(text)
+        from h3_continuity.extension import H3ContinuityExtension
+        self.assertIn(image.H3C_MiniMaxPromptCaption, asyncio.run(H3ContinuityExtension().get_node_list()))
+
+    def test_a_location_sheet_reaches_clip_stills_as_separate_views_before_cast_pictures(self):
+        import tempfile
+        from pathlib import Path
+        from PIL import Image
+        from tests.python.test_reference_panels import picture
+        saved = {'api': {'5': {'class_type': 'H3C_MiniMaxH3ImageStill', 'inputs': {**ARGS}}}}
+        refs = [reference('image17', ['identity: STRAY'], 'b' * 64), reference('image20', ['location: Overpass'], 'a' * 64)]
+        with tempfile.TemporaryDirectory() as folder:
+            sheet = Path(folder) / 'sheet.png'
+            Image.fromarray(picture(3000, 1600, [(1490, 1512, 0, 1600)], [(790, 810, 0, 3000)])).save(sheet)
+            paths = {'image20.png': sheet, 'image17.png': Path(folder) / 'missing.png'}
+            def prepare(request, references, limit=8):
+                with mock.patch('h3_continuity.reference_replacements.file_path', lambda file, target: paths[file['filename']]), \
+                     mock.patch.dict('nodes.NODE_CLASS_MAPPINGS', {'H3C_MiniMaxH3ImageStill': image.H3C_MiniMaxH3ImageStill}):
+                    return image_recipe.prepare({**recipe(), 'reference_limit': limit}, saved, request, references)
+            result = prepare({'box': 'b1', 'prompt': '@image17 crosses @image20. Nobody else.'}, refs)
+            native, graph = result['prompt']['5']['inputs'], result['prompt']
+            views = [native[f'images.image_{i}'] for i in range(1, 5)]
+            self.assertEqual([graph[view[0]]['class_type'] for view in views], ['ImageCrop'] * 4)
+            self.assertTrue(all(graph[view[0]]['inputs']['image'] == ['h3c_still_source_0', 0] for view in views))
+            self.assertEqual(native['images.image_5'], ['h3c_still_source_1', 0])
+            location, cast = result['provenance']['references']
+            self.assertEqual(location['label'], '<Picture 1>, <Picture 2>, <Picture 3>, <Picture 4>')
+            self.assertEqual([view['label'] for view in location['views']], ['<Picture 1>', '<Picture 2>', '<Picture 3>', '<Picture 4>'])
+            self.assertEqual(location['port'], {'node': '5', 'input': 'images.image_1'})
+            self.assertEqual(cast['label'], '<Picture 5>')
+            self.assertNotIn('views', cast)
+            self.assertEqual(native['prompt'], '<Picture 5> crosses <Picture 1>, <Picture 2>, <Picture 3> and <Picture 4>. Nobody else.')
+            crowded = prepare({'box': 'b1', 'prompt': 'A crossing.'}, refs, limit=3)['prompt']['5']['inputs']
+            self.assertEqual([crowded[f'images.image_{i}'][0] for i in range(1, 4)], ['h3c_still_view_0_0', 'h3c_still_view_0_1', 'h3c_still_source_1'])
+            whole = prepare({'box': 'b1', 'asset_key': 'entity:e5', 'prompt': 'A sheet.'}, refs[1:])['prompt']['5']['inputs']
+            self.assertEqual(whole['images.image_1'], ['h3c_still_source_0', 0])
+
+    def test_server_uses_the_selected_clip_even_when_a_stale_client_submits_other_text(self):
+        clip = 'An empty field. Nobody.'
+        saved = {'api': {'5': {'class_type': 'H3C_MiniMaxH3ImageStill', 'inputs': {**ARGS}}}}
+        body = dict(name='clip-verbatim-test', box='b1', target={'kind':'first'},
+                    timeline=json.dumps({'prompt':'STRAY has an orange jacket.', 'boxes':[{'id':'b1','frames':22,'prompt':clip}]}),
+                    prompt='A stale prepared person.', workflow=saved, recipe=recipe())
+        with mock.patch.dict('nodes.NODE_CLASS_MAPPINGS', {'H3C_MiniMaxH3ImageStill': image.H3C_MiniMaxH3ImageStill}):
+            result = stills.prepare(body)
+        self.assertTrue(result.get('ok'), result)
+        self.assertEqual(result['prompt']['5']['inputs']['prompt'], clip)
 
     def test_schema_filters_image_weights_and_keeps_shared_video_encoder(self):
         schema = {item.id: item.options for item in image.H3C_MiniMaxH3ImageStill.define_schema().inputs if hasattr(item, 'options')}
@@ -41,9 +172,35 @@ class MiniMaxImageTest(unittest.TestCase):
         cond = by_class['MiniMaxH3ImageConditioning']
         self.assertEqual(cond['prompt'], 'A kitchen at dawn.\n\nFilm still.')
         self.assertEqual([key for key in cond if key.startswith('images.')], ['images.image_1', 'images.image_2'])
-        self.assertIs(cond['images.image_1'], a)
+        reference_nodes = [n['inputs'] for n in graph.values() if n['class_type']=='ResizeImageMaskNode']
+        self.assertEqual(len(reference_nodes),4)
+        self.assertIs(reference_nodes[0]['input'], a)
         self.assertIn('vae', cond)
         self.assertEqual(result.result[1]['label'], 'MiniMax H3 Image')
+
+    def test_reference_images_follow_official_four_mp_resize_while_output_stays_native_twenty_mp(self):
+        pixels = torch.zeros(1,8,8,3)
+        with mock.patch.dict('nodes.NODE_CLASS_MAPPINGS', {'MiniMaxH3ImageConditioning': object}):
+            result = image.H3C_MiniMaxH3ImageStill.execute(**{**ARGS,'width':1152,'height':640},
+                megapixels=20, images={'image_1':pixels})
+        graph = result.expand
+        cond = next(n['inputs'] for n in graph.values() if n['class_type']=='MiniMaxH3ImageConditioning')
+        self.assertEqual((cond['width'],cond['height']),(6016,3328))
+        scaled = [(key,n['inputs']) for key,n in graph.items() if n['class_type']=='ResizeImageMaskNode']
+        self.assertEqual(len(scaled),2)
+        self.assertIs(scaled[0][1]['input'],pixels)
+        self.assertEqual((scaled[0][1]['resize_type'],scaled[0][1]['resize_type.megapixels'],scaled[0][1]['scale_method']),('scale total pixels',4.0,'area'))
+        self.assertEqual(scaled[1][1]['input'],[scaled[0][0],0])
+        self.assertEqual((scaled[1][1]['resize_type'],scaled[1][1]['resize_type.multiple']),('scale to multiple',32))
+        self.assertEqual(cond['images.image_1'],[scaled[1][0],0])
+        self.assertFalse(any(n['class_type']=='ImageScale' for n in graph.values()))
+
+    def test_large_text_only_requests_keep_native_resolution(self):
+        with mock.patch.dict('nodes.NODE_CLASS_MAPPINGS', {'MiniMaxH3ImageConditioning': object}):
+            result = image.H3C_MiniMaxH3ImageStill.execute(**{**ARGS,'width':1152,'height':640},megapixels=20)
+        cond = next(n['inputs'] for n in result.expand.values() if n['class_type']=='MiniMaxH3ImageConditioning')
+        self.assertEqual((cond['width'],cond['height']),(6016,3328))
+        self.assertFalse(any(n['class_type']=='ImageScale' for n in result.expand.values()))
 
     def test_megapixels_keep_the_width_height_ratio_and_set_the_area(self):
         pixels = torch.zeros(1, 8, 8, 3)

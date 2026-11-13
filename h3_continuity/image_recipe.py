@@ -102,6 +102,7 @@ def prepare(recipe, workflow, request, references):
     if isinstance(body.get('prompt'),str):
         body['prompt']=re.sub(r'<image([1-9]\d*)>',lambda m:'@image'+m[1],body['prompt'],flags=re.I)
     recipe=body['recipe']; bindings=recipe['bindings']; graph=copy.deepcopy(body['workflow']['api'])
+    clip_request = bool(body.get('box')) and not body.get('asset_key')
     output=recipe['output']
     if not _link(output) or output[0] not in graph:
         raise ValueError('Still recipe IMAGE output is missing')
@@ -208,6 +209,18 @@ def prepare(recipe, workflow, request, references):
     tags={}; descriptions=[]
     width=graph[bindings['size']['width'][-1]['node']]['inputs'][bindings['size']['width'][-1]['input']]
     height=graph[bindings['size']['height'][-1]['node']]['inputs'][bindings['size']['height'][-1]['input']]
+    # MiniMax H3 Image edits <Picture 1> and keeps its canvas, so a multi-view location sheet there becomes a grid.
+    sheet = []
+    if minimax and clip_request and environment and environment.get('file') and 'pin' not in environment \
+            and _roles(environment) & {'location', 'scene_layout'}:
+        from . import reference_panels, reference_replacements
+        try:
+            path = reference_replacements.file_path(environment['file'], 'image')
+        except ValueError:
+            path = None
+        if path:
+            sheet = reference_panels.panels(path)[:limit - len(unique) + 1]
+    port = 0
     for at,ref in enumerate(unique):
         if 'output' in ref:
             image=ref['output']
@@ -222,9 +235,22 @@ def prepare(recipe, workflow, request, references):
             if at==0 and not (ph3 or minimax): inputs.update(width=copy.deepcopy(width),height=copy.deepcopy(height))
             graph[node]={'class_type':'H3C_StillImageSource','inputs':inputs}
             image=[node,0]
-        bind(ports[at],image,True)
-        ref['port']=copy.deepcopy(ports[at]); ref['label']=label.replace('{index}',str(at+1))
-        text_label = 'the reference image' if qwen and len(unique) == 1 else ref['label']
+        views=sheet if ref is environment and len(sheet)>1 else [None]
+        labels=[]
+        for view,box in enumerate(views):
+            link=image
+            if box:
+                crop=f'h3c_still_view_{at}_{view}'
+                if crop in graph: raise ValueError('Still recipe collides with invocation reference view')
+                graph[crop]={'class_type':'ImageCrop','inputs':{'image':image,'x':box[0],'y':box[1],'width':box[2],'height':box[3]}}
+                link=[crop,0]
+            bind(ports[port],link,True)
+            if not labels: ref['port']=copy.deepcopy(ports[port])
+            labels.append(label.replace('{index}',str(port+1))); port+=1
+        ref['label']=', '.join(labels)
+        if len(views)>1:
+            ref['views']=[dict(label=text,x=box[0],y=box[1],width=box[2],height=box[3]) for text,box in zip(labels,views)]
+        text_label = 'the reference image' if qwen and len(unique) == 1 else ' and '.join(filter(None,[', '.join(labels[:-1]),labels[-1]]))
         tags.update({slot:text_label for slot in ref['slots']})
         roles=['visual reference' if re.fullmatch(r'image[1-9]\d*',role) else role for role in ref['roles']]
         reference_use = QWEN_REFERENCE_USE if scene else REFERENCE_USE
@@ -233,7 +259,7 @@ def prepare(recipe, workflow, request, references):
         context = '. '.join(str(ref[key]) for key in ('title', 'description') if ref.get(key))
         descriptions.append(text_label+': '+', '.join(roles)+('. '+' '.join(usage) if usage else '')+('. '+context if context else ''))
     prompt=body['prompt']
-    if descriptions:
+    if descriptions and not clip_request:
         if scene:
             named = ('the reference image' if qwen and len(unique) == 1 else environment['label']) if environment else None
             prompt = _scene_prompt(prompt, descriptions, named)
@@ -245,6 +271,8 @@ def prepare(recipe, workflow, request, references):
     # Translate the authored prose and reference context together, without visiting inserted native tokens.
     prompt=re.sub(r'@(image[1-9]\d*|still[1-9]\d*)\b|(?<![\w@<>])(image[1-9]\d*)(?![\w>])',
                   lambda m:tags.get((m[1] or m[2]).lower(),m[0]),prompt,flags=re.I)
+    if clip_request and bindings.get('instruction'):
+        bind(bindings['instruction'], '')
     bind(bindings['prompt'],prompt)
     if bindings.get('negative') and 'negative' in body: bind(bindings['negative'],body['negative'])
     graph=_ancestry(graph,output)
@@ -257,7 +285,15 @@ def prepare(recipe, workflow, request, references):
     provenance['prompt']=original_prompt
     provenance.update(recipe_sha256=digest,adapter='pixels',generator=recipe.get('label','Image generator'),frame=frame,
                       effective_prompt=prompt,seed=_scalar(graph,graph[bindings['seed']['node']]['inputs'][bindings['seed']['input']]),width=width,height=height,references=unique)
-    if scene and unique:
+    if clip_request:
+        provenance['prompt_policy'] = 'clip-verbatim-v1'
+    elif scene and unique:
         provenance.update(prompt_policy='qwen-image-2.1-scene-v2' if qwen else 'p-h3-image-scene-v2',
                           environment_reference=environment['label'] if environment else None)
+    generator = graph[bindings['prompt']['node']]
+    if generator['class_type'] == MINIMAX_IMAGE_CLASS:
+        provenance['prompt_enhancer'] = _scalar(graph, generator['inputs'].get('prompt_enhancer', 'off'))
+    if minimax and unique:
+        from .minimax_image_nodes import REFERENCE_MEGAPIXELS
+        provenance['reference_resize_megapixels'] = REFERENCE_MEGAPIXELS
     return {'ok':True,'prompt_id':str(uuid.uuid4()),'prompt':graph,'outputs':['h3c_still_output'],'provenance':provenance}
