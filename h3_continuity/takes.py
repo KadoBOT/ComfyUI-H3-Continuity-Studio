@@ -10,7 +10,7 @@ import sys
 
 from safetensors import SafetensorError, safe_open
 
-from . import bridges, replacement, store, timeline_node
+from . import bridges, layers, replacement, store, timeline_node
 from . import nodes as continuity
 from .timing import tokens_for_frames
 
@@ -80,10 +80,13 @@ def saved_takes(folder):
 
 
 def _target(entry):
-    """("box", id) or ("bridge", id): what saved `entry` was rendered for; (None, None) when it doesn't say."""
+    """("box", id), ("bridge", id) or ("layer", id): what saved `entry` was rendered for; (None, None) when it doesn't
+    say."""
     record = (entry or {}).get("timeline") or {}
     if "bridge" in record:
         return "bridge", record["bridge"]
+    if "layer" in record:
+        return "layer", record["layer"]
     if "index" in (entry or {}) and "box" in record:
         return "box", record["box"]
     return None, None
@@ -147,6 +150,8 @@ class _Sequence:
         kind, box_id = _target(take["entry"])
         if kind is None:
             return "its files are missing"
+        if kind == "layer":
+            return layer_fit(self, box_id, take)
         index = next((number for number, item in enumerate(self.parsed.boxes) if item.id == box_id), None)
         if index is None:
             return "its box isn't in the Timeline"
@@ -233,6 +238,26 @@ def bridge_fit(sequence, bridge, take):
         return f"render {' and '.join(f'box {number}' for number in waiting)} first"
     return bridges.reason(sequence.folder, entry, bridges.key(variant, chosen, sequence.bridge_known),
                           sequence.entries[index], sequence.entries[index + 1], files=directory)
+
+
+def layer_fit(sequence, layer_id, take):
+    """Why `take` can't be video `layer_id` as the Timeline is now, from the first rule it fails, or ""."""
+    entry, directory = take["entry"], os.path.join(sequence.folder, take["folder"])
+    if not _files(directory, entry):
+        return "its files are missing"
+    seed = _seed(take)
+    if seed is None:
+        return "seed not recorded"
+    clip_id = (entry.get("timeline") or {}).get("box")
+    index = next((number for number, item in enumerate(sequence.parsed.boxes) if item.id == clip_id), None)
+    if index is None:
+        return "its clip isn't in the Timeline"
+    found = layers.layer_of(sequence.parsed, layer_id)
+    if found is None or found[0] != index:
+        return "its video isn't in the clip"
+    why = layers.reason(directory, sequence.parsed, index, {**found[1], "seed": seed}, entry, sequence.known,
+                        sequence.context)
+    return why[:1].lower() + why[1:].removesuffix(".")
 
 
 def warnings(sequence, index):

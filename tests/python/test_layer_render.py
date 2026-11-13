@@ -185,5 +185,129 @@ class LayerRenderTest(unittest.TestCase):
         self.assertTrue(all("videos" not in item for item in status["boxes"]))
 
 
+class LayerBookkeepingTest(unittest.TestCase):
+    def setUp(self):
+        from h3_continuity import timeline as rules
+        self.root = tempfile.mkdtemp(prefix="h3c-layer-books-")
+        self.folder = os.path.join(self.root, "seq")
+        os.makedirs(self.folder)
+        self.parsed = rules.parse(json.dumps(line()))
+        self.manifest = dict(version=1, name="seq", segments=[], takes=[])
+        for index, (box_id, frames) in enumerate((("a", 107), ("b", 90)), 1):
+            entry = dict(index=index, stem=store.stem(index), frames=frames, context_frames=0, latent_width=64,
+                         latent_height=64, created=f"2026-11-13T10:0{index}:00", timeline={"box": box_id})
+            write(self.folder, entry)
+            self.manifest["segments"].append(entry)
+        store.write_manifest(self.folder, self.manifest)
+
+    def tearDown(self):
+        shutil.rmtree(self.root)
+
+    def layer_entry(self, layer_id="b2", seed=7):
+        item = next(item for item in self.parsed.layers["b"] if item["id"] == layer_id)
+        stem = layers.stem(layer_id)
+        entry = dict(layer=layer_id, box="b", stem=stem, frames=90, context_frames=0, latent_width=64,
+                     latent_height=64, created="2026-11-13T11:00:00",
+                     video={"file": stem + ".mp4", "frames": 90, "fps": 24},
+                     timeline={"layer": layer_id, "box": "b", "seed": seed,
+                               "layout": layers.layer_key(self.parsed, 1, {**item, "seed": seed}, 39),
+                               "settings": layers.settings(self.parsed, 1, item, KNOWN, 39)})
+        write(self.folder, entry)
+        with open(os.path.join(self.folder, entry["video"]["file"]), "wb") as handle:
+            handle.write(b"video")
+        return entry
+
+    def archived(self, entry):
+        import datetime
+        self.manifest.setdefault("layers", []).append(entry)
+        layers.archive(self.folder, self.manifest, entry, datetime.datetime(2026, 11, 13, 12))
+        store.write_manifest(self.folder, self.manifest)
+
+    def sequence(self):
+        from h3_continuity import nodes, takes
+        with mock.patch.object(nodes, "sequences_root", return_value=self.root):
+            return takes._Sequence({"name": "seq", "timeline": json.dumps(line()), "settings": KNOWN})
+
+    def test_layer_take_is_usable(self):
+        from h3_continuity import takes
+        self.archived(self.layer_entry(seed=99))
+        sequence = self.sequence()
+        [take] = sequence.takes_of("layer", "b2")
+        self.assertEqual(takes._target(take["entry"]), ("layer", "b2"))
+        self.assertEqual(sequence.why(take), "")
+        self.assertEqual(takes.layer_fit(sequence, "b2", take), "")
+
+    def test_layer_take_names_what_changed(self):
+        from h3_continuity import takes
+        entry = self.layer_entry()
+        entry["timeline"]["layout"] = "old"
+        write(self.folder, entry)
+        self.archived(entry)
+        sequence = self.sequence()
+        [take] = sequence.takes_of("layer", "b2")
+        self.assertEqual(sequence.why(take), "its prompt or settings changed since it was rendered")
+        take["entry"] = {**take["entry"], "timeline": {**take["entry"]["timeline"], "layer": "zz"}}
+        self.assertEqual(sequence.why(take), "its video isn't in the clip")
+        take["entry"]["timeline"] = {**take["entry"]["timeline"], "box": "gone"}
+        self.assertEqual(sequence.why(take), "its clip isn't in the Timeline")
+
+    def test_delete_unusable_keeps_layer_takes(self):
+        from h3_continuity import nodes, takes
+        self.archived(self.layer_entry())
+        with mock.patch.object(nodes, "sequences_root", return_value=self.root), \
+                mock.patch("h3_continuity.timeline_api.service.authorize_sequence", return_value=None):
+            found = takes.delete({"name": "seq", "timeline": json.dumps(line()), "settings": KNOWN,
+                                  "scope": "unusable"})
+        self.assertEqual((found["ok"], found["count"]), (True, 0))
+
+    def fingerprint(self, manifest):
+        from h3_continuity import regeneration
+        seen = []
+        dumps = json.dumps
+
+        def capture(value, **kwargs):
+            seen.append(value)
+            return dumps(value, **kwargs)
+
+        with mock.patch.object(regeneration.json, "dumps", side_effect=capture):
+            digest = regeneration._fingerprint(self.folder, self.parsed, KNOWN, manifest, 0)
+        return digest, seen[-1]
+
+    def test_fingerprint_without_layers_is_unchanged(self):
+        import dataclasses
+        from h3_continuity import timeline as rules
+        plain = rules.parse(json.dumps(document([box("a", 107), box("b", 90, cut=True)])))
+        self.parsed = plain
+        _, value = self.fingerprint(store.load_manifest(self.folder))
+        fields = {field.name for field in dataclasses.fields(rules.Timeline)} - {"layers", "switches", "render_layer"}
+        self.assertEqual(set(value[1]), fields)
+        self.assertEqual(set(value[3]), {"segments", "bridges", "replacements"})
+
+    def test_fingerprint_follows_layer_files(self):
+        entry = self.layer_entry()
+        manifest = {**store.load_manifest(self.folder), "layers": [entry]}
+        before, value = self.fingerprint(manifest)
+        self.assertIn("layers", value[1])
+        self.assertEqual(value[3]["layers"], [entry])
+        with open(os.path.join(self.folder, entry["video"]["file"]), "wb") as handle:
+            handle.write(b"a longer video")
+        self.assertNotEqual(self.fingerprint(manifest)[0], before)
+
+    def test_export_preflight_sees_layer_files(self):
+        from h3_continuity import generations
+        entry = self.layer_entry()
+        manifest = {**store.load_manifest(self.folder), "layers": [entry]}
+        store.write_manifest(self.folder, manifest)
+        archive = {"format": generations.FORMAT, "version": 1, "story": {}, "assets": [], "timeline": json.dumps(line()),
+                   "takes": {"sequence": "seq", "manifest": manifest, "files": []}}
+        with mock.patch.object(generations, "_root", return_value=os.path.realpath(self.root)):
+            with self.assertRaisesRegex(ValueError, "missing required sidecar: seg_0001.safetensors"):
+                generations.preflight_generation(archive)
+            manifest["segments"] = []
+            store.write_manifest(self.folder, manifest)
+            with self.assertRaisesRegex(ValueError, "missing required sidecar: layer@b2.safetensors"):
+                generations.preflight_generation(archive)
+
+
 if __name__ == "__main__":
     unittest.main()
