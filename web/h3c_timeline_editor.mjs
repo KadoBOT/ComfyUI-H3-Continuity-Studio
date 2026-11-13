@@ -3,6 +3,7 @@
 import { MentionCard, MentionLayer } from './h3c_mentions.mjs?v=bdc7b7bfe8f9';
 import { promptSections, promptShots, writePromptSections } from './h3c_prompt_sections.mjs?v=b58f04f78a75';
 import * as model from './h3c_timeline_model.mjs?v=6253b9f73744';
+import * as videoLayers from './h3c_layers.mjs?v=6253b9f73744';
 import {audioSourceLocked} from './h3c_audio_windows.mjs?v=cdefbd77b246';
 import { AudioLanes } from './h3c_audio_lanes.mjs?v=6bbc0c5e346e';
 import { shotFrames, frameTargets, syncTargets, acceptedGuideFrames, endpointGuide, endpointReference, adoptEndpointGuides } from './h3c_shot_preview.mjs?v=6253b9f73744';
@@ -107,6 +108,12 @@ const CSS = `
 .h3ct-boxlabel { position: relative; display: block; padding: 3px 10px 0 6px; overflow: hidden; font-size: 11px;
   white-space: nowrap; text-overflow: ellipsis; text-shadow: 0 1px 2px #000; pointer-events: none; }
 .h3ct-handle { position: absolute; top: 0; right: 0; bottom: 0; width: 8px; cursor: ew-resize; background: rgba(255,255,255,.1); }
+.h3ct-stack-badge { display: inline-block; margin-left: 5px; padding: 0 4px; border: 1px solid #8fbcff; border-radius: 3px;
+  background: #0009; font-size: 10px; line-height: 13px; }
+.h3ct-stripes { position: absolute; left: 0; right: 0; bottom: 1px; z-index: 1; pointer-events: none; }
+.h3ct-stripe { position: relative; height: 5px; margin-top: 1px; }
+.h3ct-stripe > .on { position: absolute; top: 0; bottom: 0; }
+.h3ct-still-caption small.under { color: #f0b45a; }
 .h3ct-handle:hover { background: rgba(255,255,255,.3); }
 .h3ct-bridge-mark { position: absolute; top: calc(50% - 7px); z-index: 3; width: 14px; height: 14px; margin-left: -7px; padding: 0;
   transform: rotate(45deg); cursor: pointer; background: #7aa2f7; border: 1px solid #c9d6f5; border-radius: 2px; }
@@ -277,6 +284,13 @@ function group(label, ...controls) {
 function hasTake(status) {
   return status?.status === 'done' || status?.status === 'outdated';
 }
+
+// The other videos of `box` without a take, by the status item of its clip (all of them before a status).
+function videosToRender(box, status) {
+  return (box.layers ?? []).filter((layer) => !hasTake(status?.videos?.find((video) => video.id === layer.id)));
+}
+
+const VIDEO_COLORS = ['143,188,255', '240,180,90', '199,146,234', '127,209,199'];
 
 function percent(fraction) {
   return `${(fraction * 100).toFixed(3)}%`;
@@ -745,27 +759,34 @@ export class TimelineEditor {
     return PANEL_HEIGHT;
   }
 
-  // The runs Render all queues: every box that isn't done, then every bridge that isn't done and has no problem, and
-  // a candidate for every replacement whose confirmed region has none yet.
+  // The runs Render all queues: every box that isn't done and every other video of a clip without a take, then every
+  // bridge that isn't done and has no problem, and a candidate for every replacement whose confirmed region has none
+  // yet.
   remaining() {
     const count = this.state.boxes.length;
     const bridges = model.keptBridges(this.state);
     const indexOf = (bridge) => this.state.boxes.findIndex((box) => box.id === bridge.before);
     if (this.stale || !this.status?.ok) {
-      return count + bridges.filter((bridge) => (!model.isReplacement(bridge) || bridge.review)
+      return count + videoLayers.layerIds(this.state).length + bridges.filter((bridge) => (!model.isReplacement(bridge) || bridge.review)
         && !model.bridgeProblem(this.state, indexOf(bridge))).length;
     }
     const queued = (bridge) => {
       const status = this.bridgeStatusOf(bridge.before)?.status;
       return model.isReplacement(bridge) ? ['pending', 'next'].includes(status) : !['done', 'problem'].includes(status);
     };
-    return this.state.boxes.filter((box) => !hasTake(this.statusOf(box))).length + bridges.filter(queued).length;
+    const videos = this.state.boxes.reduce((sum, box) => sum + videosToRender(box, this.statusOf(box)).length, 0);
+    return this.state.boxes.filter((box) => !hasTake(this.statusOf(box))).length + videos + bridges.filter(queued).length;
   }
 
+  // The clip the next run renders: the other videos of the clips before the next box without a take come first.
   nextBox() {
     if (!this.state.boxes.length) return null;
     if (this.stale || !this.status?.ok) return 1;
-    const index = this.state.boxes.findIndex((box) => !hasTake(this.statusOf(box)));
+    const boxes = this.state.boxes;
+    const index = boxes.findIndex((box) => !hasTake(this.statusOf(box)));
+    const layer = boxes.slice(0, index < 0 ? boxes.length : index)
+      .findIndex((box) => videosToRender(box, this.statusOf(box)).length);
+    if (layer >= 0) return layer + 1;
     return index < 0 ? null : index + 1;
   }
 
@@ -1303,7 +1324,9 @@ export class TimelineEditor {
     const remaining = this.remaining();
     const bridges = model.keptBridges(this.state);
     const what = bridges.length ? 'clip or bridge' : 'clip';
-    let summary = `${count} ${count === 1 ? 'clip' : 'clips'} · ${model.seconds(model.totalFrames(this.state))} s`;
+    const onScreen = model.seconds(model.totalFrames(this.state));
+    let summary = `${count} ${count === 1 ? 'clip' : 'clips'} · ` + (videoLayers.hasLayers(this.state)
+      ? `on screen ${onScreen} s · renders ${model.seconds(videoLayers.renderFrames(this.state))} s` : `${onScreen} s`);
     const replaced = bridges.filter(model.isReplacement).length, inserted = bridges.length - replaced;
     if (inserted) {
       summary += ` · ${inserted} ${inserted === 1 ? 'bridge' : 'bridges'}, +${model.seconds(model.insertedFrames(this.state))} s`;
@@ -1412,8 +1435,10 @@ export class TimelineEditor {
         item.append(image);
       }
       const mark = { done: ' ✓', next: ' ●', outdated: ' ⟳' }[status?.status] ?? '';
-      item.append(el('span', 'h3ct-boxlabel',
-        `${index > 0 && box.cut ? '✂ ' : ''}#${index + 1} · ${model.seconds(box.frames)} s${mark}`));
+      const label = el('span', 'h3ct-boxlabel',
+        `${index > 0 && box.cut ? '✂ ' : ''}#${index + 1} · ${model.seconds(box.frames)} s${mark}`);
+      item.append(label);
+      if (box.layers?.length) this.drawStack(item, label, index);
       item.title = [`Clip ${index + 1}: ${model.lengthLabel(this.state, index, context)}`, info.mode,
         status?.status === 'outdated' ? `Outdated take, still playing: ${status.reason ?? 'the box changed since it was rendered'} Regenerate it to update it.` : status?.reason,
         box.prompt.trim().slice(0, 160), ...info.problems].filter(Boolean).join('\n');
@@ -1491,6 +1516,34 @@ export class TimelineEditor {
     this.placePlayhead(span);
     this.dialogue.render();
     this.chain.render();
+  }
+
+  // A clip with several videos: a badge with their count and one stripe per video, lit where it is on screen.
+  drawStack(item, label, index) {
+    const box = this.state.boxes[index], videos = videoLayers.videosOf(this.state, index);
+    const badge = el('span', 'h3ct-stack-badge', `▤ ${videos.length}`);
+    badge.title = `Clip ${index + 1} holds ${videos.length} videos`;
+    label.append(badge);
+    const bars = videoLayers.onScreenBars(box, this.played(index));
+    const stripes = el('div', 'h3ct-stripes');
+    videos.forEach((video, number) => {
+      const stripe = el('div', 'h3ct-stripe');
+      stripe.title = `${video.label}${bars.some((bar) => bar.id === video.id) ? '' : ' (not on screen)'}`;
+      for (const bar of bars.filter((bar) => bar.id === video.id)) {
+        const on = el('span', 'on');
+        on.style.left = percent(bar.start / box.frames);
+        on.style.width = percent((bar.end - bar.start) / box.frames);
+        on.style.background = `rgb(${VIDEO_COLORS[number]})`;
+        stripe.append(on);
+      }
+      stripes.append(stripe);
+    });
+    item.append(stripes);
+  }
+
+  played(index) {
+    const box = this.state.boxes[index];
+    return model.playedFrames(box.frames, box.exact, model.isFresh(this.state, index));
   }
 
   // The Studio sets how wide the lane draws (zoom, 1 = fit the panel).
@@ -1923,6 +1976,7 @@ export class TimelineEditor {
         mark.classList.toggle('selected',this.frameImages.boxId===box.id
           && this.frameImages.target.kind===target.kind && this.frameImages.target.shot===target.shot);
         this.fillStill(mark,box,target,`${index+1} · ${targetLabel(target)}`,images);
+        if(target.kind==='last'&&box.layers?.length) this.markClosing(mark,index);
         imageDrop(mark,file=>{mark.click();this.dropGuide(file,target);});
         marks.push(mark);
       }
@@ -1930,6 +1984,17 @@ export class TimelineEditor {
     replaceChanged(this.stillsEl,marks,mark=>[mark.getAttribute('aria-label'),mark.dataset.box,mark.dataset.target].join('|'));
     this.stillsEl.style.height=`${clips.some(clip=>clip.shots.length)?146:74}px`;
     this.stillsEl.hidden=!this.state.boxes.length;
+  }
+
+  // The main video's Last still guides its generation, but another video can be on screen when the clip ends.
+  markClosing(mark, index) {
+    const closing = videoLayers.closingVideo(this.state.boxes[index], this.played(index));
+    const video = videoLayers.videosOf(this.state, index).find((item) => item.id === closing);
+    if (!video || video.main) return;
+    const small = mark.lastChild.lastChild; // fillStill ends the mark with its caption, and that with its status
+    setText(small, `under ${video.label}`);
+    small.classList.add('under');
+    mark.title += ` · ${video.label} is on screen at the end of the clip`;
   }
 
   renderPlates() {
