@@ -313,7 +313,7 @@ def prepare(body):
         context = int((body.get('settings') or {}).get('context_frames') or 39)
         frame = _target_frame(parsed, index, body.get('target') or {'kind': 'first'}, context)
         from . import reference_assets
-        reference_assets.require_ready(json.loads(body['timeline']), parsed.boxes[index].id,body)
+        reference_assets.require_ready(json.loads(body['timeline']), parsed.boxes[index].id, body)
         recipe = body['recipe']
         if recipe.get('version') == 2 and recipe.get('adapter') == 'pixels':
             return _prepare_pixels(body, parsed, index, frame, name)
@@ -350,21 +350,11 @@ def prepare(body):
             raise ValueError('H3 still recipe has duplicate reference ports')
         request_context = dict(name=name, timeline=body['timeline'], settings=body.get('settings') or {},
                                box=body['box'], target=body.get('target') or {'kind': 'first'})
-        source = copy.deepcopy(body.get('source'))
-        mode = resolve_pin(request_context, source)['conditioning'] if source is not None else None
-        guide_source = _previous_guide(parsed, index, frame, context) if source is None else None
-        if guide_source is not None:
-            guide_source['sha256'] = hashlib.sha256(Path(file_path(guide_source['file'])).read_bytes()).hexdigest()
-            mode = 'accepted_guide'
+        source = None
+        mode = None
+        guide_source = None
         owners, tags = _references(body, parsed, index, frame, graph, native, ports)
         native['prompt'] = rules.rewrite(native['prompt'], tags) if tags else native['prompt']
-        if guide_source is not None:
-            native['prompt'] = (
-                'Create a NEW single-frame image of the requested scene below. '
-                'Use the last supplied picture as a continuity reference for appearance, clothing and '
-                'environment details that the requested scene does not change. '
-                'Follow the requested camera framing, pose and action; do not let the reference '
-                'composition override the requested scene.\n\nRequested frame:\n' + native['prompt'])
         native['source_pin'] = json.dumps({'body': request_context, 'pin': source, 'references': owners,
                                          'guide_source': guide_source})
         graph[condition]['class_type'] = 'H3C_StillConditioning'
@@ -414,7 +404,7 @@ def _timeline_inputs(body, graph, required):
 
 def _references(body, parsed, index, frame, graph, native, ports):
     from . import reference_assets
-    native['prompt'] = rules.join_prompts(native['prompt'],reference_assets.native_prompt(parsed,index))
+    native['prompt'] = rules.join_prompts(native['prompt'], reference_assets.native_prompt(parsed, index))
     mentioned = [name for _, name in rules.mentions(native['prompt'])
                  if not rules.reference_disabled(name, parsed.disabled_refs)]
     if len(mentioned) != len(set(mentioned)):
@@ -708,9 +698,8 @@ def _prepare_pixels(body, parsed, index, frame, name):
     document = json.loads(body['timeline'])
     prepared = reference_assets.references(document, parsed.boxes[index].id, dict(body, frame=frame))
     identity = reference_assets.identity_slots(document, parsed.boxes[index].id)
-    selection['prompt'] += ' '+ ' '.join('@'+slot for slot in identity)
-    refs = still_scene.references(body, parsed, index, frame) + prepared
-    refs += _pixel_references(selection, parsed, index, frame, body['workflow']['api'])
+    selection['prompt'] += ' ' + ' '.join('@' + slot for slot in identity)
+    refs = prepared + _pixel_references(selection, parsed, index, frame, body['workflow']['api'])
     for ref in refs:
         if ref.get('slot') in identity and 'identity' not in ref['roles']:
             ref['roles'].append('identity')

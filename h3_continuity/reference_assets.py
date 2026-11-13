@@ -9,6 +9,18 @@ from . import image_recipe, stills, story_bible, timeline as rules
 CATEGORIES = ('cast', 'locations', 'props')
 ROLES = ('identity', 'appearance', 'location', 'prop', 'scene_layout')
 HASH = re.compile(r'[a-f0-9]{64}')
+NO_TEXT = 'The image contains no text, letters or numbers.'
+CHARACTER_SHEET = ('A character reference sheet on a plain ivory background{look}. Left: a large close-up of the face or head, '
+                   'seen from the front. Right: the full body from head to feet in a relaxed neutral stance, seen from the front. '
+                   'Even, soft light; no scenery, props or other characters. ' + NO_TEXT + '\nCharacter: ')
+LOCATION_GRID = ('A location reference sheet: one image divided into a grid of 2 rows and 2 columns by thin ivory gutters, '
+                 'showing the same place from four clearly different camera positions: in row 1, column 1, a wide establishing '
+                 'view from the front; in row 1, column 2, the reverse view from the opposite side, looking back the other way; '
+                 'in row 2, column 1, a low ground-level view from one side; in row 2, column 2, a high view looking down on the '
+                 'whole place. No two panels repeat the same viewpoint. All four panels show one moment: the same time of day, '
+                 'lighting, layout and materials. The location is empty: '
+                 'no people, characters, animals or creatures appear in any panel. ' + NO_TEXT + '\nLocation: ')
+PEOPLE = re.compile(r'\b(characters?|people|persons?|figures?|actors?|crowds?)\b', re.I)
 
 
 def validate(value):
@@ -248,6 +260,8 @@ def prepare(body):
                 raise ValueError('Choose and approve location/object references before composing the scene.')
             if not row.get('include_character'):
                 prompt = 'An unoccupied location, with no people. '+prompt
+        elif row['category']=='locations':
+            prompt = LOCATION_GRID+prompt
         else:
             # Only explicit asset inputs: never shot anchors, prior frames or video memory.
             identity = row['identity_pictures'] if row['role']=='appearance' else []
@@ -263,14 +277,33 @@ def prepare(body):
                     refs = _approved_pixels(document,base,body)+refs
                 if not refs:
                     raise ValueError('Import or approve the original identity image for '+row['name']+' first.')
-                prompt = 'A single still image of the same character from the identity reference, wearing the specified appearance. '+prompt
-        style = story_bible.style(document.get('bible'))
+                prompt = CHARACTER_SHEET.format(look=' of the same character as the identity reference, wearing the '
+                                                'appearance described below')+prompt
+            elif row['category']=='cast':
+                prompt = CHARACTER_SHEET.format(look='')+prompt
+        style = _style(document, row)
         if style:
             prompt += '\nVisual style: '+style
+        if row['role']=='location':
+            prompt += '\nThe place is empty in every panel.'
         planned = dict(body,prompt=prompt,frame=0)
         return image_recipe.prepare(recipe,body['workflow'],planned,refs)
     except (ValueError,OSError,KeyError,TypeError) as error:
         return {'ok':False,'error':str(error)}
+
+
+def _style(document, row):
+    """The Story style without sentences that would paint another character, or any figure into an empty place."""
+    bible = document.get('bible')
+    style = story_bible.style(bible)
+    if not style or row.get('include_character'):
+        return style
+    names = [e['name'].strip() for e in story_bible.entities(bible) if e['kind']=='character' and e['id']!=row.get('entity')]
+    patterns = [re.compile(r'(?<!\w)'+re.escape(name)+r'(?!\w)', re.I) for name in names if name]
+    if row['category']!='cast':
+        patterns.append(PEOPLE)
+    sentences = re.split(r'(?<=[.!?])\s+', style.strip())
+    return ' '.join(s for s in sentences if not any(p.search(s) for p in patterns))
 
 
 def result(body):

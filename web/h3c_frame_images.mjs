@@ -115,8 +115,8 @@ export class FrameImages {
     const promptActions=el('div',null,'h3ct-row');promptActions.append(this.copyButton,this.resetButton);
     promptDetails.append(el('summary','Edit image prompt'),this.preparedHintEl,field('Final still prompt',this.promptEl),promptActions);
     const sourceDetails=el('details',null,'h3ct-image-details');
-    sourceDetails.append(el('summary','Continuity source & seed'),field('Saved continuity source',this.sourceEl),
-      field('Source frame',this.momentEl),field('Image seed',this.seedEl));
+    sourceDetails.append(el('summary','Seed'),
+      field('Image seed',this.seedEl));
     const instructionDetails=el('details',null,'h3ct-image-details');
     instructionDetails.append(el('summary','Still instructions'),field('Reusable still instruction',this.instructionEl),field('Extra still details',this.extraEl));
     this.candidateTitle=el('strong');
@@ -251,7 +251,7 @@ export class FrameImages {
     this.sourcePrompt=result.source_prompt;
     if(!preparedStillPrompt(this.editor?.state,box,this.target)&&this.promptEl&&saved?.still_prompt==null&&(this.autoPrompt!=null?this.promptEl.value===this.autoPrompt:automatic&&this.promptEl.value===before)){this.promptEl.value=this.prompt();this.autoPrompt=this.promptEl.value;}
     this.previousGuide=structuredClone(result.guide_source??null);
-    const selected=Object.hasOwn(saved ?? {},'still_source')?saved.still_source:result.suggested ?? null;
+    const selected=null;
     if (!Object.hasOwn(saved ?? {},'still_source')) this.saveSource(selected);
     this.sourcePins=structuredClone(result.choices ?? []);
     const equal=(a,b)=>['sequence','box','take','created','layout','latent_stamp','pixel_stamp'].every(field=>stringifyJSON(a?.[field])===stringifyJSON(b?.[field]));
@@ -259,7 +259,7 @@ export class FrameImages {
     const missing=selected && chosen<0;
     if (missing) {chosen=this.sourcePins.length;this.sourcePins.push(structuredClone(selected));}
     else if (selected) this.sourcePins[chosen]=structuredClone(selected);
-    const none=el('option',this.previousGuide?'Previous accepted guide':'Prompt and references only');none.value='';
+    const none=el('option','Prompt and references only');none.value='';
     this.sourceEl.replaceChildren();this.sourceEl.append(none);
     this.sourcePins.forEach((pin,index)=>{
       const option=el('option',`${pin.box} · ${pin.created ?? pin.take} · ${this.adapter==='pixels'?'Delivered video pixels':pin.latent_stamp?'Original H3 latent':'Pixels only'} · frame ${pin.moment}${missing&&index===chosen?' · missing or changed':''}`);
@@ -290,7 +290,7 @@ export class FrameImages {
     this.preparedHintEl.textContent='Earlier saved prompt active. Use prepared prompt to use the new batch result; the earlier text stays saved for Undo.';
     this.preparation.render(this.boxId,this.target);
     this.promptExcerpt.textContent=this.promptEl.value||this.promptEl.placeholder;
-    this.guideSourceEl.hidden=!!saved?.still_source||!this.previousGuide;
+    this.guideSourceEl.hidden=true;
     this.guideSourceEl.textContent=this.previousGuide?`Continuity: ${guideLabel(this.editor.state,this.previousGuide)} accepted guide. The requested scene controls the new image.`:'';
     const index=this.editor.state.boxes.indexOf(box),next=this.editor.state.boxes[index+1];
     const paired=this.target.kind==='first'&&index>0&&!box.cut?`Clip ${index} Last`:
@@ -328,11 +328,6 @@ export class FrameImages {
       if(used&&(used.sha256!==anchor?.sha256||used.revision!==anchor?.revision))changed.push('scene anchor');
       if ((candidate.prompt??'')!==this.promptEl.value) changed.push('prompt');
       if (String(candidate.seed??'')!==this.seedEl.value) changed.push('seed');
-      if (['sequence','box','take','created','layout','latent_stamp','pixel_stamp','moment'].some(field=>
-        stringifyJSON(candidate.source?.[field])!==stringifyJSON(saved.still_source?.[field]))) changed.push('source');
-      const currentGuide=saved.still_source?null:this.previousGuide;
-      if (['box','target','frame','file'].some(field=>
-        stringifyJSON(candidate.guide_source?.[field])!==stringifyJSON(currentGuide?.[field]))) changed.push('previous guide');
       const details=el('details',null,'h3ct-image-details h3ct-hint'),source=candidate.source;
       details.append(el('summary','Render details'),el('p',`Seed: ${candidate.seed??'Native default'} · Batch index ${candidate.batch_index??'unknown'}`),
         el('p',source?`Source: ${source.sequence} / ${source.box} · ${source.created} · frame ${source.moment}`:
@@ -485,7 +480,7 @@ export class FrameImages {
       const seed=this.seedEl.value===''?undefined:seedValue(this.seedEl.value);
       if(this.seedEl.value!=='' && seed===undefined) throw new Error('Image seed must be an unsigned 64-bit integer.');
       this.editedPrompt();const prompt=this.candidatePrompt();if(!prompt.trim())throw new Error('Enter a still prompt before generating candidates.');
-      const request={box:boxId,target,frame,prompt,seed:seed??(this.seedScope==='box'?box.seed:undefined),source:structuredClone(chosen?.still_source??null)};
+      const request={box:boxId,target,frame,prompt,seed:seed??(this.seedScope==='box'?box.seed:undefined),source:null};
       this.note('Submitting still candidates…');
       const receipt=await this.host.generateStill(request);
       this.live();this.note(`Still request ${receipt.state}. Results remain candidates until accepted.`);

@@ -54,7 +54,7 @@ test('a newer saved-sources load cancels the one it replaces before the host ask
   assert.equal(frames.noteEl.textContent, '');
   assert.equal(frames.sourceEl.options.length, 2);
   assert.match(frames.sourceEl.options[1].textContent, /^a · 2026-11-01T10:00:00/);
-  assert.equal(frames.sourceEl.value, '0');
+  assert.equal(frames.sourceEl.value, '');
 });
 
 test('the only load for a target is never cancelled and its answer fills the source list', async () => {
@@ -64,5 +64,5 @@ test('the only load for a target is never cancelled and its answer fills the sou
   asked[0].resolve({ok: true, choices: [pin('t1')], suggested: pin('t1')});
   await load;
   assert.equal(frames.sourceEl.options.length, 2);
-  assert.equal(editor.state.boxes[0].previews[0].still_source.take, 't1');
+  assert.equal(editor.state.boxes[0].previews[0].still_source, null);
 });

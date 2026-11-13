@@ -120,10 +120,9 @@ describes the bindings.
 
 - **Generate candidates** never changes a render until one is accepted with
   **Use as guide**. Each candidate keeps its prompt, seed and source.
-- The first accepted First image becomes the **scene anchor**. Later requests get
-  that anchor, the preceding accepted guide (or a chosen video frame) and the
-  references the prompt mentions. A cut keeps the anchor, and a new scene starts
-  another. An anchor from another scene can be reused when returning to a place.
+- Still generation receives relevant Cast images, images explicitly mentioned in the still prompt, and images
+  connected to the Still Recipe. Scene anchors and preceding guides are not
+  automatically added.
 - **Prepare all still prompts** has the Story writer write a richer still prompt for
   every First, Last and Shot target in one batch. **Prepare references** (on the
   Cast page) makes reviewable candidates for characters, looks, places and props.
