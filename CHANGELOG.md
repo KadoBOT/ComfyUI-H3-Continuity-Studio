@@ -4,6 +4,12 @@ All notable changes to H3 Continuity Studio are recorded here. Versions follow [
 
 ## [Unreleased]
 
+## [0.25.2] - 2026-11-13
+
+### Fixed
+
+- **Generate candidates works directly from the current video prompt again.** A blank still prompt uses the clip's assembled video prompt, including its shared prompt. Prepared or entered still text remains an optional override. This corrects v0.25.1, which disabled the requested video-prompt workflow.
+
 ## [0.25.1] - 2026-11-13
 
 ### Fixed

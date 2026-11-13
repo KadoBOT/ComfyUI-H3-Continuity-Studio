@@ -29,9 +29,9 @@ function panel() {
 
 const pin = (take) => ({sequence: 's', box: 'a', take, created: '2026-11-01T10:00:00', layout: 'h3', latent_stamp: [1, 2], moment: 0});
 
-test('an empty imported still cannot submit the video prompt and its absent character style', async () => {
+test('an imported clip generates from its current video prompt when no still override is entered', async () => {
   const {frames, editor} = panel();
-  editor.state.prompt="Painted angular planes. Safety orange belongs only to STRAY's jacket.";
+  editor.state.prompt='Painted angular planes.';
   editor.state.boxes[0].prompt='integrated_multimodal_description:\n\n[Shot 1] The collapsed overpass in tall dry grass. Nobody.\n\noverall_soundscape:\nDry wind.\n\nnon_diegetic_music:\nN/A';
   frames.adapter='pixels';frames.referenceLabel='<Picture {index}>';
   frames.promptEl.value=frames.prompt();
@@ -40,18 +40,28 @@ test('an empty imported still cannot submit the video prompt and its absent char
   const submitted=[];
   frames.host.generateStill=async request=>{submitted.push(request);return {state:'complete', request};};
   frames.renderGenerateControls();
-  assert.equal(frames.generateButton.disabled,true);
-  await assert.rejects(frames.generate(),/Enter a still prompt/);
-  assert.equal(submitted.length,0);
+  assert.equal(frames.generateButton.disabled,false);
+  assert.equal((await frames.generate()).request.prompt,'integrated_multimodal_description:\n\n[Shot 1] Painted angular planes. The collapsed overpass in tall dry grass. Nobody.\n\noverall_soundscape:\nDry wind.\n\nnon_diegetic_music:\nN/A');
+  editor.state.boxes[0].prompt='The overpass at dusk. Nobody.';
   frames.promptEl.value='   ';
   frames.renderGenerateControls();
-  assert.equal(frames.generateButton.disabled,true);
-  await assert.rejects(frames.generate(),/Enter a still prompt/);
-  assert.equal(submitted.length,0);
+  assert.equal(frames.generateButton.disabled,false);
+  assert.equal((await frames.generate()).request.prompt,'Painted angular planes.\n\nThe overpass at dusk. Nobody.');
   frames.promptEl.value='An explicit still.';
   frames.renderGenerateControls();
   assert.equal(frames.generateButton.disabled,false);
   assert.equal((await frames.generate()).request.prompt,'An explicit still.');
+  assert.equal(submitted.length,3);
+});
+
+test('Generate stays disabled only when neither still nor video text is available', async () => {
+  const {frames,editor}=panel();
+  editor.state.boxes[0].prompt='';frames.promptEl.value='   ';
+  frames.refreshControls=()=>{};
+  frames.host.generateStill=async()=>assert.fail('No request should be submitted');
+  frames.renderGenerateControls();
+  assert.equal(frames.generateButton.disabled,true);
+  await assert.rejects(frames.generate(),/Enter a still prompt/);
 });
 
 test('an empty image seed draws a new random seed for every candidate request', async () => {
