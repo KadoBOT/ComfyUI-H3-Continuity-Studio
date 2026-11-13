@@ -29,16 +29,28 @@ function panel() {
 
 const pin = (take) => ({sequence: 's', box: 'a', take, created: '2026-11-01T10:00:00', layout: 'h3', latent_stamp: [1, 2], moment: 0});
 
-test('a blank still prompt generates with the video prompt', async () => {
+test('an empty imported still cannot submit the video prompt and its absent character style', async () => {
   const {frames, editor} = panel();
-  frames.promptEl.value='   ';
+  editor.state.prompt="Painted angular planes. Safety orange belongs only to STRAY's jacket.";
+  editor.state.boxes[0].prompt='integrated_multimodal_description:\n\n[Shot 1] The collapsed overpass in tall dry grass. Nobody.\n\noverall_soundscape:\nDry wind.\n\nnon_diegetic_music:\nN/A';
+  frames.adapter='pixels';frames.referenceLabel='<Picture {index}>';
+  frames.promptEl.value=frames.prompt();
+  assert.equal(frames.promptEl.value,'');
   frames.refreshControls=()=>{};
-  frames.host.generateStill=async request=>({state:'complete', request});
+  const submitted=[];
+  frames.host.generateStill=async request=>{submitted.push(request);return {state:'complete', request};};
+  frames.renderGenerateControls();
+  assert.equal(frames.generateButton.disabled,true);
+  await assert.rejects(frames.generate(),/Enter a still prompt/);
+  assert.equal(submitted.length,0);
+  frames.promptEl.value='   ';
+  frames.renderGenerateControls();
+  assert.equal(frames.generateButton.disabled,true);
+  await assert.rejects(frames.generate(),/Enter a still prompt/);
+  assert.equal(submitted.length,0);
+  frames.promptEl.value='An explicit still.';
   frames.renderGenerateControls();
   assert.equal(frames.generateButton.disabled,false);
-  const receipt=await frames.generate();
-  assert.equal(receipt.request.prompt,model.assemblePrompt(editor.state,0));
-  frames.promptEl.value='An explicit still.';
   assert.equal((await frames.generate()).request.prompt,'An explicit still.');
 });
 
