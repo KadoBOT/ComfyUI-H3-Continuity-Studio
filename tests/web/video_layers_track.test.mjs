@@ -1,11 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {findAll, installDom} from './fake_dom.mjs';
+import {buttonNamed, findAll, installDom} from './fake_dom.mjs';
 
 installDom();
 const element = Object.getPrototypeOf(document.createElement('div'));
 element.getBoundingClientRect ??= () => ({left: 0, top: 0, right: 900, bottom: 100, width: 900, height: 100});
 if (!('validity' in element)) Object.defineProperty(element, 'validity', {get: () => ({valid: true})});
+element.querySelectorAll ??= () => [];
+element.querySelector ??= () => null;
+element.setCustomValidity ??= () => {};
+element.pause ??= () => {};
+element.load ??= () => {};
+element.play ??= () => Promise.resolve();
 const {TimelineEditor} = await import('../../web/h3c_timeline_editor.mjs');
 
 const LAYER = {id: 'b2v1', seed: 5101, prompt: 'Close.', first: '', last: '', previews: [], memory: 'off', memories: [],
@@ -177,4 +183,154 @@ test('+ Video is disabled at four videos', () => {
   assert.equal(tight.title, 'This clip is too short for another swap with this fade.');
   const roomy = open(stacked(1, [27]));
   assert.equal(byClass(roomy.stackEl, 'h3ct-add-video')[0].disabled, false);
+});
+
+// The real editor with its clip panel; `queue` records what Generate asks the host for.
+function panel(doc = withClips(), images = []) {
+  const host = {text: JSON.stringify(doc), read() { return this.text; }, write(value) { this.text = value; },
+    context: () => 39, connected: () => ({images, audios: []}), viewUrl: (file) => `/view?filename=${file.filename}`,
+    changed() {}, queued: [], async queue(...args) { this.queued.push(args); }};
+  return new TimelineEditor(host);
+}
+const picker = (editor) => editor.regions().videoPicker;
+const saved = (editor) => JSON.parse(editor.host.text);
+const labelled = (root, label) => findAll(root, (node) => node.getAttribute?.('aria-label') === label)[0];
+
+test('the picker edits the picked video', () => {
+  const editor = panel();
+  assert.equal(picker(editor).hidden, false);
+  assert.deepEqual(findAll(picker(editor), (node) => node.tagName === 'BUTTON').map((node) => node.textContent),
+    ['1 · main', '1b', '+ Video']);
+  assert.equal(editor.promptEl.value, 'Wide.');
+  buttonNamed(picker(editor), '1b').click();
+  assert.equal(editor.video().id, 'b2v1');
+  assert.equal(buttonNamed(picker(editor), '1b').getAttribute('aria-pressed'), 'true');
+  assert.equal(editor.promptEl.value, 'Close.');
+  assert.equal(String(editor.seedInput.value), '5101');
+  editor.promptEl.value = 'Closer.';
+  editor.promptEl.fire('input');
+  editor.seedInput.value = '77';
+  editor.seedInput.fire('change');
+  assert.deepEqual([saved(editor).boxes[0].prompt, saved(editor).boxes[0].layers[0].prompt], ['Wide.', 'Closer.']);
+  assert.deepEqual([saved(editor).boxes[0].seed, saved(editor).boxes[0].layers[0].seed], [1, 77]);
+  editor.select(1);
+  assert.equal(picker(editor).hidden, true, 'a clip with one video has no picker');
+  assert.equal(editor.video().id, 'c3');
+  editor.select(0);
+  assert.equal(editor.video().id, 'b2', 'selecting a clip picks its main video');
+});
+
+test("the First picker writes the picked video's first frame", () => {
+  const editor = panel(withClips(), [{name: 'image3', kind: 'image', title: 'Kitchen'}]);
+  buttonNamed(picker(editor), '1b').click();
+  assert.equal(editor.firstField.hidden, false, 'a video of the clip always starts fresh');
+  findAll(editor.firstPicker, (node) => node.dataset?.value === 'image3')[0].click();
+  assert.equal(saved(editor).boxes[0].layers[0].first, 'image3');
+  assert.equal(saved(editor).boxes[0].first ?? '', '');
+});
+
+test('Generate on a picked video asks for that video', async () => {
+  const editor = panel();
+  buttonNamed(picker(editor), '1b').click();
+  assert.equal(editor.boxRenderButton.textContent, 'Generate video 1b');
+  await editor.queueBox(1);
+  assert.deepEqual(editor.host.queued, [[1, null, null, undefined, 'b2v1']]);
+  buttonNamed(picker(editor), '1 · main').click();
+  await editor.queueBox(1);
+  assert.deepEqual(editor.host.queued[1].slice(0, 2), [1, 1], 'the main video renders as the clip');
+});
+
+test('the switch controls write the switch', () => {
+  const editor = panel();
+  const settings = editor.videoSettings;
+  assert.match(settings.textContent, /Videos in this clip/);
+  assert.match(settings.textContent, /1b/);
+  const at = labelled(settings, 'Swap 1 frame');
+  assert.equal(at.value, '27');
+  at.value = '40';
+  at.fire('change');
+  assert.equal(saved(editor).boxes[0].switch.cuts[0].at, 40);
+  const fade = labelled(editor.videoSettings, 'Fade frames');
+  fade.value = '4';
+  fade.fire('change');
+  assert.equal(saved(editor).boxes[0].switch.fade, 4);
+  const sound = labelled(editor.videoSettings, 'Sound');
+  assert.deepEqual(sound.children.map((node) => node.value), ['screen', 'b2', 'b2v1']);
+  sound.value = 'b2v1';
+  sound.fire('change');
+  assert.equal(saved(editor).boxes[0].switch.sound, 'b2v1');
+  buttonNamed(editor.videoSettings, 'Remove 1b').click();
+  assert.equal(saved(editor).boxes[0].layers, undefined);
+  assert.equal(saved(editor).boxes[0].switch, undefined);
+  assert.equal(picker(editor).hidden, true);
+});
+
+test('a line across a swap warns while the sound follows the screen', () => {
+  const wav = {type: 'input', filename: 'line.wav', subfolder: ''};
+  const doc = withClips();
+  doc.audio_clips = [{slot: 'audio1', file: wav, title: 'Line', start: 0, source_start: 0, duration: 30,
+    source_duration: 30}];
+  doc.dialogue = {cues: [{id: 'c1', recording: {slot: 'audio1', file: wav}, start: 1, end: 2, text: 'Hello there.',
+    speaker: 'Mara', portrayal: 'on_screen'}]};
+  const editor = panel(doc);
+  const warning = 'A line crosses the swap at frame 27 while the sound follows the screen, so the voice switches '
+    + 'mid-line. Choose one video’s sound for this clip.';
+  assert.deepEqual(editor.describe(0).warnings, [warning]);
+  assert.match(byClass(editor.trackEl, 'h3ct-box')[0].title, /A line crosses the swap at frame 27/);
+  assert.match(editor.videoSettings.textContent, /A line crosses the swap at frame 27/);
+  assert.equal(byClass(editor.trackEl, 'h3ct-box')[0].classList.contains('problem'), false, 'a warning, not a problem');
+  const sound = labelled(editor.videoSettings, 'Sound');
+  sound.value = 'b2';
+  sound.fire('change');
+  assert.deepEqual(editor.describe(0).warnings, []);
+});
+
+test('swaps that no longer fit mark the clip', () => {
+  const doc = stacked(1, [5], 9);
+  doc.boxes[0].switch.fade = 12;
+  const editor = panel(doc);
+  const message = 'The swaps no longer fit this length; move them apart or shorten the fade.';
+  const [clip] = byClass(editor.trackEl, 'h3ct-box');
+  assert.equal(clip.classList.contains('problem'), true);
+  assert.match(clip.title, /The swaps no longer fit this length/);
+  assert.equal(editor.describe(0).problems.includes(message), true);
+  assert.equal(editor.boxRenderButton.disabled, true);
+});
+
+test("a picked video's empty prompt is a problem of the clip", () => {
+  const doc = withClips({layers: [{...LAYER, prompt: ''}]});
+  const editor = panel(doc);
+  assert.deepEqual(editor.describe(0).problems, ['1b: The prompt is empty.']);
+  buttonNamed(picker(editor), '1b').click();
+  assert.match(editor.promptProblemEl.textContent, /The prompt is empty\./);
+});
+
+test('Delete asks before removing a clip with several videos', () => {
+  const editor = panel();
+  let asked = '';
+  globalThis.confirm = (question) => { asked = question; return false; };
+  editor.remove();
+  assert.equal(asked, 'Delete clip 1 and its 2 videos?');
+  assert.equal(saved(editor).boxes.length, 2);
+  globalThis.confirm = () => true;
+  editor.remove();
+  assert.deepEqual(saved(editor).boxes.map((box) => box.id), ['c3']);
+  delete globalThis.confirm;
+});
+
+test('moving a Continue clip after a stack asks to make it a Cut', () => {
+  const doc = withClips();
+  doc.boxes.push({id: 'd4', frames: 48, exact: true, prompt: 'On.', seed: 3, cut: false});
+  const editor = panel(doc);
+  editor.select(1);
+  const before = editor.host.text;
+  let asked = '';
+  globalThis.confirm = (question) => { asked = question; return false; };
+  editor.move(1);
+  assert.match(asked, /Clip 2 continues from clip 1\..*Change it\?/);
+  assert.equal(editor.host.text, before, 'No leaves the order');
+  globalThis.confirm = () => true;
+  editor.move(1);
+  assert.deepEqual(saved(editor).boxes.map((box) => [box.id, !!box.cut]), [['b2', false], ['d4', true], ['c3', true]]);
+  delete globalThis.confirm;
 });

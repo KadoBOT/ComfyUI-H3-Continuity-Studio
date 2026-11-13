@@ -56,6 +56,14 @@ class FakeElement {
 
   remove() { this.parentNode?.removeChild(this); }
 
+  after(...nodes) {
+    const parent = this.parentNode;
+    if (!parent) return;
+    for (const node of nodes) node.parentNode?.removeChild(node);
+    parent.childNodes.splice(parent.childNodes.indexOf(this) + 1, 0, ...nodes);
+    for (const node of nodes) node.parentNode = parent;
+  }
+
   replaceChild(node, old) {
     node.parentNode?.removeChild(node);
     this.childNodes[this.childNodes.indexOf(old)] = node;
@@ -164,6 +172,7 @@ export function installDom() {
   const head = new FakeElement('head');
   const find = (node, id) => node.id === id ? node : node.children.map((child) => find(child, id)).find(Boolean) ?? null;
   globalThis.document = {head, activeElement: null, createElement: (tag) => new FakeElement(tag),
+    createElementNS: (namespace, tag) => new FakeElement(tag),
     createTextNode: (text) => Object.assign(new FakeElement('#text'), {text: String(text)}),
     getElementById: (id) => find(head, id)};
 }

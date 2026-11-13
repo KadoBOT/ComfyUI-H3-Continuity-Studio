@@ -3,9 +3,9 @@ import {reconcileSceneAnchors} from './h3c_still_scene.mjs?v=1ca16919a3f9';
 // decide how a box runs. Mirrors h3_continuity/timeline.py.
 import {parseJSON, stringifyJSON, seedValue} from './h3c_project.mjs?v=0882b8a6265a';
 import {imageDescriptionPrompt, imageDescriptionSource} from './h3c_image_descriptions.mjs?v=5f858b2b6a5a';
-import {acceptedGuideFrames} from './h3c_shot_preview.mjs?v=f0fa5fc5769c';
+import {acceptedGuideFrames} from './h3c_shot_preview.mjs?v=2404e710f598';
 import {AUDIO_WINDOWS_FEATURE, pruneWindows, resolveWindows, audioSourceLocked} from './h3c_audio_windows.mjs?v=cdefbd77b246';
-import {LAYER_FIELDS, clampSwitch, hasLayers, layerIds} from './h3c_layers.mjs?v=f0fa5fc5769c';
+import {LAYER_FIELDS, SWAPS_DONT_FIT, clampSwitch, hasLayers, layerIds, switchFits} from './h3c_layers.mjs?v=2404e710f598';
 export const FPS = 24;
 export const MAX_FRAMES = 362;
 export const GRID = 17;
@@ -628,6 +628,18 @@ export function speaks(state, index) {
     .some(([first, last, portrayal]) => portrayal !== 'voiceover' && first < end && last > start));
 }
 
+// What may sound wrong in clip `index` with several videos: a bound line across a swap while the sound follows the
+// screen switches voices mid-line.
+export function swapWarnings(state, index) {
+  const box = state.boxes[index], sw = box?.switch;
+  if (!sw || (sw.sound ?? 'screen') !== 'screen') return [];
+  const start = state.boxes.slice(0, index).reduce((sum, item) => sum + item.frames, 0);
+  const lines = (state.dialogue?.cues ?? []).flatMap((cue) => cueFrames(state, cue));
+  return sw.cuts.filter((cut) => lines.some(([first, last]) => first < start + cut.at && last > start + cut.at))
+    .map((cut) => `A line crosses the swap at frame ${cut.at} while the sound follows the screen, so the voice `
+      + 'switches mid-line. Choose one video’s sound for this clip.');
+}
+
 export function memorySources(state, index) {
   const box = state.boxes[index];
   if (!box || !box.memory || box.memory === 'off') return [];
@@ -1138,7 +1150,8 @@ export function describeBox(state, index, connected, context) {
   if (conflict) problems.push(conflict);
   const carry = carryConflict(state, index, context);
   if (carry) problems.push(carry);
-  return { mode, tags, guides, problems, fresh };
+  if (!switchFits(state, index)) problems.push(SWAPS_DONT_FIT);
+  return { mode, tags, guides, problems, warnings: swapWarnings(state, index), fresh };
 }
 
 // Whether a clip runs as FLF2VA once `flf_refmods` is on. Its First/Last frames and accepted endpoint guides become the

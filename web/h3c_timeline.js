@@ -3,26 +3,26 @@ import {generationControl,setGenerationControl} from './h3c_generation_archive.m
 // Mounts the H3 Timeline face on H3C_Timeline nodes, edits the Timeline in the Studio, and keeps its status in sync
 // with the server. Browsers may cache the .mjs helpers, so their ?v= tags come from node tools/module_versions.mjs --write.
 import { freshProject } from './h3c_new_project.mjs?v=96adbc29f06d';
-import { saveBeforeNewProject } from './h3c_story_library.mjs?v=fec447134367';
+import { saveBeforeNewProject } from './h3c_story_library.mjs?v=6132b31eceab';
 import { app } from '../../scripts/app.js';
-import {syncImageOutputs,compileImageOutputs} from './h3c_timeline_images.mjs?v=b4253917007c';
+import {syncImageOutputs,compileImageOutputs} from './h3c_timeline_images.mjs?v=a4a1ff0d61ca';
 import { api } from '../../scripts/api.js';
 import { mountSavedState, autosaveEnabled } from './h3c_saved_state.mjs?v=285cb0ac96bb';
 import {setText} from './h3c_dom.mjs?v=584a9bf55653';
 import { showOwnElement } from './h3c_dom_widget.mjs?v=961e6d7f3bb7';
 import { WATCH_EVENTS, idleWatch, progressText, watchEvent } from './h3c_render_watch.mjs?v=7c8222569836';
 import { DEFAULT_AHEAD, QueueFeed, feedNote, queueAhead } from './h3c_queue_feed.mjs?v=9392f926e4e3';
-import { studio } from './h3c_studio.mjs?v=cab4c1a4b425';
-import { FACE_HEIGHT, TimelineFace } from './h3c_timeline_face.mjs?v=b82c4f098a8d';
-import { TimelineEditor } from './h3c_timeline_editor.mjs?v=e0b7358e8ffe';
-import { referenceFile, referenceSource, referencePools, referenceType, effectiveRefmods, parseState, serialize, unknownFeatures, readOnlyNote } from './h3c_timeline_model.mjs?v=f0fa5fc5769c';
-import {referenceImageFile} from './h3c_reference_sources.mjs?v=36d90470531b';
-import { pictureRefs } from './h3c_pictures.mjs?v=c1bccad07309';
-import { voiceRefs } from './h3c_voices.mjs?v=a7755f6c624f';
+import { studio } from './h3c_studio.mjs?v=06d814041bab';
+import { FACE_HEIGHT, TimelineFace } from './h3c_timeline_face.mjs?v=b85c5818e73c';
+import { TimelineEditor } from './h3c_timeline_editor.mjs?v=0f68036a74e7';
+import { referenceFile, referenceSource, referencePools, referenceType, effectiveRefmods, parseState, serialize, unknownFeatures, readOnlyNote } from './h3c_timeline_model.mjs?v=2404e710f598';
+import {referenceImageFile} from './h3c_reference_sources.mjs?v=e348137294d1';
+import { pictureRefs } from './h3c_pictures.mjs?v=c94dccd614c0';
+import { voiceRefs } from './h3c_voices.mjs?v=01771b8c64fd';
 import {captureRecipe,captureTimelineId,captureStillBody,stillTimelineBody,recipeControls,StillClient,isolateVideoPrompt,videoOutputs,hasVideoOutput as compiledVideoOutput,graphWiring} from './h3c_stills.mjs?v=df999ecd2dcd';
-import {boundarySnapshot} from './h3c_frame_images.mjs?v=8a870d396b5c';
+import {boundarySnapshot} from './h3c_frame_images.mjs?v=ef5b3b70b2c0';
 import {stillPromptSource,sameStillPromptSource} from './h3c_still_prompt_preparation.mjs?v=2e7e25c47bea';
-import { TakesClient } from './h3c_takes.mjs?v=f21be2136719';
+import { TakesClient } from './h3c_takes.mjs?v=83879e96fd25';
 import {ProjectSession, forkProject, parseJSON, projectErrorMessage, stringifyJSON} from './h3c_project.mjs?v=0882b8a6265a';
 import {TimelineHistory, dropReceipts, withLiveReceipts} from './h3c_history.mjs?v=d639ee9ffd57';
 import {confirmRegeneration} from './h3c_regeneration.mjs?v=44ff3a1a199c';
@@ -1039,18 +1039,21 @@ export class TimelineHost {
       confirm:options=>app.extensionManager?.dialog?.confirm?.(options)??window.confirm(`${options.title}\n\n${options.message}`)});
   }
 
-  async queue(count, box, bridge, receipt) {
+  // `layer` renders one of a clip's other videos by its id instead of a box or bridge.
+  async queue(count, box, bridge, receipt, layer = null) {
     if (this.feed) throw new Error('A Render is still queueing runs. Press Stop first, or wait for it to finish.');
+    if (this.project && layer != null) throw new Error("Managed jobs can't render a clip's other videos yet. "
+      + 'Render this Timeline from its node in ComfyUI.');
     this.submitting = true;
     this.requested = box ?? null;
     this.requestedBridge = bridge ?? null;
     this.feedMessage = null;
-    const one = bridge != null ? 'one bridge' : 'one box';
+    const one = layer != null ? 'one video' : bridge != null ? 'one bridge' : 'one box';
     try {
       if (this.project) return await this.project.render({count: box == null && bridge == null ? 1 : count,
         boxId: box != null ? this.editor.state.boxes[box - 1]?.id : undefined, bridgeId: bridge, receipt});
       const definitions=await (await api.fetchApi('/object_info')).json();
-      const post = () => this.postRun(definitions, box, bridge, one, receipt);
+      const post = () => this.postRun(definitions, box, bridge, one, receipt, layer);
       const ahead = queueAhead(app.ui?.settings?.getSettingValue?.(QUEUE_AHEAD_SETTING));
       if (!ahead || count <= ahead) {
         for (let run = 0; run < count; run++) await post();
@@ -1083,15 +1086,15 @@ export class TimelineHost {
   }
 
   // Posts one run of the Timeline's video outputs to ComfyUI and returns its prompt id.
-  async postRun(definitions, box, bridge, one, receipt) {
+  async postRun(definitions, box, bridge, one, receipt, layer = null) {
     if(receipt?.editor) await this.saved.flush();
     const snapshot=await app.graphToPrompt();
     const id=captureTimelineId(snapshot,this.node.id,{root:this.node.graph===(app.rootGraph??app.graph)});
     const outputs=videoOutputs(snapshot,id,definitions),prompt=isolateVideoPrompt(snapshot,id,outputs);
     const target=prompt.output[id];
-    if(box!=null || bridge!=null) {
+    if(box!=null || bridge!=null || layer!=null) {
       if(typeof target.inputs.timeline!=='string') throw new Error(`The Timeline boxes must be editable here to render ${one}.`);
-      const request=bridge!=null?{render_bridge:bridge}:{render_box:box};
+      const request=layer!=null?{render_layer:layer}:bridge!=null?{render_bridge:bridge}:{render_box:box};
       if(receipt) request.rebuild_continuity=receipt;
       target.inputs.timeline=stringifyJSON({...parseJSON(target.inputs.timeline),...request});
     }

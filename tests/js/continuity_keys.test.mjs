@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseState, serialize } from '../../web/h3c_timeline_model.mjs?v=f0fa5fc5769c';
+import { parseState, serialize } from '../../web/h3c_timeline_model.mjs?v=2404e710f598';
 
 const boxes = [{id: 'a', frames: 124, prompt: 'p'}];
 

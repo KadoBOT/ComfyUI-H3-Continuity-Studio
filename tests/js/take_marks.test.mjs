@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { TakesClient, fromText, marksText } from '../../web/h3c_takes.mjs?v=f21be2136719';
+import { TakesClient, fromText, marksText } from '../../web/h3c_takes.mjs?v=83879e96fd25';
 
 test('marks read as stars and tag', () => {
   assert.equal(marksText(4, 'keeper'), '★★★★☆ · keeper');

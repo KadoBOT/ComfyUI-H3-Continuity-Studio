@@ -1,7 +1,7 @@
 // Videos in one clip: up to four H3 generations sharing the clip's time, and the switch plan that says which one is
 // on screen. The main video is the box itself; the others live in its `layers`. Mirrors h3_continuity/layers.py.
-import {isFresh, newId, playedFrames} from './h3c_timeline_model.mjs?v=f0fa5fc5769c';
-export {LAYERS_FEATURE as FEATURE} from './h3c_timeline_model.mjs?v=f0fa5fc5769c';
+import {isFresh, newId, playedFrames} from './h3c_timeline_model.mjs?v=2404e710f598';
+export {LAYERS_FEATURE as FEATURE} from './h3c_timeline_model.mjs?v=2404e710f598';
 
 export const MAX_VIDEOS = 4;
 export const MAX_FADE = 12;
@@ -61,6 +61,29 @@ export function clampSwitch(state, index) {
   cuts.forEach((cut, i) => { cut.at = Math.max(Math.round(cut.at), i ? cuts[i - 1].at + gap : lo); });
   for (let i = cuts.length - 1; i >= 0; i -= 1) cuts[i].at = Math.min(cuts[i].at, i < cuts.length - 1 ? cuts[i + 1].at - gap : hi);
   return cuts.every((cut, i) => cut.at >= lo && cut.at <= hi && (!i || cut.at - cuts[i - 1].at >= gap));
+}
+
+export const SWAPS_DONT_FIT = 'The swaps no longer fit this length; move them apart or shorten the fade.';
+
+// Whether clip `index`'s swaps fit its length and fade, without moving them.
+export function switchFits(state, index) {
+  const box = state.boxes[index];
+  if (!box?.switch) return true;
+  const boxes = [...state.boxes];
+  boxes[index] = {...box, switch: structuredClone(box.switch)};
+  return clampSwitch({...state, boxes}, index);
+}
+
+// The Timeline as video `id` of clip `index` renders it, as layers.view: the clip becomes a Cut that plays exactly its
+// frames with the video's prompt, seed, endpoints and memory.
+export function layerView(state, index, id) {
+  const {layers, switch: _switch, ...clip} = state.boxes[index];
+  const layer = layers?.find((item) => item.id === id);
+  if (!layer) return state;
+  const boxes = [...state.boxes];
+  boxes[index] = {...clip, ...Object.fromEntries(LAYER_FIELDS.slice(1).map((key) => [key, layer[key]])),
+    frames: played(state, index), exact: true, cut: true};
+  return {...state, boxes};
 }
 
 export function addVideo(state, index) {
