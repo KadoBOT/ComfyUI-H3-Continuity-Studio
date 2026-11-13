@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {ProjectSession, ownedSettings, projectErrorMessage} from '../../web/h3c_project.mjs?v=0882b8a6265a';
-import {independentStoryContent, recoverSavedStoryContent} from '../../web/h3c_story_library.mjs?v=6132b31eceab';
+import {independentStoryContent, recoverSavedStoryContent} from '../../web/h3c_story_library.mjs?v=b91d223eac12';
 
 const ID='aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
 const managed={story:{state:'{}'},timeline:'{"boxes":[]}',sequence:'api_'+'a'.repeat(32),renders:true,

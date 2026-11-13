@@ -1,5 +1,5 @@
-import * as model from './h3c_timeline_model.mjs?v=2404e710f598';
-import { importWhisper, validateTimedText, setTextSync, textClock, projectTimedText } from './h3c_timed_text.mjs?v=b65071fb7b8c';
+import * as model from './h3c_timeline_model.mjs?v=3e1fe9285010';
+import { importWhisper, validateTimedText, setTextSync, textClock, projectTimedText } from './h3c_timed_text.mjs?v=9aa103111d20';
 import { loadAudio, loaded, beatTimes, drawWave } from './h3c_waveform.mjs?v=162256e10b5b';
 import {captureWindows,resolveWindows,unlockWindows,lockEligibility,sourceOrigin,outputWindows,equivalentWindows,timelineAudioParts} from './h3c_audio_windows.mjs?v=cdefbd77b246';
 import {replaceChanged, setText} from './h3c_dom.mjs?v=584a9bf55653';

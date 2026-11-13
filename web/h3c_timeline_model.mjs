@@ -3,9 +3,9 @@ import {reconcileSceneAnchors} from './h3c_still_scene.mjs?v=1ca16919a3f9';
 // decide how a box runs. Mirrors h3_continuity/timeline.py.
 import {parseJSON, stringifyJSON, seedValue} from './h3c_project.mjs?v=0882b8a6265a';
 import {imageDescriptionPrompt, imageDescriptionSource} from './h3c_image_descriptions.mjs?v=5f858b2b6a5a';
-import {acceptedGuideFrames} from './h3c_shot_preview.mjs?v=2404e710f598';
+import {acceptedGuideFrames} from './h3c_shot_preview.mjs?v=3e1fe9285010';
 import {AUDIO_WINDOWS_FEATURE, pruneWindows, resolveWindows, audioSourceLocked} from './h3c_audio_windows.mjs?v=cdefbd77b246';
-import {LAYER_FIELDS, SWAPS_DONT_FIT, clampSwitch, hasLayers, layerIds, switchFits} from './h3c_layers.mjs?v=2404e710f598';
+import {LAYER_FIELDS, SWAPS_DONT_FIT, clampSwitch, hasLayers, layerIds, switchFits} from './h3c_layers.mjs?v=3e1fe9285010';
 export const FPS = 24;
 export const MAX_FRAMES = 362;
 export const GRID = 17;
@@ -1151,6 +1151,10 @@ export function describeBox(state, index, connected, context) {
   const carry = carryConflict(state, index, context);
   if (carry) problems.push(carry);
   if (!switchFits(state, index)) problems.push(SWAPS_DONT_FIT);
+  if (index > 0 && state.boxes[index - 1].layers?.length && !fresh) {
+    problems.push(`Clip ${index + 1} continues from clip ${index}. With several videos in clip ${index}, `
+      + `clip ${index + 1} must start with a Cut.`);
+  }
   return { mode, tags, guides, problems, warnings: swapWarnings(state, index), fresh };
 }
 

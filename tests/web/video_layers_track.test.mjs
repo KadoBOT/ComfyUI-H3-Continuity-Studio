@@ -297,6 +297,16 @@ test('swaps that no longer fit mark the clip', () => {
   assert.equal(editor.boxRenderButton.disabled, true);
 });
 
+test('a Continue after a stack is a problem of the clip after it', () => {
+  const doc = withClips();
+  doc.boxes[1].cut = false;
+  const editor = panel(doc);
+  const message = 'Clip 2 continues from clip 1. With several videos in clip 1, clip 2 must start with a Cut.';
+  assert.deepEqual(editor.describe(1).problems, [message]);
+  assert.equal(byClass(editor.trackEl, 'h3ct-box')[1].classList.contains('problem'), true);
+  assert.deepEqual(editor.describe(0).problems, []);
+});
+
 test("a picked video's empty prompt is a problem of the clip", () => {
   const doc = withClips({layers: [{...LAYER, prompt: ''}]});
   const editor = panel(doc);
