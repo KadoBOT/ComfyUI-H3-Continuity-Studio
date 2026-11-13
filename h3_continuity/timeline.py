@@ -229,6 +229,10 @@ def parse(text):
             value = _number(clip.get(key), f"audio clip {key}")
             if value < 0 or (key == "duration" and value == 0):
                 raise _error(f"audio clip {key} must be {'positive' if key == 'duration' else 'nonnegative'}")
+        if "source_duration" in clip:
+            value = _number(clip["source_duration"], "audio clip source_duration")
+            if value <= 0:
+                raise _error("audio clip source_duration must be positive")
         _text(clip.get("description"), "audio clip description")
         if clip.get("layer", "music") not in ("music", "soundscape", "shot"):
             raise _error("audio clip layer must be music, soundscape or shot")

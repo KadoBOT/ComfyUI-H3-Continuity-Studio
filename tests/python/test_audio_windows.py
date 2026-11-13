@@ -19,6 +19,24 @@ class AudioWindowsTest(unittest.TestCase):
             dict(id='a', frames=96, exact=True), dict(id='b', frames=96, exact=True, cut=True)],
             audio_clips=[self.clip() if clip is None else clip])
 
+    def test_source_duration_is_optional_but_validated_when_present(self):
+        clip = dict(F['clip']); clip.pop('source_duration', None)
+        timeline.parse(json.dumps(self.line(clip)))
+        contracts.validate('timeline', self.line(clip))
+        for bad in [None, True, 0, -1, "200", float('nan'), float('inf')]:
+            with self.subTest(value=bad), self.assertRaises(ValueError):
+                timeline.parse(json.dumps(self.line(dict(clip, source_duration=bad))))
+        parsed = timeline.parse(json.dumps(self.line(dict(clip, source_duration=200))))
+        self.assertEqual(parsed.audio_clips[0]['source_duration'], 200)
+        schema = contracts.schemas()
+        audio = schema['timeline']['properties']['audio_clips']['items']
+        self.assertIn('source_duration', audio['properties'])
+        self.assertNotIn('source_duration', audio['required'])
+        contracts.validate('timeline', self.line(dict(clip, source_duration=200)))
+        for bad in [None, True, 0, -1, '200']:
+            with self.subTest(schema_value=bad), self.assertRaises(contracts.APIError):
+                contracts.validate('timeline', self.line(dict(clip, source_duration=bad)))
+
     def test_shared_capture_resize_and_empty_map(self):
         clip = self.clip()
         self.assertEqual(clip['box_windows']['by_box'], F['bindings'])

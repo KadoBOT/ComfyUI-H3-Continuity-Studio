@@ -51,3 +51,72 @@ test('failed commit rolls back one complete transition and bound audition clips 
   const player=lanes.settings.querySelector('audio');player.currentTime=33;player.fire('play');
   assert.equal(player.currentTime,30);player.currentTime=32;player.fire('timeupdate');assert.equal(player.paused,true);
 });
+
+
+test('imported audio without source duration opens safely and cannot trim an unknown source',()=>{
+  const {editor,lanes,clip}=setup();delete clip.source_duration;
+  lanes.renderSettings();
+  assert.match(all(lanes.settings).map(n=>n.textContent).join(' '),/Source duration unavailable/i);
+  for(const label of ['Source in (s)','Length (s)'])assert.equal(all(lanes.settings).find(n=>n.getAttribute('aria-label')===label).disabled,true);
+  assert.equal(all(lanes.settings).find(n=>n.textContent==='Fit to video').disabled,true);
+  assert.equal(all(lanes.settings).find(n=>n.getAttribute('aria-label')==='Video start (s)').disabled,false);
+  assert.throws(()=>model.editAudioClip(clip,'right',1),/source duration/i);
+  assert.equal(model.editAudioClip(clip,'move',1).start,1);
+  assert.equal(clip.source_duration,undefined);
+});
+
+test('missing duration is recovered from file metadata without changing the placed window',async()=>{
+  const {editor,lanes,clip}=setup();delete clip.source_duration;
+  let finish,calls=0;editor.host.audioInfo=()=>{calls++;return new Promise(resolve=>finish=resolve);};
+  lanes.renderSettings();lanes.renderSettings();assert.equal(calls,1);
+  finish({duration:320});await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(clip.source_duration,320);assert.equal(clip.source_start,30);assert.equal(clip.duration,8);
+  assert.equal(editor.commits,1);
+  assert.equal(all(lanes.settings).find(n=>n.getAttribute('aria-label')==='Length (s)').disabled,false);
+});
+
+test('late or failed metadata reads cannot alter a removed or replaced clip',async()=>{
+  const {editor,lanes,clip}=setup();delete clip.source_duration;
+  let finish;editor.host.audioInfo=()=>new Promise(resolve=>finish=resolve);
+  lanes.renderSettings();clip.file={type:'input',filename:'other.wav'};
+  finish({duration:320});await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(clip.source_duration,undefined);assert.equal(editor.commits,0);
+  editor.host.audioInfo=async()=>{throw Error('Missing file');};lanes.renderSettings();
+  await new Promise(resolve=>setImmediate(resolve));assert.equal(clip.source_duration,undefined);
+  assert.doesNotThrow(()=>lanes.renderSettings());
+});
+
+
+test('metadata for a removed clip is discarded and invalid durations stay unknown',async()=>{
+  const {editor,lanes,clip}=setup();delete clip.source_duration;
+  let finish;editor.host.audioInfo=()=>new Promise(resolve=>finish=resolve);
+  lanes.renderSettings();editor.state.audio_clips=[];
+  finish({duration:320});await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(clip.source_duration,undefined);assert.equal(editor.commits,0);
+  for(const duration of [0,-1,NaN,Infinity,'320']) {
+    const {editor,lanes,clip}=setup();delete clip.source_duration;
+    editor.host.audioInfo=async()=>({duration});lanes.renderSettings();
+    await new Promise(resolve=>setImmediate(resolve));
+    assert.equal(clip.source_duration,undefined);assert.equal(editor.commits,0);
+  }
+});
+
+
+test('a transient metadata failure can be retried without reopening the story',async()=>{
+  const {editor,lanes,clip}=setup();delete clip.source_duration;
+  editor.host.audioInfo=async()=>{throw Error('Temporarily unavailable');};
+  lanes.renderSettings();await new Promise(resolve=>setImmediate(resolve));
+  editor.host.audioInfo=async()=>({duration:320});
+  all(lanes.settings).find(n=>n.textContent==='Read source duration').fire('click');
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(clip.source_duration,320);assert.equal(editor.commits,1);
+});
+
+test('metadata from the previous editor state cannot mutate either story',async()=>{
+  const {editor,lanes,clip}=setup();delete clip.source_duration;
+  let finish;editor.host.audioInfo=()=>new Promise(resolve=>finish=resolve);
+  lanes.renderSettings();const next=structuredClone(editor.state);editor.state=next;
+  finish({duration:320});await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(clip.source_duration,undefined);assert.equal(next.audio_clips[0].source_duration,undefined);
+  assert.equal(editor.commits,0);
+});

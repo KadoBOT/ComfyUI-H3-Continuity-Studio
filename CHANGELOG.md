@@ -4,6 +4,10 @@ All notable changes to H3 Continuity Studio are recorded here. Versions follow [
 
 ## [Unreleased]
 
+### Fixed
+
+- **Imported audio without source duration opens safely.** The Studio reads the recording's metadata without changing its placed window, and keeps trimming disabled with a clear message if the source cannot be read. The API schema and native parser now explicitly validate optional `source_duration`; older stories remain supported.
+
 ## [0.22.1] - 2026-11-12
 
 ### Fixed
