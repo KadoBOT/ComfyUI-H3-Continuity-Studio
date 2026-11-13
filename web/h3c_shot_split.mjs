@@ -1,5 +1,5 @@
 import { promptShots } from './h3c_prompt_sections.mjs?v=b58f04f78a75';
-import { FPS, GRID, isFresh, limits, newId, newSeed } from './h3c_timeline_model.mjs?v=9af9091f6757';
+import { FPS, GRID, isFresh, limits, newId, newSeed } from './h3c_timeline_model.mjs?v=3e1fe9285010';
 import {splitWindows} from './h3c_audio_windows.mjs?v=cdefbd77b246';
 
 const number = (shot) => Number(/\d+/.exec(shot.label)[0]);
@@ -21,6 +21,7 @@ const roundUp = (frames, fresh, context) => Math.max(limits(fresh, context).min,
 
 export function splitTiming(state, index, shotNumber, context) {
   const box = state.boxes[index];
+  if (box.layers?.length) throw new Error('Split is not available on a clip with several videos.');
   const { shots } = promptShots(box.prompt);
   const at = shots.findIndex((s) => number(s) === shotNumber);
   if (at <= 0) throw new Error('Choose a shot after the first one.');

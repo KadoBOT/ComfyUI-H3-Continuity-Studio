@@ -190,7 +190,7 @@ def preflight_generation(archive):
             raise ValueError('Generation take checksum changed or file is missing: '+item['relative'])
     declared=archive['takes']['manifest']
     if store.load_manifest(folder)!=declared:raise ValueError('Generation manifest declaration differs from verified native manifest')
-    for entry in declared.get('segments',[]):
+    for entry in [*declared.get('segments',[]),*declared.get('layers',[])]:
         for filename in [entry.get('stem','')+'.safetensors',(entry.get('video') or {}).get('file')]:
             if filename and filename not in relative:raise ValueError('Generation take is missing required sidecar: '+filename)
     return {'ok':True,'assets':len(assets),'take_files':len(relative)}

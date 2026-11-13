@@ -4,6 +4,12 @@ All notable changes to H3 Continuity Studio are recorded here. Versions follow [
 
 ## [Unreleased]
 
+## [0.25.0] - 2026-11-13
+
+### Added
+
+- **Several videos in one clip.** **+ Video** adds up to three more H3 generations of a clip's time, each with its own prompt, seed, First and Last frames, memory and dialogue setting. Pick a video with its button above the clip's tabs, or its row on the Timeline, to edit and generate it. The clip's switch says which video is on screen: drag a swap's handle on the Timeline (it snaps to beats) or type its frame, set a fade of 0 to 12 frames, and choose whether the sound follows the screen or stays with one video. The full video plays the clip as a stack of its videos, blended without encoding the rest of the video again; the video so far plays the main video until the others render, and the Viewer plays the stack or the picked video. The clip after a stack starts with a Cut. Managed jobs refuse these Timelines for now, and Shot images and takes lists for the other videos come later. See [Videos in one clip](docs/TIMELINE-VIDEO-LAYERS.md).
+
 ## [0.24.0] - 2026-11-13
 
 ### Added

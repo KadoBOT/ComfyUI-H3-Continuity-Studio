@@ -20,7 +20,7 @@ SegmentType = io.Custom("H3C_SEGMENT")
 # ponytail: serialize local saves/exports; use per-sequence locks if concurrent exports become common.
 SEQUENCE_LOCK = threading.RLock()
 # The Timeline hands H3 Save these record keys for this save only; saved entries never hold them.
-UNSAVED = ("splice", "replace", "soundtrack", "export_error")
+UNSAVED = ("splice", "replace", "soundtrack", "export_error", "layer_ids")
 # Frames of footage a candidate's previews show on each side of it.
 PREVIEW_FRAMES = 48
 
@@ -59,6 +59,8 @@ class SegmentPlan:
     box_order: list | None = None
     # One queued regeneration's consent, never persisted into a take's metadata.
     regeneration: dict | None = None
+    # A Timeline with several videos in a clip: puts each clip's stack in its segment's place (stacks.restacker).
+    restack: object = None
 
 
 def _plural(count, word):
@@ -345,6 +347,9 @@ class H3C_SaveSegment(io.ComfyNode):
         if "replacement" in (segment.timeline or {}):
             return cls.save_replacement(segment, video, audio_latent, frames, fps, crf, images, waveform, sample_rate,
                                         description, notes, color_space, codec)
+        if "layer" in (segment.timeline or {}):
+            return cls.save_layer(segment, video, audio_latent, frames, fps, crf, images, waveform, sample_rate,
+                                  description, notes, color_space, codec)
 
         with SEQUENCE_LOCK:
             authorize_sequence(sequence.name, sequence_owner(cls), "save_segment")
@@ -426,7 +431,7 @@ class H3C_SaveSegment(io.ComfyNode):
                                rebuild_full_video(folder, sequence.name, joined, crf, spliced,
                                                  (segment.timeline or {}).get("soundtrack", ()), managed_owner=sequence_owner(cls),
                                                  replaced=_replaced(folder, manifest, segment.timeline),
-                                                 background=segment.timeline is not None))
+                                                 background=segment.timeline is not None, restack=segment.restack))
             if notes:
                 info += " " + " ".join(notes)
             return io.NodeOutput(info, ui=ui.PreviewText(info))
@@ -477,11 +482,66 @@ class H3C_SaveSegment(io.ComfyNode):
                                                   {**manifest, "segments": store.placed(manifest, len(segment.box_order))},
                                                   crf, bridges.spliced(folder, manifest, keys),
                                                  record.get("soundtrack", ()), managed_owner=sequence_owner(cls),
-                                                 replaced=_replaced(folder, manifest, record), background=True))
+                                                 replaced=_replaced(folder, manifest, record), background=True,
+                                                 restack=segment.restack))
             if notes:
                 info += " " + " ".join(notes)
             return io.NodeOutput(info, ui=ui.PreviewText(info))
 
+
+    @classmethod
+    def save_layer(cls, segment, video, audio_latent, frames, fps, crf, images, waveform, sample_rate, description,
+                   notes, color_space="sRGB", codec="H.264"):
+        """Saves a clip's other video beside the segments, moving only that video's earlier take and the videos the
+        Timeline no longer has."""
+        from . import layers
+        sequence, record = segment.sequence, segment.timeline
+        from .timeline_api.service import authorize_sequence, sequence_owner
+        keys = record.get("splice", {})
+        with SEQUENCE_LOCK:
+            authorize_sequence(sequence.name, sequence_owner(cls), "save_segment")
+            now = datetime.datetime.now()
+            folder = sequence.folder
+            os.makedirs(folder, exist_ok=True)
+            manifest = store.load_manifest(folder)
+            manifest.pop("full_video", None)
+            store.align(manifest, segment.box_order)
+            earlier = layers.saved(manifest, record["layer"])
+            if earlier is not None:
+                layers.archive(folder, manifest, earlier, now)
+            width, height = latents.pixel_size(video)
+            entry = {
+                "layer": record["layer"], "box": record["box"], "stem": layers.stem(record["layer"]), "frames": frames,
+                "context_frames": segment.context_frames, "latent_width": width, "latent_height": height,
+                "video": None, "audio_sample_rate": sample_rate,
+                "description": description or segment.description or "", "created": now.isoformat(timespec="seconds"),
+                "timeline": {key: value for key, value in record.items() if key not in UNSAVED},
+            }
+            if "played" in record:
+                entry["played"] = record["played"]
+            if images is not None:
+                _write_video(folder, entry, images, fps, crf, waveform, sample_rate, notes, color_space, codec)
+            store.save_segment(folder, entry, video, audio_latent, waveform)
+            manifest.setdefault("layers", []).append(entry)
+            layers.keep(folder, manifest, set(record.get("layer_ids", [record["layer"]])), now)
+            store.write_manifest(folder, manifest)
+
+            played = store.played_frames(entry)
+            info = (f"Saved video {record['layer']} of clip {sequence.index} of '{sequence.name}': {played} frames "
+                    f"({timing.seconds(played):.2f} s).")
+            if earlier is not None:
+                info += " Moved its earlier take to takes/."
+            if segment.timeline_complete:
+                info += " " + (record['export_error'] if record.get('export_error') else
+                               rebuild_full_video(folder, sequence.name, manifest if segment.box_order is None else
+                                                  {**manifest, "segments": store.placed(manifest, len(segment.box_order))},
+                                                  crf, bridges.spliced(folder, manifest, keys) if keys else [],
+                                                  record.get("soundtrack", ()), managed_owner=sequence_owner(cls),
+                                                  replaced=_replaced(folder, manifest, record), background=True,
+                                                  restack=segment.restack))
+            if notes:
+                info += " " + " ".join(notes)
+            return io.NodeOutput(info, ui=ui.PreviewText(info))
 
     @classmethod
     def save_replacement(cls, segment, video, audio_latent, frames, fps, crf, images, waveform, sample_rate,
@@ -702,7 +762,7 @@ def write_previews(folder, manifest, candidate, crf, spliced=(), soundtrack=()):
 
 
 def rebuild_full_video(folder, name, manifest, crf, spliced=(), soundtrack=(), *, managed_owner=None, replaced=(),
-                       background=False, kind="full"):
+                       background=False, kind="full", restack=None):
     """Joins the saved segments, each `spliced` bridge before the segment of its box and each `replaced` candidate in
     place of the frames it covers. With `soundtrack` clips (`audio_tracks.marked`), it plays them instead of the
     segments' audio, on the Timeline's clock: only spliced bridges add time.
@@ -712,13 +772,17 @@ def rebuild_full_video(folder, name, manifest, crf, spliced=(), soundtrack=(), *
     once; `full_video_state(folder)` says whether it is still building. The result is recorded only when the saved
     segments are still the ones it joined.
     `kind` "preview" joins the first boxes rendered so far (the caller passes only those) into the video so far, which
-    is saved and recorded apart from the full video and builds on its own thread."""
+    is saved and recorded apart from the full video and builds on its own thread.
+    `restack` (stacks.restacker) puts each stacked clip's stack in its segment's place, building it when missing."""
     with SEQUENCE_LOCK:
         from .timeline_api.service import authorize_sequence
         authorize_sequence(name, managed_owner, "full_video")
+        if restack is not None:
+            manifest = restack(folder, manifest, crf)
         plan, note = _plan_full_video(folder, name, manifest, crf, spliced, soundtrack, replaced)
         if plan is not None:
             plan["kind"] = kind
+            plan["restack"] = restack
         if plan is None:
             return note
         if background:
@@ -838,9 +902,11 @@ def _finish_full_video(plan):
         record["boxes"] = len(plan["segments"])
     with SEQUENCE_LOCK:
         latest = store.load_manifest(folder)
-        joined = [entry for entry in latest["segments"] if 1 <= entry["index"] <= len(plan["segments"])]
+        restack = plan.get("restack")
+        view = restack(folder, latest, plan["crf"], make=False) if restack is not None else latest
+        joined = [entry for entry in view["segments"] if 1 <= entry["index"] <= len(plan["segments"])]
         if (joined != plan["segments"] or store.full_video_fingerprint(
-                folder, {**latest, "segments": joined}, plan["bridges"], plan["sources"]) != plan["fingerprint"]):
+                folder, {**view, "segments": joined}, plan["bridges"], plan["sources"]) != plan["fingerprint"]):
             return "Full video not recorded: the saved boxes changed while it was built; it is built again from them."
         latest[key] = record
         store.write_manifest(folder, latest)

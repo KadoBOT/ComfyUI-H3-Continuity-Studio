@@ -63,9 +63,13 @@ def _reason(folder, parsed, known, index, following):
 def _fingerprint(folder, parsed, known, manifest, index):
     timeline = asdict(parsed)
     timeline["render_box"] = timeline["render_bridge"] = None
+    timeline.pop("render_layer")
+    if not timeline["layers"]:
+        del timeline["layers"], timeline["switches"]
     # The editor randomizes the requested take's seed after confirmation, before queueing.
     timeline["boxes"][index]["seed"] = 0
     records = {key: manifest.get(key, []) for key in ("segments", "bridges", "replacements")}
+    records.update({key: manifest[key] for key in ("layers", "stacks") if key in manifest})
     stamps = []
     for entries in records.values():
         for entry in entries:

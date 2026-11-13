@@ -3,7 +3,7 @@
 // closes, opens another Timeline or the Timeline's Story changes. Its Story page edits the Story node's inputs.
 import { liveBadge, progressText } from './h3c_render_watch.mjs?v=7c8222569836';
 import { templateRow } from './h3c_templates.mjs?v=ff7103cdcba7';
-import { soundtrackLine, soundtrackSlots } from './h3c_timeline_model.mjs?v=9af9091f6757';
+import { soundtrackLine, soundtrackSlots } from './h3c_timeline_model.mjs?v=3e1fe9285010';
 
 import { ideaImagesRow } from './h3c_idea_images.mjs?v=3e6280e44a1b';
 import { partialBadge, partialTitle, previewBadge, previewLabel, previewTitle, timelineFrame, videoSeconds } from './h3c_partial_video.mjs?v=201bf0f48645';
@@ -1377,8 +1377,12 @@ export class Studio {
     const chosen = box && this.chosen?.box === box.id ? this.chosen : null;
     if (this.view === 'chosen' && !chosen) this.view = 'take';
     const entry = this.view === 'bridge' ? editor.bridgeStatusOf(this.bridgeBox) : box ? editor.statusOf(box) : null;
+    // A clip with several videos plays its stack; a picked video of it plays its own take.
+    const layer = this.view === 'bridge' ? null : editor.pickedLayer?.();
+    const layerEntry = layer ? entry?.videos?.find((video) => video.id === layer.id) ?? null : null;
     const take = this.view === 'chosen' ? chosen.video : this.view === 'candidate' ? this.candidate.file
-      : entry?.video?.file ?? null;
+      : layer ? layerEntry?.video?.file ?? null
+      : (this.view === 'bridge' ? null : entry?.stack?.file) ?? entry?.video?.file ?? null;
     const takeUrl = take ? this.host.viewUrl(take) : null;
     const fullUrl = editor.fullLink.hidden ? null : editor.fullLink.getAttribute('href');
     const partial = fullUrl ? editor.partialVideo : null;
@@ -1395,7 +1399,8 @@ export class Studio {
     const view = this.view ?? (fullUrl && !soFar ? 'full' : 'take');
     this.fullButton.setAttribute('aria-pressed', String(view === 'full'));
     this.takeButton.setAttribute('aria-pressed', String(view === 'take'));
-    setText(this.takeButton, box ? `Clip ${editor.selected + 1} · active take` : 'Clip take');
+    setText(this.takeButton, layer ? `Video ${editor.pickedLabel()} · take` : box?.layers?.length
+      ? `Clip ${editor.selected + 1} · videos together` : box ? `Clip ${editor.selected + 1} · active take` : 'Clip take');
     this.fullButton.disabled = !fullUrl;
     this.fullButton.setAttribute('aria-busy', String(building));
     setText(this.fullButton, soFar ? previewLabel(soFar) : previewPending
@@ -1421,7 +1426,7 @@ export class Studio {
 
     const runningBox = this.host.runningBox();
     const preview = watch.running && box && runningBox === editor.selected + 1 ? watch.preview : null;
-    const pinnable = view === 'take' && !!takeUrl && entry.status === 'done' && !preview
+    const pinnable = view === 'take' && !layer && !!takeUrl && entry.status === 'done' && !preview
       && editor.cast.pinTargets(editor.selected).length > 0;
     this.pinButton.hidden = !pinnable;
     if (!pinnable || this.pinMenu.dataset.box !== box.id) this.pinMenu.hidden = true;
@@ -1453,7 +1458,7 @@ export class Studio {
       setText(this.badge, view === 'chosen' ? this.chosenLabel(chosen) : view === 'candidate' ? this.candidate.label
         : view === 'bridge'
         ? `Bridge before clip ${editor.selected + 1}${!entry || entry.status === 'done' ? '' : ' · older take'}`
-        : view === 'take' && takeUrl && entry.status !== 'done' ? OLDER_TAKE
+        : view === 'take' && takeUrl && (layer ? layerEntry : entry).status !== 'done' ? OLDER_TAKE
         : view === 'full' && partial ? partialBadge(partial)
         : view === 'full' && soFar ? previewBadge(soFar) : '');
     }

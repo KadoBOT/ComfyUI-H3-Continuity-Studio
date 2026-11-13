@@ -18,13 +18,13 @@ import * as storyModel from '/web/h3c_story_model.mjs';
 import {TimelineHost} from '/web/h3c_timeline.js';
 import {StoryHost} from '/web/h3c_story.js';
 const file=name=>({filename:`${name}.png`,subfolder:'h3_previews',type:'output'});
-const NEWER=JSON.stringify({version:1,prompt:'',requires:['video-layers-1'],future:{kept:true},boxes:[
+const NEWER=JSON.stringify({version:1,prompt:'',requires:['video-layers-99'],future:{kept:true},boxes:[
  {id:'a',frames:71,exact:true,prompt:'A walk.',seed:1,cut:false,flf_refmods:true,
   previews:[{shot:1000,frame:0,guide:file('start')},{shot:1001,frame:70,guide:file('end')}]},
  {id:'b',frames:71,prompt:'Two angles.',seed:1,seed_mode:'randomize',cut:true,
   layers:[{id:'l1',prompt:'The other angle.'}],switch:{at:0.5,fade:6}}]});
 const EDITABLE=JSON.stringify({...JSON.parse(NEWER),requires:['dialogue-cues-1']});
-const NOTE='This Timeline needs a newer H3 Continuity (video-layers-1). It is open read-only so nothing in it is lost; update the node pack to edit or render it.';
+const NOTE='This Timeline needs a newer H3 Continuity (video-layers-99). It is open read-only so nothing in it is lost; update the node pack to edit or render it.';
 window.NOTE=NOTE;window.NEWER=NEWER;
 const methods=['configureProject','relayout','showProgress','schedule','changed'];
 async function withHosts(run){
@@ -48,7 +48,7 @@ const refuses=async(name,action)=>{try{await action();failed.push(`${name}: no e
 window.hostPaths=()=>withHosts(async host=>{
  const real=host(NEWER),widget=real.widget,editor=real.editor;
  check('construction and load keep the text',widget.value===NEWER);
- check('the editor is read-only',JSON.stringify(editor.readOnly)==='["video-layers-1"]');
+ check('the editor is read-only',JSON.stringify(editor.readOnly)==='["video-layers-99"]');
  editor.state.boxes[1].prompt='Changed.';editor.commit();
  check('an edit is not written',widget.value===NEWER);
  check('an edit is undone',editor.state.boxes[1].prompt==='Two angles.');

@@ -9,7 +9,7 @@ const {TimelineEditor, TYPING_PAUSE} = await import('../../web/h3c_timeline_edit
 const file = name => ({filename: `${name}.png`, subfolder: 'h3_previews', type: 'output'});
 // What a newer Studio might write: a feature this one doesn't know, fields it doesn't copy, and a converted clip
 // whose free endpoint guides this editor would otherwise adopt as soon as it loads.
-const NEWER = JSON.stringify({version: 1, prompt: '', requires: ['video-layers-1'], future: {kept: true}, boxes: [
+const NEWER = JSON.stringify({version: 1, prompt: '', requires: ['video-layers-99'], future: {kept: true}, boxes: [
   {id: 'a', frames: 71, exact: true, prompt: 'A walk.', seed: 1, cut: false, flf_refmods: true,
     previews: [{shot: 1000, frame: 0, guide: file('start')}, {shot: 1001, frame: 70, guide: file('end')}]},
   {id: 'b', frames: 71, prompt: 'Two angles.', seed: 1, seed_mode: 'randomize', cut: true,
@@ -31,8 +31,8 @@ function stub(text = NEWER) {
 }
 
 test('a Timeline that requires a feature this Studio does not know names it', () => {
-  const state = model.parseState(JSON.stringify({requires: ['dialogue-cues-1', 'video-layers-1', 'video-layers-1'], boxes: []}));
-  assert.deepEqual(model.unknownFeatures(state), ['video-layers-1']);
+  const state = model.parseState(JSON.stringify({requires: ['dialogue-cues-1', 'video-layers-99', 'video-layers-99'], boxes: []}));
+  assert.deepEqual(model.unknownFeatures(state), ['video-layers-99']);
 });
 
 test('known features or none leave a Timeline editable', () => {
@@ -41,14 +41,14 @@ test('known features or none leave a Timeline editable', () => {
 });
 
 test('the read-only note names the features and says what to do', () => {
-  assert.equal(model.readOnlyNote(['video-layers-1']), 'This Timeline needs a newer H3 Continuity (video-layers-1). '
+  assert.equal(model.readOnlyNote(['video-layers-99']), 'This Timeline needs a newer H3 Continuity (video-layers-99). '
     + 'It is open read-only so nothing in it is lost; update the node pack to edit or render it.');
   assert.match(model.readOnlyNote(['a-1', 'b-1']), /\(a-1, b-1\)/);
 });
 
 test('loading a Timeline from a newer Studio writes nothing and marks it read-only', () => {
   const editor = stub();
-  assert.deepEqual(editor.readOnly, ['video-layers-1']);
+  assert.deepEqual(editor.readOnly, ['video-layers-99']);
   assert.deepEqual(editor.host.writes, []);
 });
 
@@ -88,7 +88,7 @@ test('a new context, or an empty Timeline, does not rewrite a read-only Timeline
   const editor = stub();
   editor.host.frames = 24;
   editor.contextChanged();
-  const empty = stub(JSON.stringify({version: 1, prompt: '', requires: ['video-layers-1'], boxes: []}));
+  const empty = stub(JSON.stringify({version: 1, prompt: '', requires: ['video-layers-99'], boxes: []}));
   empty.startIfEmpty();
   assert.deepEqual(editor.host.writes, []);
   assert.deepEqual(empty.host.writes, []);
@@ -120,7 +120,7 @@ function drawnHead(editor) {
 
 test('a notice says why the Timeline is read-only, and add and render are off', () => {
   const editor = drawnHead(stub());
-  assert.equal(editor.readOnlyEl.textContent, model.readOnlyNote(['video-layers-1']));
+  assert.equal(editor.readOnlyEl.textContent, model.readOnlyNote(['video-layers-99']));
   assert.equal(editor.readOnlyEl.hidden, false);
   assert.equal(editor.addButton.disabled, true);
   assert.equal(editor.renderButton.disabled, true);

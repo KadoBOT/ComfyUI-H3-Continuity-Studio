@@ -56,6 +56,14 @@ class FakeElement {
 
   remove() { this.parentNode?.removeChild(this); }
 
+  after(...nodes) {
+    const parent = this.parentNode;
+    if (!parent) return;
+    for (const node of nodes) node.parentNode?.removeChild(node);
+    parent.childNodes.splice(parent.childNodes.indexOf(this) + 1, 0, ...nodes);
+    for (const node of nodes) node.parentNode = parent;
+  }
+
   replaceChild(node, old) {
     node.parentNode?.removeChild(node);
     this.childNodes[this.childNodes.indexOf(old)] = node;
@@ -81,9 +89,15 @@ class FakeElement {
   set data(value) { this.text = String(value); }
 
   get textContent() { return this.text + this.childNodes.map((node) => node.textContent).join(''); }
+  // As in a browser, an element's words are a text node, so a redraw that patches nodes (h3c_dom.patch) reaches them.
   set textContent(value) {
     for (const node of [...this.childNodes]) this.removeChild(node);
-    this.text = value == null ? '' : String(value);
+    const text = value == null ? '' : String(value);
+    if (this.nodeType === 3) this.text = text;
+    else {
+      this.text = '';
+      if (text) this.append(text);
+    }
   }
 
   get nodeName() { return this.tagName; }
@@ -158,6 +172,7 @@ export function installDom() {
   const head = new FakeElement('head');
   const find = (node, id) => node.id === id ? node : node.children.map((child) => find(child, id)).find(Boolean) ?? null;
   globalThis.document = {head, activeElement: null, createElement: (tag) => new FakeElement(tag),
+    createElementNS: (namespace, tag) => new FakeElement(tag),
     createTextNode: (text) => Object.assign(new FakeElement('#text'), {text: String(text)}),
     getElementById: (id) => find(head, id)};
 }
