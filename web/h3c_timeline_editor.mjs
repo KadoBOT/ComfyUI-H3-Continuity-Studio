@@ -1,24 +1,24 @@
 // The H3 Timeline editor: a track of boxes, the selected box and the shared prompt.
 // Plain DOM without ComfyUI imports; the host object connects it to the node.
-import { MentionCard, MentionLayer } from './h3c_mentions.mjs?v=e9af7952269d';
+import { MentionCard, MentionLayer } from './h3c_mentions.mjs?v=daf3c77e1405';
 import { promptSections, promptShots, writePromptSections } from './h3c_prompt_sections.mjs?v=b58f04f78a75';
-import * as model from './h3c_timeline_model.mjs?v=25c8aab2bb32';
+import * as model from './h3c_timeline_model.mjs?v=9af9091f6757';
 import {audioSourceLocked} from './h3c_audio_windows.mjs?v=cdefbd77b246';
-import { AudioLanes } from './h3c_audio_lanes.mjs?v=ab9717bd1a0e';
-import { shotFrames, frameTargets, syncTargets, acceptedGuideFrames, endpointGuide, endpointReference, adoptEndpointGuides } from './h3c_shot_preview.mjs?v=25c8aab2bb32';
-import {FrameImages, targetLabel, imageDrop} from './h3c_frame_images.mjs?v=d4ba14b76929';
-import { splitBox, splitTiming } from './h3c_shot_split.mjs?v=a3ee4aacea7f';
+import { AudioLanes } from './h3c_audio_lanes.mjs?v=9aa97cb32a6b';
+import { shotFrames, frameTargets, syncTargets, acceptedGuideFrames, endpointGuide, endpointReference, adoptEndpointGuides } from './h3c_shot_preview.mjs?v=9af9091f6757';
+import {FrameImages, targetLabel, imageDrop} from './h3c_frame_images.mjs?v=c98a8bd34ff9';
+import { splitBox, splitTiming } from './h3c_shot_split.mjs?v=5029dd2b654d';
 import { fillReferenceSwitches } from './h3c_reference_switches.mjs?v=e94b5b02e02b';
-import { ReferenceReplacements } from './h3c_reference_replacements.mjs?v=6bab72725d0c';
+import { ReferenceReplacements } from './h3c_reference_replacements.mjs?v=0bf409124e8d';
 import { fillPicturePicker, mentionedReferences, referenceChip } from './h3c_reference_pictures.mjs?v=8198307be3fa';
-import { CastPage } from './h3c_cast.mjs?v=8c642813a7bc';
-import { PicturesPanel, highestSlot } from './h3c_pictures.mjs?v=dc4cc22c103c';
+import { CastPage } from './h3c_cast.mjs?v=b43866ab968b';
+import { PicturesPanel, highestSlot } from './h3c_pictures.mjs?v=6b691ff9068a';
 import { CheckPanel } from './h3c_check.mjs?v=c69786f95bd5';
-import { BridgePanel, bridgeLine } from './h3c_bridges.mjs?v=a8f30264538f';
-import { DialoguePanel } from './h3c_dialogue.mjs?v=e969ae1d8a99';
+import { BridgePanel, bridgeLine } from './h3c_bridges.mjs?v=1ded67a9f71e';
+import { DialoguePanel } from './h3c_dialogue.mjs?v=cf30de939896';
 import { ChainSettings } from './h3c_chain_settings.mjs?v=9f2d4061a6d6';
 import { exportedVideo } from './h3c_partial_video.mjs?v=201bf0f48645';
-import { MAX_TAKES, TakesPanel, followNote, renderLabel } from './h3c_takes.mjs?v=5f2c6da90408';
+import { MAX_TAKES, TakesPanel, followNote, renderLabel } from './h3c_takes.mjs?v=91a6424226dd';
 import { drawsSame, replaceChanged, setText, showImages } from './h3c_dom.mjs?v=584a9bf55653';
 
 const STYLE_ID = 'h3ct-style';

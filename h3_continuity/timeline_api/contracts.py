@@ -166,7 +166,7 @@ def _schemas():
                            'by_box': {'type': 'object', 'additionalProperties': audio_window}},
                           ('version', 'source', 'placement', 'by_box'))
     audio = _object({"slot": {"enum": ["audio1", "audio2", "audio3"]}, "file": FILE, "start": NONNEGATIVE,
-                     "source_start": NONNEGATIVE, "duration": POSITIVE, "description": TEXT,
+                     "source_start": NONNEGATIVE, "duration": POSITIVE, "source_duration": POSITIVE, "description": TEXT,
                      "layer": {"enum": ["music", "soundscape", "shot"]}, "in_full_video": BOOL, "locked": BOOL,
                      'box_windows': box_windows},
                     ("slot", "start", "source_start", "duration"), extra=True)
