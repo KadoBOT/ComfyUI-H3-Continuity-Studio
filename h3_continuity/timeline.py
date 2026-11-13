@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from .timing import FPS, seconds, effective_audio_context
 from . import timed_text
 from . import audio_windows
+from . import layers
 
 MAX_FRAMES = 362
 # A Timeline may raise its box limit to this with "max_frames"; boxes past MAX_FRAMES are sampled in context windows.
@@ -34,7 +35,7 @@ RAW_TAG = re.compile(r"<(?:Picture|Audio|Video) \d+>")
 IMAGE_SLOT = re.compile(r"@?image(\d+)", re.IGNORECASE)
 MEMORY_MODES = ("off", "scene", "selected", "cast")
 # Reader features a Timeline can name in "requires"; an editor writes them when the file depends on them.
-REQUIRES = ("dialogue-cues-1", "replacement-bridges-1", audio_windows.FEATURE)
+REQUIRES = ("dialogue-cues-1", "replacement-bridges-1", audio_windows.FEATURE, layers.FEATURE)
 
 
 @dataclass
@@ -98,6 +99,9 @@ class Timeline:
     audio_feather: int = 0
     # Reference video slots each box receives only its own time of, as audio clips are cut by Timeline time.
     video_slices: list = field(default_factory=list)
+    # The other videos of the clips that hold several, and their switch plans, by clip id; see layers.py.
+    layers: dict = field(default_factory=dict)
+    switches: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -191,6 +195,7 @@ def parse(text):
         if raw.get("dialogue", "cues") not in ("cues", "manual"):
             raise _error(f"box {n} dialogue must be cues or manual")
     parsed.manual_dialogue = [raw.get("dialogue") == "manual" for raw in boxes]
+    layers.validate(parsed, boxes, requires)
     from . import still_scene, reference_assets
     parsed.reference_preparation = reference_assets.validate(data["reference_preparation"]) if "reference_preparation" in data else None
     if "still_prompt_preparation" in data:
@@ -502,6 +507,10 @@ def _bridges(raw, parsed):
         position = positions[before]
         if position == 0:
             raise BridgeError(index, f"bridge {n} leads into box 1, which has no box before it")
+        if layers.stacked(parsed, position):
+            raise BridgeError(index, f"bridge {n} leads into box {position + 1}, which has several videos")
+        if layers.stacked(parsed, position - 1):
+            raise BridgeError(index, f"bridge {n} leads out of box {position}, which has several videos")
         if not is_fresh(parsed, position):
             raise BridgeError(index, f"bridge {n} leads into box {position + 1}, which continues box {position}: "
                                      "a bridge needs a box that starts with Cut or New scene")
