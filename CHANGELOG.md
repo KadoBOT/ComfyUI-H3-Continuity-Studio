@@ -4,6 +4,14 @@ All notable changes to H3 Continuity Studio are recorded here. Versions follow [
 
 ## [Unreleased]
 
+## [0.23.0] - 2026-11-13
+
+### Changed
+
+- **Cast references are character sheets; location references are four-angle grids.** **Prepare references** now asks the connected still generator for a character sheet on a plain ivory background, with the face on the left and the full body on the right, for each character and look. Each location is one image split into 2 rows and 2 columns, showing the same empty place from four camera positions with no people or animals. Before, both came out as an ordinary scene picture.
+- **The Story style no longer paints other characters into references.** Style sentences that name another character are left out of a reference prompt. Location sheets also leave out style sentences about characters or people. A line such as "orange belongs only to her jacket" used to put that character into location and creature pictures.
+- **Stills no longer add scene anchors or previous guides on their own.** First, Last and Shot requests receive relevant Cast images, images mentioned in the still prompt and images connected to the Still Recipe. The saved continuity source picker is gone; the image details keep only the seed.
+
 ## [0.22.2] - 2026-11-13
 
 ### Fixed

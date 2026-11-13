@@ -56,7 +56,7 @@ Select models you have installed; nothing is downloaded. Other pixel generators 
 
 ### Continuity between stills
 
-- The **first accepted First image** becomes the scene anchor. Later requests receive that anchor, the preceding accepted guide (or a delivered video frame you choose) and the references the prompt mentions.
+- Still requests receive only relevant Cast images, images mentioned in the still prompt, and images connected to the Still Recipe. Scene anchors and earlier guides are not added automatically.
 - **Use as scene anchor** promotes the current accepted image; **Choose an accepted scene anchor** then **Use selected scene anchor** reuses an anchor from another scene when you return to a place.
 - A camera cut keeps the anchor; a new scene starts another one. Changing an anchor marks dependent candidates as out of date.
 - Without a chosen video take, accept First first, then Shot and Last in order: each new candidate receives the preceding accepted guide.
@@ -95,6 +95,10 @@ Projects saved with earlier guide splits keep their boxes, prompts, guides and j
 ## Optional reusable images for Cast
 
 The **Prepare references** section on the [Cast page](../story/cast.md) creates reviewable candidates for characters, scheduled appearances, locations and props before you generate First, Last or Shot images. The three generation switches start off and are independent.
+
+- **Characters and looks** become a character sheet on a plain ivory background: a close-up of the face on the left and the full body on the right.
+- **Locations** become one image split into 2 rows and 2 columns, showing the same empty place from four camera positions. No people or animals are drawn in.
+- The Story style goes along, minus sentences that name another character. Location sheets also leave out style sentences about characters or people, so a line such as "orange belongs only to her jacket" no longer paints that character into every picture.
 
 !!! warning "Experimental geometry"
     Reference delivery does not establish exact reconstructed geometry. The Qwen presets only partly followed a requested 45° camera change in testing, so treat arbitrary-view geometry as experimental and accept only candidates you have inspected.

@@ -48,6 +48,22 @@ def prepare(references=(), **request):
 
 
 class PrepareTest(unittest.TestCase):
+    def test_still_preparation_includes_cast_and_mentioned_images_without_anchors(self):
+        document = {'boxes': [{'id': 'b1', 'frames': 22, 'prompt': ''}]}
+        body = {'timeline': json.dumps(document), 'prompt': '@image17 close-up',
+                'workflow': {'api': {}}, 'recipe': {}}
+        parsed = timeline.parse(body['timeline'])
+        wanted = reference('image17', ['image17'], 'a' * 64)
+        cast = reference('image18', ['location: Hall'], 'b' * 64)
+        with mock.patch('h3_continuity.reference_assets.references', return_value=[cast]), \
+             mock.patch('h3_continuity.reference_assets.identity_slots', return_value=[]), \
+             mock.patch.object(stills, '_pixel_references', return_value=[wanted]) as pixels, \
+             mock.patch.object(stills, '_recipe_references', return_value=[]), \
+             mock.patch.object(image_recipe, 'prepare', return_value={}) as prepared:
+            stills._prepare_pixels(body, parsed, 0, 0, 'test')
+        self.assertEqual(pixels.call_args.args[0]['prompt'].strip(), '@image17 close-up')
+        self.assertEqual(prepared.call_args.args[3], [cast, wanted])
+
     def test_studio_candidates_keep_the_connected_lora_stack_and_its_ancestors(self):
         saved = workflow()
         saved['api'][NODE]['inputs']['lora_stack'] = ['stack', 0]
