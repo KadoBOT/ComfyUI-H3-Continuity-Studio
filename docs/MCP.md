@@ -63,7 +63,7 @@ Write/rewrite/feedback/check/still_prompts require an executable snapshot, expli
 | `sources` | `box`, `target?` (`{kind:first|last|shot,...}`) for eligible saved frame sources. |
 | `import` | Adapter-local `path`; original image bytes go to the existing image importer. |
 | `pin` | Host `file` descriptor; returns a pinned hash. |
-| `prepare` / `generate` | `box`, `target?`, `prompt`, `seed?`, compiled `recipe`, `size?`, `source?`. |
+| `prepare` / `generate` | `box`, `target?`, `seed?`, compiled `recipe`, `size?`, `source?`. The host always uses the selected clip prompt; a legacy `prompt` argument does not override it. Reference-generation actions still use their explicit reference prompt. |
 | `reference_catalog` | Enumerate Cast/appearance preparation requirements. |
 | `reference_prepare` / `reference_generate` | `asset_key`, current catalog `input_fingerprint`, `prompt`, `seed?`, compiled `recipe` and generator options. |
 | `reference_approve` | `asset_key`, `candidate_id`, `approval_revision` (the approval record's revision, distinct from project revision). Returns proposed Timeline. |

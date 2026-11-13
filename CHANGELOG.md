@@ -4,6 +4,13 @@ All notable changes to H3 Continuity Studio are recorded here. Versions follow [
 
 ## [Unreleased]
 
+## [0.25.3] - 2026-11-13
+
+### Fixed
+
+- **Candidate generation uses only the selected clip prompt.** Shared prompts, separate still overrides, automatic reference descriptions and generator instructions no longer add hidden text. The server enforces the same rule for older clients, and the panel shows the actual clip text.
+- **MiniMax H3 Image references follow the official edit workflow.** Each reference is resized to 4 MP and aligned to a multiple of 32 before native conditioning. Requested output size remains native, including 20 MP; output images are not downscaled and upscaled as a workaround.
+
 ## [0.25.2] - 2026-11-13
 
 ### Fixed

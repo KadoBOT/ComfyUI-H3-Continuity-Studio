@@ -48,7 +48,8 @@ direct images and Studio candidates. Use LoRAs compatible with MiniMax H3 Image.
 An unconnected or empty stack leaves generation unchanged; entries named `None`
 and entries with both strengths at zero are skipped.
 
-The Studio fills the prompt, seed and reference images for each request. It
+The Studio uses the selected clip's prompt exactly, without adding shared text,
+reference descriptions or the generator's instruction. It fills the seed and reference images for each request. It
 preserves scene and character reference roles, putting the location first when
 one is available. Prompts use native `<Picture 1>`, `<Picture 2>` labels and
 describe a new still composed for the requested camera: every image, including
@@ -67,6 +68,10 @@ then only set the aspect ratio, so you can connect the video size directly: 1152
 × 640 at 20 MP generates 6016 × 3328. Each side is rounded to a multiple of 32
 and must stay within 8192. At 0, width and height are used exactly.
 
-Prepared Studio prompts work directly; a separate prompt-enhancer download is
-optional and is not required by this node. Video rendering does not execute or
+Reference images are separately resized to 4 MP and aligned to a multiple of 32,
+matching the [official edit workflow](https://github.com/Comfy-Org/workflow_templates/blob/main/templates/image_minimax_h3_image_edit.json).
+The requested output remains native resolution: a 20 MP output is sampled at
+20 MP. Candidate metadata records the separate reference resize setting.
+
+No still-prompt preparation or prompt-enhancer download is required. Video rendering does not execute or
 load the connected still model.

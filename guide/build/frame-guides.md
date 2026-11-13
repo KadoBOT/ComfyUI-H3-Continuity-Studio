@@ -19,9 +19,8 @@ The panel offers:
 | **Upload guide…** | Accepts a local image as this marker's guide. |
 | **Generate candidates** | Asks the connected still generator for images (see below). Candidates stay candidates until you accept one. |
 | **Generator settings** | Selects and centres the connected generator's node group in the graph so you can edit models, steps or sampler. |
-| **Edit image prompt** | The still prompt, which explicitly describes a single opening frame (First, Shot) or the ending frame (Last). **Rebuild prompt** recomposes it from the scene text, instruction and extra details. |
+| **Prompt excerpt** | The selected clip's prompt, used directly for every candidate. Edit the clip prompt to change it. |
 | **Image seed** | Leave it empty to give every candidate a new random seed. Enter a number to repeat one exact seed; each candidate records the seed it used. |
-| **Still instructions** | The reusable instruction used for stills. |
 | **Candidates (N)** | Each candidate keeps its prompt, exact seed and source. **Use as guide** assigns it; click a thumbnail for a large preview (**Esc** closes). |
 | **Remove guide** | Removes the assignment. The image stays in your candidates. |
 
@@ -52,7 +51,7 @@ Still generation needs a **still recipe**: connect a native image-generator subg
 Select models you have installed; nothing is downloaded. Other pixel generators can be connected by declaring where their prompt, seed, size and reference inputs are. This is the **Still Recipe** node's `bindings` input; see the Qwen Story Studio notes in the repository for the schema.
 
 !!! info "Which prompt is used"
-    When you generate through the Timeline, the final prompt in the panel replaces the still subgraph's own prompt for that one request. The subgraph's prompt is used only when you run it standalone.
+    Generate candidates always uses the selected clip's prompt. Shared text, saved prepared still prompts, extra descriptions and generator instructions are not appended. References remain image inputs; their labels and descriptions remain in candidate metadata. The subgraph's own prompt and instruction are used when you run it standalone.
 
 ### Continuity between stills
 
@@ -64,7 +63,7 @@ Select models you have installed; nothing is downloaded. Other pixel generators 
 
 ### Prepare all still prompts
 
-**Prepare all still prompts** (in the Timeline toolbar) uses the connected Story writer to write a richer still prompt for every First, Last and Shot target in one explicit batch. Edit **Still prompt conversion instructions** to steer it. Results describe subject and visible state, setting and layout, style and materials, lighting, colour palette, and camera and composition. Choose **Use prepared prompt** for one target or **Use prepared prompts for all targets** to apply them as one undoable step. Preparation is manual: when your clips or references change, **Still prompts are out of date** appears with a **Regenerate all still prompts** action; image generation never calls the converter by itself.
+Saved still-prompt preparation data remains available as writing notes. It does not override **Generate candidates**, which always uses the clip prompt. To use different prose for a candidate, edit the clip prompt itself. Generation never calls the converter.
 
 ## How guides meet neighbouring clips
 

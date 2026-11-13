@@ -102,6 +102,7 @@ def prepare(recipe, workflow, request, references):
     if isinstance(body.get('prompt'),str):
         body['prompt']=re.sub(r'<image([1-9]\d*)>',lambda m:'@image'+m[1],body['prompt'],flags=re.I)
     recipe=body['recipe']; bindings=recipe['bindings']; graph=copy.deepcopy(body['workflow']['api'])
+    clip_request = bool(body.get('box')) and not body.get('asset_key')
     output=recipe['output']
     if not _link(output) or output[0] not in graph:
         raise ValueError('Still recipe IMAGE output is missing')
@@ -233,7 +234,7 @@ def prepare(recipe, workflow, request, references):
         context = '. '.join(str(ref[key]) for key in ('title', 'description') if ref.get(key))
         descriptions.append(text_label+': '+', '.join(roles)+('. '+' '.join(usage) if usage else '')+('. '+context if context else ''))
     prompt=body['prompt']
-    if descriptions:
+    if descriptions and not clip_request:
         if scene:
             named = ('the reference image' if qwen and len(unique) == 1 else environment['label']) if environment else None
             prompt = _scene_prompt(prompt, descriptions, named)
@@ -245,6 +246,8 @@ def prepare(recipe, workflow, request, references):
     # Translate the authored prose and reference context together, without visiting inserted native tokens.
     prompt=re.sub(r'@(image[1-9]\d*|still[1-9]\d*)\b|(?<![\w@<>])(image[1-9]\d*)(?![\w>])',
                   lambda m:tags.get((m[1] or m[2]).lower(),m[0]),prompt,flags=re.I)
+    if clip_request and bindings.get('instruction'):
+        bind(bindings['instruction'], '')
     bind(bindings['prompt'],prompt)
     if bindings.get('negative') and 'negative' in body: bind(bindings['negative'],body['negative'])
     graph=_ancestry(graph,output)
@@ -257,7 +260,12 @@ def prepare(recipe, workflow, request, references):
     provenance['prompt']=original_prompt
     provenance.update(recipe_sha256=digest,adapter='pixels',generator=recipe.get('label','Image generator'),frame=frame,
                       effective_prompt=prompt,seed=_scalar(graph,graph[bindings['seed']['node']]['inputs'][bindings['seed']['input']]),width=width,height=height,references=unique)
-    if scene and unique:
+    if clip_request:
+        provenance['prompt_policy'] = 'clip-verbatim-v1'
+    elif scene and unique:
         provenance.update(prompt_policy='qwen-image-2.1-scene-v2' if qwen else 'p-h3-image-scene-v2',
                           environment_reference=environment['label'] if environment else None)
+    if minimax and unique:
+        from .minimax_image_nodes import REFERENCE_MEGAPIXELS
+        provenance['reference_resize_megapixels'] = REFERENCE_MEGAPIXELS
     return {'ok':True,'prompt_id':str(uuid.uuid4()),'prompt':graph,'outputs':['h3c_still_output'],'provenance':provenance}

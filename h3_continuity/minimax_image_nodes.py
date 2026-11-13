@@ -11,6 +11,7 @@ MISSING = '(none installed)'
 MAX_REFERENCES = 8
 MAX_MEGAPIXELS = 64.0
 MAX_SIDE = 8192
+REFERENCE_MEGAPIXELS = 4.0
 COMPONENTS = {
     'diffusion_model': ('diffusion_models', 'minimax_h3_image_pruned_', 'diffusion model'),
     'text_encoder': ('text_encoders', 'qwen3vl_32b_minimax_h3_', 'text encoder'),
@@ -72,7 +73,8 @@ class H3C_MiniMaxH3ImageStill(io.ComfyNode):
                             'Applied in order to direct images and Studio stills. Use LoRAs compatible with MiniMax H3 Image.'),
                 io.Float.Input('megapixels', default=0.0, min=0.0, max=MAX_MEGAPIXELS, step=0.1, optional=True,
                     tooltip='0 uses width and height exactly. Above 0, width and height only set the aspect ratio and the image '
-                            'is generated at this many megapixels (1 MP = 1,000,000 pixels), each side a multiple of 32.'),
+                            'is generated at this many megapixels (1 MP = 1,000,000 pixels), each side a multiple of 32. '
+                            'Reference images are separately resized to 4 MP as in the official edit workflow.'),
             ], outputs=[io.Image.Output('image'), StillRecipeType.Output('still_recipe')])
 
     @classmethod
@@ -107,6 +109,13 @@ class H3C_MiniMaxH3ImageStill(io.ComfyNode):
                           strength_model=strength_model, strength_clip=strength_clip)
             model_link, clip_link = lora.out(0), lora.out(1)
         vae_node = g.node('VAELoader', vae_name=files['vae'])
+        for key, value in references.items():
+            # Match the official edit workflow before its native vision/VAE reference scaling.
+            resized = g.node('ResizeImageMaskNode', input=value, resize_type='scale total pixels',
+                             **{'resize_type.megapixels': REFERENCE_MEGAPIXELS}, scale_method='area')
+            aligned = g.node('ResizeImageMaskNode', input=resized.out(0), resize_type='scale to multiple',
+                             **{'resize_type.multiple': 32}, scale_method='area')
+            references[key] = aligned.out(0)
         cond = g.node('MiniMaxH3ImageConditioning', clip=clip_link, vae=vae_node.out(0), prompt=text,
                       width=width, height=height, **{'images.' + key: value for key, value in references.items()})
         negative = g.node('ConditioningZeroOut', conditioning=cond.out(0))

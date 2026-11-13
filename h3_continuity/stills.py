@@ -310,6 +310,9 @@ def prepare(body):
         index = next((i for i, box in enumerate(parsed.boxes) if box.id == body.get('box')), None)
         if index is None:
             raise ValueError('H3 still target box is missing')
+        body = dict(body, prompt=parsed.boxes[index].prompt)
+        if not body['prompt'].strip():
+            raise ValueError('Write a prompt for this clip before generating candidates.')
         context = int((body.get('settings') or {}).get('context_frames') or 39)
         frame = _target_frame(parsed, index, body.get('target') or {'kind': 'first'}, context)
         from . import reference_assets
@@ -403,8 +406,6 @@ def _timeline_inputs(body, graph, required):
 
 
 def _references(body, parsed, index, frame, graph, native, ports):
-    from . import reference_assets
-    native['prompt'] = rules.join_prompts(native['prompt'], reference_assets.native_prompt(parsed, index))
     mentioned = [name for _, name in rules.mentions(native['prompt'])
                  if not rules.reference_disabled(name, parsed.disabled_refs)]
     if len(mentioned) != len(set(mentioned)):
