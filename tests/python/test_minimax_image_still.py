@@ -45,6 +45,22 @@ class MiniMaxImageTest(unittest.TestCase):
         self.assertIn('vae', cond)
         self.assertEqual(result.result[1]['label'], 'MiniMax H3 Image')
 
+    def test_megapixels_keep_the_width_height_ratio_and_set_the_area(self):
+        pixels = torch.zeros(1, 8, 8, 3)
+        cases = [(1152, 640, 20.0, (6016, 3328)), (1344, 768, 4.0, (2656, 1504)), (2048, 2048, 0.0, (2048, 2048)),
+                 (1000, 563, 16.0, (5344, 3008))]
+        for width, height, megapixels, expected in cases:
+            with self.subTest(width=width, height=height, megapixels=megapixels), \
+                 mock.patch.dict('nodes.NODE_CLASS_MAPPINGS', {'MiniMaxH3ImageConditioning': object}):
+                graph = image.H3C_MiniMaxH3ImageStill.execute(**{**ARGS, 'width': width, 'height': height},
+                                                              images={'image_1': pixels}, megapixels=megapixels).expand
+            cond = next(node['inputs'] for node in graph.values() if node['class_type'] == 'MiniMaxH3ImageConditioning')
+            self.assertEqual((cond['width'], cond['height']), expected)
+        self.assertEqual(image.H3C_MiniMaxH3ImageStill.INPUT_TYPES()['optional']['megapixels'][0], 'FLOAT')
+        with mock.patch.dict('nodes.NODE_CLASS_MAPPINGS', {'MiniMaxH3ImageConditioning': object}):
+            with self.assertRaisesRegex(ValueError, 'side above 8192'):
+                image.H3C_MiniMaxH3ImageStill.execute(**{**ARGS, 'width': 4096, 'height': 256}, megapixels=20.0)
+
     def test_lora_stack_is_an_optional_connection(self):
         schema = image.H3C_MiniMaxH3ImageStill.define_schema()
         socket = next((item for item in schema.inputs if item.id == 'lora_stack'), None)
@@ -98,7 +114,7 @@ class MiniMaxImageTest(unittest.TestCase):
                 with self.subTest(overrides=overrides), self.assertRaisesRegex(ValueError, message):
                     image.H3C_MiniMaxH3ImageStill.execute(**{**ARGS, **overrides})
 
-    def test_scene_is_first_and_reference_pixels_and_canvas_are_preserved(self):
+    def test_scene_is_first_and_references_guide_a_new_image_at_the_requested_size(self):
         workflow = {'api': {'5': {'class_type': 'H3C_MiniMaxH3ImageStill', 'inputs': {**ARGS}}}}
         captured = {**recipe(), 'label': 'MiniMax H3 Image'}
         refs = [reference('image20', ['identity: Courier'], 'a' * 64), reference('image21', ['location: Hall'], 'b' * 64)]
@@ -108,7 +124,12 @@ class MiniMaxImageTest(unittest.TestCase):
         self.assertEqual(set(result['prompt']['h3c_still_source_0']['inputs']), {'source'})
         self.assertEqual(result['prompt']['5']['inputs']['width'], 2048)
         self.assertNotIn('h3c_ph3_size', result['prompt'])
-        self.assertIn('<Picture 2>', result['prompt']['5']['inputs']['prompt'])
+        prompt = result['prompt']['5']['inputs']['prompt']
+        self.assertIn('<Picture 2>', prompt)
+        self.assertTrue(prompt.startswith('The target image is a new still'))
+        self.assertNotIn('Edit <Picture', prompt)
+        self.assertNotIn('canvas', prompt)
+        self.assertIn('grid', prompt)
         api = {**workflow['api'], '1': {'class_type': 'H3C_Timeline', 'inputs': {'still_recipe': ['5', 1]}}}
         self.assertEqual(story_context.still_model_for(api, '1'), 'MiniMax H3 Image')
 

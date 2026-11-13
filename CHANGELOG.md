@@ -4,6 +4,17 @@ All notable changes to H3 Continuity Studio are recorded here. Versions follow [
 
 ## [Unreleased]
 
+## [0.24.0] - 2026-11-13
+
+### Added
+
+- **MiniMax H3 Image Still has a megapixels setting.** Above 0, width and height only set the aspect ratio and the still is generated at that area, each side a multiple of 32. Connect the video size and set 20 to get a 20 MP still at the video's aspect ratio without size math in the workflow. At 0, width and height are used exactly, as before.
+
+### Fixed
+
+- **Generate candidates no longer repeats the same image.** With the Image seed field empty, every candidate request now gets a new random seed. Before, it used the generator node's own seed, often 0, so each click returned the same picture. Enter a seed to repeat one exactly; each candidate still records the seed it used.
+- **Stills use Cast sheets and location grids as references instead of editing them.** The still prompt now describes a new image composed for the requested camera, and asks that no reference's framing, panel grid, color grading or rendering carry over. MiniMax H3 Image and Qwen prompts no longer start with `Edit <Picture 1>.` or call the location the canvas. P-H3-Image keeps that opening because its core node adds it to every prompt.
+
 ## [0.23.0] - 2026-11-13
 
 ### Changed

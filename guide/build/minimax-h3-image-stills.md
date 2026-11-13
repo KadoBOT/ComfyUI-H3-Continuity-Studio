@@ -49,17 +49,23 @@ An unconnected or empty stack leaves generation unchanged; entries named `None`
 and entries with both strengths at zero are skipped.
 
 The Studio fills the prompt, seed and reference images for each request. It
-preserves scene and character reference roles, putting the scene canvas first
-when one is available. Prompts use native `<Picture 1>`, `<Picture 2>` labels;
-the first image is the edit base. Reference images retain their original canvas
-until native conditioning scales them. Up to eight references are exposed here.
-
+preserves scene and character reference roles, putting the location first when
+one is available. Prompts use native `<Picture 1>`, `<Picture 2>` labels and
+describe a new still composed for the requested camera: every image, including
+Cast sheets and location grids, is a reference for its role, never the image to
+edit. Reference images retain their original canvas until native conditioning
+scales them. Up to eight references are exposed here.
 Sampling follows the [official workflow](https://github.com/Comfy-Org/workflow_templates/blob/main/templates/image_minimax_h3_image_t2i.json):
 six Euler steps, simple schedule, CFG 1. Dimensions are explicit, default to
 2048 × 2048 and must be multiples of 32. Studio generation uses these dimensions
 unless the request supplies a still size. There is no implicit P-H3 8 MP resize.
 The official template starts at a reduced size and recommends about 16 MP for
 quality when memory permits (4096 × 4096 square or 5472 × 3072 widescreen).
+
+Set **megapixels** above 0 to generate at that area instead. Width and height
+then only set the aspect ratio, so you can connect the video size directly: 1152
+× 640 at 20 MP generates 6016 × 3328. Each side is rounded to a multiple of 32
+and must stay within 8192. At 0, width and height are used exactly.
 
 Prepared Studio prompts work directly; a separate prompt-enhancer download is
 optional and is not required by this node. Video rendering does not execute or

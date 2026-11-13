@@ -1,6 +1,6 @@
 // Marker images own editable still prompts, candidates and the acceptance transaction. Queue recovery belongs to the host.
 import {frameTargets, buildStillPrompt, applyFrameGuide, endpointGuide, endpointReference} from './h3c_shot_preview.mjs?v=9af9091f6757';
-import {parseState, serialize, assemblePrompt} from './h3c_timeline_model.mjs?v=9af9091f6757';
+import {parseState, serialize, assemblePrompt, newSeed} from './h3c_timeline_model.mjs?v=9af9091f6757';
 import {StillPromptPreparation,preparedStillPrompt,setPreparedStillPrompt} from './h3c_still_prompt_preparation.mjs?v=2e7e25c47bea';
 
 import {seedValue, stringifyJSON} from './h3c_project.mjs?v=0882b8a6265a';
@@ -83,7 +83,7 @@ export class FrameImages {
       const edited={...structuredClone(pin),moment};this.sourcePins[Number(this.sourceEl.value)]=edited;this.saveSource(edited);
     });
     this.seedEl=el('input',null,'h3ct-note');this.seedEl.type='text';this.seedEl.inputMode='numeric';
-    this.seedEl.setAttribute('aria-label','Image seed');this.seedEl.placeholder='Native image seed';
+    this.seedEl.setAttribute('aria-label','Image seed');this.seedEl.placeholder='Random for each candidate';
     this.seedEl.addEventListener('change',()=>{
       this.seedEdited=true;
       const seed=this.seedEl.value===''?undefined:seedValue(this.seedEl.value);
@@ -187,7 +187,7 @@ export class FrameImages {
   }
   async loadControls(saved) {
     if(!this.host.stillControls) return;
-    const boxId=this.boxId,stamp=key(this.target),before=this.promptEl.value,seedBefore=this.seedEl.value,instructionBefore=this.instructionEl.value;
+    const boxId=this.boxId,stamp=key(this.target),before=this.promptEl.value,instructionBefore=this.instructionEl.value;
     const generation=this.host.referenceContext?.(),load=this.controlLoad={};
     this.controlsFailed=false;
     let controls;
@@ -200,8 +200,6 @@ export class FrameImages {
     if(controls) {
       if(!this.instructionEdited&&this.instructionEl.value===instructionBefore) this.instructionEl.value=controls.instruction;
       if(!this.promptEditing&&!preparedStillPrompt(this.editor?.state,boxId,this.target)&&saved?.still_prompt==null && (this.autoPrompt!=null?this.promptEl.value===this.autoPrompt:this.promptEl.value===before)) {this.promptEl.value=this.prompt();this.autoPrompt=this.promptEl.value;}
-      if(!this.seedEdited&&saved?.still_seed==null && this.seedEl.value===seedBefore) this.seedEl.value=controls.seedScope==='box'||controls.seed==null?'':String(controls.seed);
-      this.seedEl.placeholder=controls.seedScope==='box'?'Use the current clip seed':'Native image seed';
     }
     this.render();
   }
@@ -480,7 +478,7 @@ export class FrameImages {
       const seed=this.seedEl.value===''?undefined:seedValue(this.seedEl.value);
       if(this.seedEl.value!=='' && seed===undefined) throw new Error('Image seed must be an unsigned 64-bit integer.');
       this.editedPrompt();const prompt=this.candidatePrompt();if(!prompt.trim())throw new Error('Enter a still prompt before generating candidates.');
-      const request={box:boxId,target,frame,prompt,seed:seed??(this.seedScope==='box'?box.seed:undefined),source:null};
+      const request={box:boxId,target,frame,prompt,seed:seed??newSeed(),source:null};
       this.note('Submitting still candidates…');
       const receipt=await this.host.generateStill(request);
       this.live();this.note(`Still request ${receipt.state}. Results remain candidates until accepted.`);

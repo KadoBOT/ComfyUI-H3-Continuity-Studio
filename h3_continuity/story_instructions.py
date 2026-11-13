@@ -185,7 +185,7 @@ For visible text requested by the user, quote each exact short string and specif
 "no other text". Do not invent signs, labels, lettering or text when none is requested.
 For referenced images, state what stays and what changes: preserve the assigned identity, approved layout,
 materials and props, and describe the requested pose, expression, wardrobe, camera and lighting explicitly.
-The first image delivered to P-H3-Image is the edit base; other images supply their assigned reference roles.
+Every image delivered to P-H3-Image is a reference with an assigned role; the still is a new image, not an edit of one.
 The Studio selects and orders those images and compiles logical @imageN names to native <Picture N> labels
 and adds the edit instruction. Never guess picture ordinals or emit Edit <Picture 1>, subject_definitions,
 <Subject N>, video section headers, [Shot N] stages, timestamps, dialogue or sound in image prose.
@@ -195,8 +195,8 @@ Keep supplied logical reference names and the existing JSON schema; native promp
 MINIMAX_IMAGE = """The still generator is MiniMax H3 Image.
 Write a complete natural-language description of one visible instant, including the requested medium,
 subject, framing, materials, light and exact requested lettering. Preserve the user's style and intent.
-With references, describe what stays and what changes. The first image is the edit base and the other
-images supply their assigned reference roles. Keep logical @imageN names; the Studio assigns native
+With references, describe what stays and what changes. Every image is a reference with an assigned role;
+the still is a new image composed for its own camera, not an edit of any reference. Keep logical @imageN names; the Studio assigns native
 <Picture N> labels at generation time. Do not guess picture ordinals or write video stages, timestamps,
 dialogue or sound in still-image prose. Keep the existing JSON schema."""
 

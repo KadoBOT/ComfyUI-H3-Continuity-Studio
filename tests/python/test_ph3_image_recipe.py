@@ -167,17 +167,20 @@ class PrepareTest(unittest.TestCase):
         self.assertNotIn("prompt_policy", result["provenance"])
         self.assertFalse([key for key in node if key.startswith("images.")])
 
-    def test_the_canvas_reference_goes_first_as_picture_1_and_the_prompt_says_which_picture_is_edited(self):
+    def test_the_location_goes_first_as_picture_1_and_every_reference_guides_a_new_image(self):
         result = prepare([reference("image2", ["identity: Mei"], "b" * 64), reference("image1", ["location: Kitchen"], "a" * 64)])
         node = result["prompt"][NODE]["inputs"]
         self.assertEqual([key for key in node if key.startswith("images.")], ["images.image_1", "images.image_2"])
         prompt = result["provenance"]["effective_prompt"]
-        self.assertTrue(prompt.startswith("Edit <Picture 1>. "))
+        # p-h3-image's core node prepends this edit marker to any other prompt; stating it keeps the brief below it intact.
+        self.assertTrue(prompt.startswith("Edit <Picture 1>. The target image is a new still"))
+        self.assertIn("not an edit", prompt)
+        self.assertNotIn("canvas", prompt)
         self.assertIn("<Picture 1>: location: Kitchen", prompt)
         self.assertIn("<Picture 2>: identity: Mei", prompt)
         self.assertTrue(prompt.endswith("Requested visible state:\nShe pours coffee."))
-        self.assertEqual(result["provenance"]["prompt_policy"], "p-h3-image-scene-v1")
-        self.assertEqual(result["provenance"]["canvas_reference"], "<Picture 1>")
+        self.assertEqual(result["provenance"]["prompt_policy"], "p-h3-image-scene-v2")
+        self.assertEqual(result["provenance"]["environment_reference"], "<Picture 1>")
         self.assertEqual(node["images.image_1"], ["h3c_still_source_0", 0])
 
     def test_logical_references_in_the_prompt_become_picture_labels(self):
