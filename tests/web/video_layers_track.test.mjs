@@ -243,7 +243,7 @@ test('Generate on a picked video asks for that video', async () => {
 test('the switch controls write the switch', () => {
   const editor = panel();
   const settings = editor.videoSettings;
-  assert.match(settings.textContent, /Videos in this clip/);
+  assert.match(settings.textContent, /Multiple videos/);
   assert.match(settings.textContent, /1b/);
   const at = labelled(settings, 'Swap 1 frame');
   assert.equal(at.value, '27');

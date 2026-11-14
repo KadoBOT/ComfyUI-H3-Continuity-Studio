@@ -63,6 +63,29 @@ with sync_playwright() as p:
  page.evaluate('editor.inspectClip()')
  page.get_by_role('tab',name='Prompt',exact=True).press('End')
  assert page.get_by_role('tab',name='Settings',exact=True).get_attribute('aria-selected')=='true'
+ # Inspector sections are switched, Resolve-style: the seed is random off and 42 on, and off hides its fields.
+ seed=page.locator('.h3sw-head').filter(has_text='Fixed seed')
+ if seed.get_attribute('aria-checked')=='true':seed.click()
+ assert page.evaluate('editor.video().seed_mode')=='randomize'
+ assert not page.get_by_role('textbox',name='Clip seed',exact=True).is_visible()
+ seed.click()
+ assert page.evaluate('editor.video().seed_mode===undefined && editor.video().seed===42')
+ assert page.get_by_role('textbox',name='Clip seed',exact=True).is_visible()
+ assert page.get_by_role('button',name='Revise story').count()==0
+ # Tabs keep their full height and the video lanes end where the next lane begins.
+ tabs=page.evaluate("[...document.querySelectorAll('.h3cx-library-nav,.h3ct-panel-tabs')].filter(n=>n.offsetParent).map(n=>n.clientHeight>=n.scrollHeight-1)")
+ assert tabs and all(tabs),tabs
+ gap=page.evaluate("""()=>{const ed=document.querySelector('.h3cx-track .h3ct-track-editor');let n=ed.nextElementSibling;
+  while(n&&!n.getBoundingClientRect().height)n=n.nextElementSibling;return n?n.getBoundingClientRect().top-ed.getBoundingClientRect().bottom:0}""")
+ assert gap<8,gap
+ # A plain section drawn again keeps the state the user last gave it.
+ page.evaluate("""()=>{const d=document.createElement('details');d.className='probe';d.innerHTML='<summary>Probe (1)</summary>x';
+  document.querySelector('.h3cx-inspector').append(d)}""")
+ page.locator('details.probe summary').click();page.wait_for_timeout(50)
+ page.evaluate("""()=>{document.querySelector('details.probe').remove();const d=document.createElement('details');d.className='probe';
+  d.innerHTML='<summary>Probe (2)</summary>x';document.querySelector('.h3cx-inspector').append(d)}""")
+ page.wait_for_function("document.querySelector('details.probe').open===true")
+ page.evaluate("document.querySelector('details.probe').remove()")
  # A populated lane needs confirmation; Undo restores its clips and placement.
  before_delete=page.evaluate('JSON.stringify(stored())')
  page.get_by_role('button',name='Expand video lanes',exact=True).click()

@@ -71,6 +71,13 @@ with sync_playwright() as p:
 
     page.evaluate('editor.laneEl.scrollTop=0;studio.root.style.setProperty("--h3cx-track-h","450px")')
     capture('desktop.png')
+    page.get_by_role('tab', name='Settings', exact=True).click()
+    page.set_viewport_size(dict(width=1440, height=1700))
+    capture('desktop-settings.png')
+    page.set_viewport_size(dict(width=1440, height=1000))
+    page.get_by_role('tab', name='Story', exact=True).click()
+    capture('desktop-story.png')
+    page.evaluate('studio.setPage("viewer")')
     page.get_by_role('button', name='Collapse video lanes', exact=True).click()
     capture('desktop-combined.png')
     page.get_by_role('tab', name='Cast', exact=True).click()

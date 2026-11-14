@@ -1,4 +1,5 @@
 import {decorateIcon} from './h3c_icons.mjs';
+import {SwitchSection, rememberDisclosures} from './h3c_switch_section.mjs?v=c253500f4908';
 // The Studio: the page's one full-window view of a Timeline. While open it holds the editor's regions, and the linked
 // Story's actions, story and files, in its own layout, and it gives each one back to the place it came from when it
 // closes, opens another Timeline or the Timeline's Story changes. Its Story page edits the Story node's inputs.
@@ -46,6 +47,15 @@ const CSS = `
 .h3ct-overlap-row,.h3ct-overlap-row .h3ct-track-body{min-height:34px}.h3ct-overlap-mark{position:absolute;top:2px;min-height:28px;z-index:2;white-space:nowrap}
 .h3cx-project-actions{gap:3px}.h3cx-track-toolbar{gap:8px}.h3cx-studio ::selection{background:#45648d;color:#fff}.h3cx-studio input,.h3cx-studio textarea{caret-color:#c5dcff}
 @media(pointer:coarse){.h3cx-library-nav [role=tab],.h3cx-studio .h3ct-panel-tabs [role=tab]{min-height:44px}}
+.h3cx-center>.h3cx-library-nav,.h3cx-studio .h3ct-panel-tabs{flex:0 0 auto}
+.h3cx-activity.h3cx-empty{display:none}
+.h3cx-studio .h3ci-button:not([role=tab]){color:#aab1bd;background:transparent;border-color:transparent;border-radius:4px}
+.h3cx-studio .h3ci-button:not([role=tab]):hover:not(:disabled){filter:none;color:#e8ecf2;background:#ffffff12}
+.h3cx-studio .h3ci-button:disabled{opacity:.35}
+.h3cx-studio .h3ci-button:not([role=tab])[aria-pressed=true],.h3cx-studio .h3ci-button:not([role=tab])[aria-expanded=true]{color:#9dbef1;background:#9dbef11a}
+.h3cx-studio .h3ci-button.h3ct-primary{color:#8fbcff}
+.h3cx-studio .h3ci-button.h3ct-primary:hover:not(:disabled){color:#c5dcff;background:#3f6fbf33}
+.h3cx-studio [role=tab].h3ci-button:not([aria-selected=true]){color:#aab1bd}
 
 .h3cx-studio { position: fixed; inset: 0; z-index: 1500; display: flex; flex-direction: column; outline: none;
   overflow: hidden; background: #15171c; color: var(--input-text, #ddd); font: 14px/1.45 system-ui, sans-serif; }
@@ -296,6 +306,7 @@ export class Studio {
     root.setAttribute('role', 'dialog');
     root.setAttribute('aria-modal', 'true');
     root.setAttribute('aria-label', 'H3 Studio');
+    rememberDisclosures(root);
     root.addEventListener('keydown', (event) => this.key(event));
     // A button that its own click replaces, such as a take's Use, takes the focus with it to the page, where neither the
     // Studio nor ComfyUI hears keys, so while the Studio is open the page's keys come to it.
@@ -358,7 +369,6 @@ export class Studio {
     this.storyEl = el('div', 'h3cx-story h3cx-slot');
     this.writeOff = button('Write story', NO_STORY, () => {});
     this.writeOff.disabled = true;
-    this.feedbackButton = button('Revise story', 'Ask the Story writer to change the written story', () => this.openFeedback(), 'h3cx-feedback');
     this.actionsSlot = el('span', 'h3cx-slot');
     this.newProjectButton = button('New project', 'Clear the current Timeline for a new project and keep its available sources', () => this.openNewProject());
     this.projectButton = button('Project settings', 'Shared prompt and graph settings', () => this.openFocus('project'));
@@ -387,7 +397,7 @@ export class Studio {
     const activity = el('div', 'h3cx-activity');
     this.writerCancel = el('span', 'h3cx-slot');
     this.writerMessage = el('span', 'h3cx-writer-message');
-    activity.append(this.progressEl, this.stopButton, this.writerCancel, this.writerMessage, el('span', 'h3cx-grow'), this.feedbackButton);
+    activity.append(this.progressEl, this.stopButton, this.writerCancel, this.writerMessage);
     this.activity = activity;
     this.notice = el('div', 'h3cx-notice');
 
@@ -990,9 +1000,7 @@ export class Studio {
     this.mobileMore.hidden = !mobile || this.mobilePage !== 'more';
     this.activity.classList.toggle('h3cx-empty', !this.progressEl.textContent && !this.writerMessage.textContent && this.stopButton.hidden && !this.writerCancel.textContent);
     const actionParent = mobile ? this.mobileMore : this.bar;
-    const feedbackParent = mobile ? this.mobileMore : this.activity;
     if (this.projectActions.parentNode !== actionParent) actionParent.append(this.projectActions);
-    if (this.feedbackButton.parentNode !== feedbackParent) feedbackParent.append(this.feedbackButton);
     for (const [page, control] of Object.entries(this.mobileButtons))
       control.setAttribute('aria-pressed', String(page === (this.mobilePage === 'focus' ? 'more' : this.mobilePage)));
     this.root.style.setProperty('--h3cx-track-width', `${Math.max(480, (this.host?.editor.state.boxes.length ?? 0) * 96)}px`);
@@ -1023,7 +1031,6 @@ export class Studio {
     this.page = page;
     this.focusTitle.textContent = page === 'assets' ? 'References' : page === 'project' ? 'Project settings'
       : page[0].toUpperCase() + page.slice(1);
-    if (page === 'story' && this.host) this.host.editor.feedbackEl.open = true;
     if(page==='assets'&&this.host){this.host.editor.pictures.root.open=true;this.host.editor.refmodsEl.open=true;}
     if(referenceSection)this.pages[referenceSection].scrollIntoView?.({block:'nearest'});
     if(page==='cast'){const preparation=this.host?.editor.cast?.preparation;if(preparation){if(!preparation.root.open)preparation.root.open=true;else preparation.refresh();}this.host?.editor.cast?.refresh({link});}
@@ -1094,12 +1101,6 @@ export class Studio {
     this.refresh();
   }
 
-  openFeedback() {
-    if (!this.host) return;
-    this.setPage('story');
-    this.host.editor.feedbackInput.focus();
-  }
-
   refresh() {
     if (this.root.hidden || !this.host) return;
     const host = this.host;
@@ -1112,7 +1113,6 @@ export class Studio {
     this.nameEl.title = host.sequenceName?.() ?? '';
     setText(this.progressEl, host.progress?.() ?? progressText(watch, host.runningBox(), (id) => host.titleOf(id)));
     this.stopButton.hidden = host.editor.host.projectAttached === true || !(watch.running && !watch.turn);
-    this.feedbackButton.hidden = host.editor.feedbackEl.hidden;
     this.renderNavigation();
     const full = host.editor.fullLink.hidden ? null : host.editor.fullLink.getAttribute('href');
     const partial = full ? host.editor.partialVideo : null;
@@ -1246,9 +1246,25 @@ export class Studio {
 
   inputsOf(story) {
     const form = el('div', 'h3cx-inputs');
-    const advanced = el('details', 'h3cx-story-advanced');
-    const advancedInputs = el('div', 'h3cx-inputs');
-    advanced.append(el('summary', null, 'Advanced'), advancedInputs);
+    // On while any of its typed settings has a value; off empties them, kept until it comes back on.
+    const typed = () => story.inputs().filter(input => input.advanced && input.kind === 'string' && input.linked == null);
+    const advanced = new SwitchSection('Advanced', {className: 'h3cx-story-advanced', onToggle: (on) => {
+      this.advancedPinned = on;
+      if (on) {
+        for (const [name, value] of Object.entries(this.advancedKept ?? {})) story.setInput(name, value);
+        this.advancedKept = null;
+      } else {
+        const filled = typed().filter(input => String(input.value ?? '').trim());
+        if (filled.length && !globalThis.confirm?.(`Clear ${filled.map(input => input.label).join(', ')}? Turning Advanced on again brings them back.`)) return;
+        this.advancedKept = Object.fromEntries(filled.map(input => [input.name, input.value]));
+        for (const input of filled) story.setInput(input.name, '');
+      }
+      this.returnStory();
+      this.showStory(story);
+    }});
+    const advancedInputs = advanced.body;
+    advanced.set(typed().some(input => String(input.value ?? '').trim()) || !!this.advancedPinned);
+    advanced.root.addEventListener('input', () => { if (!typed().some(input => String(input.value ?? '').trim())) this.advancedPinned = true; });
     story.panel.refreshSettings?.();
     for (const input of story.inputs()) {
       const parent = input.advanced ? advancedInputs : form;
@@ -1270,7 +1286,7 @@ export class Studio {
       field.append(...(check ? [control, label] : [label, control]));
       parent.append(field);
     }
-    if (advancedInputs.childElementCount) form.append(advanced);
+    if (advancedInputs.childElementCount) form.append(advanced.root);
     return form;
   }
 

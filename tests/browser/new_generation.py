@@ -55,7 +55,8 @@ with sync_playwright() as p:
   page.get_by_role('button',name='Start a new generation',exact=True).click()
   page.get_by_text('New generation ready.',exact=False).wait_for()
   page.get_by_text('Previous generations',exact=True).wait_for()
-  page.locator('details').last.locator('summary').click()
+  # The Studio remembers an opened section across redraws, so open it only when it isn't already.
+  if not page.locator('details').last.evaluate('d=>d.open'):page.locator('details').last.locator('summary').click()
   assert page.get_by_role('link',name='Joined video').count()==1
   assert page.get_by_role('link',name='Clip 1',exact=True).count()==1
   assert page.evaluate('document.documentElement.scrollWidth<=innerWidth')
