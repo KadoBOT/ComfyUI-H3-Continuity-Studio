@@ -120,11 +120,22 @@ describes the bindings.
 
 - **Generate candidates** never changes a render until one is accepted with
   **Use as guide**. Each candidate keeps its prompt, seed and source.
-- Still generation receives relevant Cast images, images explicitly mentioned in the still prompt, and images
+- Candidate generation always uses the selected clip prompt. Shared text, prepared
+  still overrides, reference-role prose and generator instructions are not added.
+  Edit the clip prompt itself to change candidate text. The server enforces this
+  even for an older client. MiniMax image references separately follow the official
+  4 MP resize and 32-pixel alignment; requested output resolution stays native.
+  MiniMax H3 Image Still's optional `prompt_enhancer` (default `off`) can rewrite the
+  prompt with the official templates' Qwen3.5 enhancer; leave it off to keep the clip
+  text exact. With references the model edits `<Picture 1>`, so for MiniMax clip
+  stills a location or scene-layout sheet is sent as one picture per view (cut at its
+  divider lines): a 2 × 2 sheet becomes `<Picture 1>` to `<Picture 4>` instead of a
+  grid to copy. Character sheets and Cast-entry stills stay whole.
+- Still generation receives relevant Cast images, images explicitly mentioned in the clip prompt, and images
   connected to the Still Recipe. Scene anchors and preceding guides are not
   automatically added.
-- **Prepare all still prompts** has the Story writer write a richer still prompt for
-  every First, Last and Shot target in one batch. **Prepare references** (on the
+- Saved still-prompt preparation is retained as writing notes, not as a candidate
+  prompt override. **Prepare references** (on the
   Cast page) makes reviewable candidates for characters, looks, places and props.
 - Arbitrary-view geometry from still generators is experimental. Inspect every
   candidate before accepting it.

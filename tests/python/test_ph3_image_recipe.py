@@ -123,10 +123,11 @@ class PrepareTest(unittest.TestCase):
             refs = stills._pixel_references(body, parsed, 0, 0, {})
         result = prepare(refs)
         prompt = result['provenance']['effective_prompt']
-        self.assertIn('<Picture 1>: visual reference, location: Hall', prompt)
-        self.assertIn('courier-sheet', prompt)
-        self.assertIn('One white eyebrow.', prompt)
-        self.assertIn('identity: Courier', prompt)
+        self.assertEqual(prompt, 'She pours coffee.')
+        identity = next(ref for ref in result['provenance']['references'] if ref['slot']=='image20')
+        self.assertIn('identity: Courier', identity['roles'])
+        self.assertEqual(identity['title'], 'courier-sheet')
+        self.assertEqual(identity['description'], 'One white eyebrow.')
 
         for cached in (None, {'text':''}):
             with self.subTest(cached=cached):
@@ -135,7 +136,7 @@ class PrepareTest(unittest.TestCase):
                      mock.patch('h3_continuity.image_descriptions.lookup', return_value=cached), \
                      mock.patch.object(stills, 'pin_image', side_effect=lambda file: dict(file=file,sha256=file['filename'].ljust(64,'a'))):
                     refs = stills._pixel_references(body, parsed, 0, 0, {})
-                self.assertNotIn('One white eyebrow.', prepare(refs)['provenance']['effective_prompt'])
+                self.assertTrue(all(ref.get('description')!='One white eyebrow.' for ref in refs))
 
     def test_reference_context_survives_deduplication_and_uses_native_picture_labels(self):
         approved = reference('image20', ['appearance: Courier'], 'a'*64)
@@ -143,9 +144,11 @@ class PrepareTest(unittest.TestCase):
                       'title':'courier-sheet', 'description':'Match @image20 and keep the light from @image23.'}
         result = prepare([approved, contextual, reference('image23', ['location: Hall'], 'b'*64)])
         prompt = result['provenance']['effective_prompt']
-        self.assertIn('courier-sheet', prompt)
-        self.assertIn('Match <Picture 2> and keep the light from <Picture 1>.', prompt)
-        self.assertNotIn('@image', prompt)
+        self.assertEqual(prompt, 'She pours coffee.')
+        identity = next(ref for ref in result['provenance']['references'] if ref['slot']=='image20')
+        self.assertEqual(identity['title'], 'courier-sheet')
+        self.assertEqual(identity['description'], 'Match @image20 and keep the light from @image23.')
+        self.assertEqual(identity['label'], '<Picture 2>')
 
     def test_computed_reference_pixels_bypass_the_file_loader(self):
         saved = workflow()
@@ -164,7 +167,7 @@ class PrepareTest(unittest.TestCase):
         self.assertEqual(result["prompt"]["h3c_still_output"]["inputs"]["images"], [NODE, 0])
         self.assertEqual(result["provenance"]["generator"], "P-H3-Image")
         self.assertEqual(result["provenance"]["effective_prompt"], "She pours coffee.")
-        self.assertNotIn("prompt_policy", result["provenance"])
+        self.assertEqual(result['provenance']['prompt_policy'], 'clip-verbatim-v1')
         self.assertFalse([key for key in node if key.startswith("images.")])
 
     def test_the_location_goes_first_as_picture_1_and_every_reference_guides_a_new_image(self):
@@ -172,15 +175,10 @@ class PrepareTest(unittest.TestCase):
         node = result["prompt"][NODE]["inputs"]
         self.assertEqual([key for key in node if key.startswith("images.")], ["images.image_1", "images.image_2"])
         prompt = result["provenance"]["effective_prompt"]
-        # p-h3-image's core node prepends this edit marker to any other prompt; stating it keeps the brief below it intact.
-        self.assertTrue(prompt.startswith("Edit <Picture 1>. The target image is a new still"))
-        self.assertIn("not an edit", prompt)
-        self.assertNotIn("canvas", prompt)
-        self.assertIn("<Picture 1>: location: Kitchen", prompt)
-        self.assertIn("<Picture 2>: identity: Mei", prompt)
-        self.assertTrue(prompt.endswith("Requested visible state:\nShe pours coffee."))
-        self.assertEqual(result["provenance"]["prompt_policy"], "p-h3-image-scene-v2")
-        self.assertEqual(result["provenance"]["environment_reference"], "<Picture 1>")
+        self.assertEqual(prompt, 'She pours coffee.')
+        self.assertEqual(result['provenance']['references'][0]['roles'], ['location: Kitchen'])
+        self.assertEqual(result['provenance']['references'][1]['roles'], ['identity: Mei'])
+        self.assertEqual(result['provenance']['prompt_policy'], 'clip-verbatim-v1')
         self.assertEqual(node["images.image_1"], ["h3c_still_source_0", 0])
 
     def test_logical_references_in_the_prompt_become_picture_labels(self):
