@@ -1,13 +1,13 @@
 import * as tracks from './h3c_tracks.mjs';
-import {FEATURE as SCENE_MAP_FEATURE, normalizeSceneMap} from './h3c_scene_maps.mjs';
+import {FEATURE as SCENE_MAP_FEATURE, normalizeSceneMap} from './h3c_scene_maps.mjs?v=bcaf35949d73';
 import {reconcileSceneAnchors} from './h3c_still_scene.mjs?v=1ca16919a3f9';
 // H3 Timeline editor model: the timeline JSON, lengths on the H3 frame grid, edits, and the rules that
 // decide how a box runs. Mirrors h3_continuity/timeline.py.
 import {parseJSON, stringifyJSON, seedValue} from './h3c_project.mjs?v=0882b8a6265a';
 import {imageDescriptionPrompt, imageDescriptionSource} from './h3c_image_descriptions.mjs?v=5f858b2b6a5a';
-import {acceptedGuideFrames} from './h3c_shot_preview.mjs?v=4a717086040e';
+import {acceptedGuideFrames} from './h3c_shot_preview.mjs?v=5070c7d0834c';
 import {AUDIO_WINDOWS_FEATURE, pruneWindows, resolveWindows, audioSourceLocked} from './h3c_audio_windows.mjs?v=cdefbd77b246';
-import {LAYER_FIELDS, SWAPS_DONT_FIT, clampSwitch, hasLayers, layerIds, switchFits} from './h3c_layers.mjs?v=4a717086040e';
+import {LAYER_FIELDS, SWAPS_DONT_FIT, clampSwitch, hasLayers, layerIds, switchFits} from './h3c_layers.mjs?v=5070c7d0834c';
 export const FPS = 24;
 export const MAX_FRAMES = 362;
 export const GRID = 17;

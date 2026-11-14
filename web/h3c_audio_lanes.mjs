@@ -1,6 +1,6 @@
 import * as tracks from './h3c_tracks.mjs';
-import * as model from './h3c_timeline_model.mjs?v=4a717086040e';
-import { importWhisper, validateTimedText, setTextSync, textClock, projectTimedText } from './h3c_timed_text.mjs?v=518b40e37b97';
+import * as model from './h3c_timeline_model.mjs?v=5070c7d0834c';
+import { importWhisper, validateTimedText, setTextSync, textClock, projectTimedText } from './h3c_timed_text.mjs?v=28015ddafa06';
 import { loadAudio, loaded, beatTimes, drawWave } from './h3c_waveform.mjs?v=162256e10b5b';
 import {captureWindows,resolveWindows,unlockWindows,lockEligibility,sourceOrigin,outputWindows,equivalentWindows,timelineAudioParts} from './h3c_audio_windows.mjs?v=cdefbd77b246';
 import {replaceChanged, setText} from './h3c_dom.mjs?v=584a9bf55653';

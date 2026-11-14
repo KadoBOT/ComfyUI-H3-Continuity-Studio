@@ -1,29 +1,30 @@
 import {decorateIcon,icon,setIconLabel} from './h3c_icons.mjs';
 import {TrackEditor} from './h3c_track_editor.mjs';
 import {Pins, SwitchSection} from './h3c_switch_section.mjs?v=c253500f4908';
+import {SceneMapSection} from './h3c_scene_map_panel.mjs?v=e453e48952a9';
 import * as tracks from './h3c_tracks.mjs';
 // The H3 Timeline editor: a track of boxes, the selected box and the shared prompt.
 // Plain DOM without ComfyUI imports; the host object connects it to the node.
-import { MentionCard, MentionLayer } from './h3c_mentions.mjs?v=f2f0dcf6ca6a';
+import { MentionCard, MentionLayer } from './h3c_mentions.mjs?v=5bec2fe8c8fc';
 import { promptSections, promptShots, writePromptSections } from './h3c_prompt_sections.mjs?v=b58f04f78a75';
-import * as model from './h3c_timeline_model.mjs?v=4a717086040e';
-import * as videoLayers from './h3c_layers.mjs?v=4a717086040e';
+import * as model from './h3c_timeline_model.mjs?v=5070c7d0834c';
+import * as videoLayers from './h3c_layers.mjs?v=5070c7d0834c';
 import {audioSourceLocked} from './h3c_audio_windows.mjs?v=cdefbd77b246';
-import { AudioLanes } from './h3c_audio_lanes.mjs?v=e572c28e39a1';
-import { shotFrames, frameTargets, syncTargets, acceptedGuideFrames, endpointGuide, endpointReference, adoptEndpointGuides } from './h3c_shot_preview.mjs?v=4a717086040e';
-import {FrameImages, targetLabel, imageDrop} from './h3c_frame_images.mjs?v=25ef8456df7c';
-import { splitBox, splitTiming } from './h3c_shot_split.mjs?v=4a95a38475f0';
+import { AudioLanes } from './h3c_audio_lanes.mjs?v=3302eeddfbae';
+import { shotFrames, frameTargets, syncTargets, acceptedGuideFrames, endpointGuide, endpointReference, adoptEndpointGuides } from './h3c_shot_preview.mjs?v=5070c7d0834c';
+import {FrameImages, targetLabel, imageDrop} from './h3c_frame_images.mjs?v=8caffbab50c5';
+import { splitBox, splitTiming } from './h3c_shot_split.mjs?v=df3966ec1d8a';
 import { fillReferenceSwitches } from './h3c_reference_switches.mjs?v=e94b5b02e02b';
-import { ReferenceReplacements } from './h3c_reference_replacements.mjs?v=78d299d2ba9c';
+import { ReferenceReplacements } from './h3c_reference_replacements.mjs?v=1fc6f6d2c2ce';
 import { fillPicturePicker, mentionedReferences, referenceChip } from './h3c_reference_pictures.mjs?v=8198307be3fa';
-import { CastPage } from './h3c_cast.mjs?v=ab650ee3b1d1';
-import { PicturesPanel, highestSlot } from './h3c_pictures.mjs?v=1331359f6885';
+import { CastPage } from './h3c_cast.mjs?v=2644b990ffaa';
+import { PicturesPanel, highestSlot } from './h3c_pictures.mjs?v=f1d097a04705';
 import { CheckPanel } from './h3c_check.mjs?v=0ba848400498';
-import { BridgePanel, bridgeLine } from './h3c_bridges.mjs?v=8c7d710d92f1';
-import { DialoguePanel } from './h3c_dialogue.mjs?v=28ee7faaadce';
+import { BridgePanel, bridgeLine } from './h3c_bridges.mjs?v=a106b507ea8e';
+import { DialoguePanel } from './h3c_dialogue.mjs?v=a53f3c8f67e8';
 import { ChainSettings } from './h3c_chain_settings.mjs?v=9f2d4061a6d6';
 import { exportedVideo } from './h3c_partial_video.mjs?v=201bf0f48645';
-import { MAX_TAKES, TakesPanel, followNote, renderLabel } from './h3c_takes.mjs?v=96ad0ce5905e';
+import { MAX_TAKES, TakesPanel, followNote, renderLabel } from './h3c_takes.mjs?v=b114733460bb';
 import { drawsSame, replaceChanged, setText, showImages } from './h3c_dom.mjs?v=584a9bf55653';
 
 const STYLE_ID = 'h3ct-style';
@@ -775,7 +776,8 @@ export class TimelineEditor {
       this.commit();
     }, el('p', 'h3ct-hint', 'Experimental. Needs FLF2VA video model weights.'));
     this.refmodSection.titleEl.title = this.refmodFramesField.title;
-    this.tabPanels.box.append(this.refmodSection.root, this.memoryDetails.root);
+    this.sceneMap = new SceneMapSection(this);
+    this.tabPanels.box.append(this.refmodSection.root, this.memoryDetails.root, this.sceneMap.root);
     this.castChipsEl = el('div', 'h3cc-chips');
     this.castChipsEl.setAttribute('aria-label', 'Characters, places and props in this clip');
     const cast = el('section');
@@ -2036,6 +2038,7 @@ export class TimelineEditor {
     const memory = video.memory ?? 'off';
     this.memoryDetails.set(memory !== 'off', {disabled: locked,
       state: {off: 'Off', scene: 'Same scene', selected: 'Selected moments', cast: 'Cast'}[memory] ?? memory});
+    this.sceneMap.render();
     this.renderBridgeSwitch();
     this.renderFeedback();
     this.leftButton.disabled = this.selected === 0;

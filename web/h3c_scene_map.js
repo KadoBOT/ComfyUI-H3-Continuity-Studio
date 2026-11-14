@@ -3,7 +3,7 @@
 import {app} from '../../scripts/app.js';
 import {api} from '../../scripts/api.js';
 import {showOwnElement} from './h3c_dom_widget.mjs?v=961e6d7f3bb7';
-import {HEIGHT, SceneMapEditor} from './h3c_scene_map_editor.mjs?v=a5be146fbe69';
+import {HEIGHT, SceneMapEditor} from './h3c_scene_map_editor.mjs?v=2cf054593719';
 
 const NODE_TYPE = 'H3C_SceneMap';
 
@@ -46,7 +46,7 @@ function nodeEditor(node) {
   dom.computeLayoutSize = () => ({minHeight: HEIGHT, maxHeight: HEIGHT, minWidth: 0});
   editor.reload = () => {
     editor.selected = null;
-    editor.setLayout(layoutWidget?.value);
+    editor.setLayout(layoutWidget?.value, {force: true});
     editor.setImage(imageWidget?.value ?? '');
     editor.loadImages();
   };

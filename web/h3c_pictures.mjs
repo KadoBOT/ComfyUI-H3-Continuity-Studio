@@ -1,7 +1,7 @@
 // Studio pictures: files uploaded into the Timeline itself, in slots numbered after the node's 16 wired inputs,
 // with no last slot. Every picture list shows them through the host's connected(), and the node loads them with
 // ComfyUI's Load Image.
-import * as model from './h3c_timeline_model.mjs?v=4a717086040e';
+import * as model from './h3c_timeline_model.mjs?v=5070c7d0834c';
 import { referenceChip } from './h3c_reference_pictures.mjs?v=8198307be3fa';
 import { decorateIcon } from './h3c_icons.mjs';
 

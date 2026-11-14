@@ -145,13 +145,15 @@ export class SceneMapEditor {
     this.draw();
   }
 
-  // Replaces the layout without reporting it back; a selected marker stays selected when it is still there.
+  // Replaces the layout without reporting it back; a selected marker stays selected when it is still there. The same
+  // layout again leaves the panel alone, so a field being typed in keeps its focus.
   setLayout(layout, extra = {}) {
-    const marker = this.selectedMarker();
-    this.layout = parseLayout(layout);
-    this.last = serializeLayout(this.layout);
+    const marker = this.selectedMarker(), parsed = parseLayout(layout);
     if ('ghost' in extra) this.ghost = extra.ghost ? parseLayout(extra.ghost) : null;
-    if ('notice' in extra) this.notice.textContent = extra.notice ?? '';
+    if ('notice' in extra && this.notice.textContent !== (extra.notice ?? '')) this.notice.textContent = extra.notice ?? '';
+    if (serializeLayout(parsed) === this.last && !extra.force) return this.draw();
+    this.layout = parsed;
+    this.last = serializeLayout(parsed);
     if (marker) {
       const index = this.layout.markers.findIndex(item => item.id === marker.id);
       this.selected = index >= 0 ? {kind: 'marker', index} : null;
@@ -361,11 +363,11 @@ export class SceneMapEditor {
       text.style.width = '44px';
       const size = el('input', {type: 'range', min: 0.5, max: 2.5, step: 0.05, value: marker.size});
       const legend = el('input', {type: 'checkbox', checked: marker.legend});
-      this.panel.replaceChildren(
+      this.panel.replaceChildren(...[
         this.field('Label', label, input => { marker.label = input.value.trim().slice(0, 60); }),
         marker.icon === 'text' ? this.field('Text', text, input => { marker.text = input.value.trim().slice(0, 3); }) : null,
         this.field('Size', size, input => { marker.size = Number(input.value); }),
-        this.field('In legend', legend, input => { marker.legend = input.checked; }), remove);
+        this.field('In legend', legend, input => { marker.legend = input.checked; }), remove].filter(Boolean));
       this.options.decorate?.(this.panel, marker);
     } else if (camera) {
       const label = el('input', {value: camera.label, maxLength: 40});

@@ -254,12 +254,17 @@ export function setAbsent(state, index, id, absent) {
   refreshChain(state, index);
 }
 
-// Adds a marker the clip owns at `at` ({x, y}); its end follows the opening until the end is edited. Returns its id.
-export function addMarker(state, index, marker, at) {
+// The id addMarker gives the next marker: unused by any clip's map.
+export function nextMarkerId(state) {
   const used = new Set(state.boxes.flatMap(box => box.scene_map?.markers.map(item => item.id) ?? []));
   let count = used.size + 1;
   while (used.has(`m${count}`)) count++;
-  const id = `m${count}`, map = state.boxes[index].scene_map;
+  return `m${count}`;
+}
+
+// Adds a marker the clip owns at `at` ({x, y}); its end follows the opening until the end is edited. Returns its id.
+export function addMarker(state, index, marker, at) {
+  const id = nextMarkerId(state), map = state.boxes[index].scene_map;
   map.markers.push(normalizeSceneMap({markers: [{...marker, id}]}).markers[0]);
   map.opening.markers[id] = [clamp(at.x, 0, 1), clamp(at.y, 0, 1)];
   refreshChain(state, index);
