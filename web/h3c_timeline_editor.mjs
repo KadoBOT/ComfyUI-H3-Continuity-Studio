@@ -1,27 +1,28 @@
+import {decorateIcon,setIconLabel} from './h3c_icons.mjs';
 import {TrackEditor} from './h3c_track_editor.mjs';
 import * as tracks from './h3c_tracks.mjs';
 // The H3 Timeline editor: a track of boxes, the selected box and the shared prompt.
 // Plain DOM without ComfyUI imports; the host object connects it to the node.
-import { MentionCard, MentionLayer } from './h3c_mentions.mjs?v=f0da69914f11';
+import { MentionCard, MentionLayer } from './h3c_mentions.mjs?v=3cdf48199742';
 import { promptSections, promptShots, writePromptSections } from './h3c_prompt_sections.mjs?v=b58f04f78a75';
-import * as model from './h3c_timeline_model.mjs?v=84e4686d15bf';
-import * as videoLayers from './h3c_layers.mjs?v=84e4686d15bf';
+import * as model from './h3c_timeline_model.mjs?v=5a547aaebfc2';
+import * as videoLayers from './h3c_layers.mjs?v=5a547aaebfc2';
 import {audioSourceLocked} from './h3c_audio_windows.mjs?v=cdefbd77b246';
-import { AudioLanes } from './h3c_audio_lanes.mjs?v=355744e6f1f0';
-import { shotFrames, frameTargets, syncTargets, acceptedGuideFrames, endpointGuide, endpointReference, adoptEndpointGuides } from './h3c_shot_preview.mjs?v=84e4686d15bf';
-import {FrameImages, targetLabel, imageDrop} from './h3c_frame_images.mjs?v=54ff10dbfe92';
-import { splitBox, splitTiming } from './h3c_shot_split.mjs?v=4f353c85e384';
+import { AudioLanes } from './h3c_audio_lanes.mjs?v=6b9c5b5ceaea';
+import { shotFrames, frameTargets, syncTargets, acceptedGuideFrames, endpointGuide, endpointReference, adoptEndpointGuides } from './h3c_shot_preview.mjs?v=5a547aaebfc2';
+import {FrameImages, targetLabel, imageDrop} from './h3c_frame_images.mjs?v=12d72ed4f7a6';
+import { splitBox, splitTiming } from './h3c_shot_split.mjs?v=09f5cc7e18b1';
 import { fillReferenceSwitches } from './h3c_reference_switches.mjs?v=e94b5b02e02b';
-import { ReferenceReplacements } from './h3c_reference_replacements.mjs?v=99ff205c14a1';
+import { ReferenceReplacements } from './h3c_reference_replacements.mjs?v=507fa9df6249';
 import { fillPicturePicker, mentionedReferences, referenceChip } from './h3c_reference_pictures.mjs?v=8198307be3fa';
-import { CastPage } from './h3c_cast.mjs?v=a6859d02475b';
-import { PicturesPanel, highestSlot } from './h3c_pictures.mjs?v=e852dce674d5';
+import { CastPage } from './h3c_cast.mjs?v=28b4e4935db2';
+import { PicturesPanel, highestSlot } from './h3c_pictures.mjs?v=0a1e1082275c';
 import { CheckPanel } from './h3c_check.mjs?v=c69786f95bd5';
-import { BridgePanel, bridgeLine } from './h3c_bridges.mjs?v=cb2a32a9e2fc';
-import { DialoguePanel } from './h3c_dialogue.mjs?v=6033f2cb471c';
+import { BridgePanel, bridgeLine } from './h3c_bridges.mjs?v=eb6a5342a055';
+import { DialoguePanel } from './h3c_dialogue.mjs?v=7ade233f0161';
 import { ChainSettings } from './h3c_chain_settings.mjs?v=9f2d4061a6d6';
 import { exportedVideo } from './h3c_partial_video.mjs?v=201bf0f48645';
-import { MAX_TAKES, TakesPanel, followNote, renderLabel } from './h3c_takes.mjs?v=29b31b595261';
+import { MAX_TAKES, TakesPanel, followNote, renderLabel } from './h3c_takes.mjs?v=40c7d61cad30';
 import { drawsSame, replaceChanged, setText, showImages } from './h3c_dom.mjs?v=584a9bf55653';
 
 const STYLE_ID = 'h3ct-style';
@@ -443,20 +444,20 @@ export class TimelineEditor {
     this.countInput.setAttribute('aria-label', 'Takes to render');
     this.countInput.title = 'How many takes to render using the clip’s seed mode';
     this.countInput.addEventListener('input', () => {
-      this.boxRenderButton.textContent = this.generateLabel();
+      setIconLabel(this.boxRenderButton,this.generateLabel());
     });
     this.boxRenderButton = button('Generate clip', '', async () => {
-      const outcome = await this.queueBox(this.takeCount());
+      const outcome = await this.queueBox(1);
       if (outcome.queued === outcome.requested) this.countInput.value = '1';
       else if (outcome.queued > 0 && outcome.retryable) this.countInput.value = String(outcome.remaining);
       this.renderPanelInfo();
     }, 'h3ct-primary');
     const render = el('span', 'h3ctk-render');
-    render.append(this.countInput, this.boxRenderButton);
-    this.clipActions = el('details', 'h3ct-clip-actions');
+    render.append(this.boxRenderButton);
+    this.clipActions = el('div', 'h3ct-clip-actions');
     const actions = el('div', 'h3ct-row');
     actions.append(this.leftButton, this.rightButton, this.duplicateButton, this.deleteButton);
-    this.clipActions.append(el('summary', null, 'Clip actions'), actions);
+    this.clipActions.append(actions);
     panelHead.append(this.titleEl, el('span', 'h3ct-grow'), this.clipActions, render);
     this.panelTabsEl = el('div', 'h3ct-panel-tabs');
     this.panelTabsEl.setAttribute('role', 'tablist');
@@ -471,6 +472,13 @@ export class TimelineEditor {
       tab.setAttribute('role', 'tab');
       tab.id = `h3ct-tab-${key}-${this.instanceId}`;
       this.tabButtons[key] = tab;
+      decorateIcon(tab,{prompt:'prompt',still:'shots',takes:'takes',box:'settings'}[key],label,{text:true});
+      tab.addEventListener('keydown',event=>{
+        if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;
+        event.preventDefault();const keys=['prompt','still','takes','box'],at=keys.indexOf(key);
+        const next=event.key==='Home'?0:event.key==='End'?keys.length-1:(at+(event.key==='ArrowRight'?1:-1)+keys.length)%keys.length;
+        this.tabButtons[keys[next]].click();this.tabButtons[keys[next]].focus();
+      });
       this.panelTabsEl.append(tab);
       const panel = el('div', 'h3ct-tabpanel');
       panel.setAttribute('role', 'tabpanel');
@@ -710,6 +718,7 @@ export class TimelineEditor {
     this.clipTakesEl = el('div');
     this.clipTakesEl.append(this.continuityDetails, this.takes.root, this.takes.bridgeRoot);
     this.tabPanels.takes.append(this.layerTakesNote, this.clipTakesEl);
+    for(const [control,name,label] of [[this.addButton,'plus','Add clip'],[this.renderNextButton,'next','Render next'],[this.renderButton,'all','Render remaining'],[this.boxRenderButton,'play','Generate clip'],[this.leftButton,'left','Move clip earlier'],[this.rightButton,'right','Move clip later'],[this.duplicateButton,'duplicate','Duplicate'],[this.deleteButton,'trash','Delete']])decorateIcon(control,name,label);
     this.panelEl.append(panelHead, this.videoPickerEl, this.panelTabsEl, this.tabButtons.references,
       ...['prompt', 'still', 'takes', 'box'].map(key => this.tabPanels[key]));
     this.setTab(this.activeTab);
@@ -731,7 +740,7 @@ export class TimelineEditor {
     for (const name of ['prompt', 'still', 'takes', 'box']) {
       const selected = name === key, tab = this.tabButtons[name];
       tab.setAttribute('aria-selected', String(selected));
-      tab.tabIndex = 0;
+      tab.tabIndex = selected?0:-1;
       this.tabPanels[name].hidden = !selected;
     }
     this.takes?.render();
@@ -910,7 +919,7 @@ export class TimelineEditor {
       bridgeTakes: this.takes.bridgeRoot, continuity: this.checks.root, bridgeSettings: this.bridges.root,
       audioSettings: this.audioLanes.settings, dialogueSettings: this.dialogue.root, timedTextSettings: this.audioLanes.textSettings,
       audioHeader: this.audioLanes.header, timedTextHeader: this.audioLanes.textHeader,
-      stillPrompts: this.frameImages.preparation.root, chainSettings: this.chain.root};
+      stillPrompts: this.frameImages.preparation.root, stillInstructions:this.frameImages.preparation.instructionsRoot, chainSettings: this.chain.root};
   }
 
   // Upload… beside a frame picker: the new picture becomes the `end` frame of the box chosen when it was pressed.
@@ -1473,7 +1482,7 @@ export class TimelineEditor {
     else if (ok && !this.stale && this.status.preview_video_building) summary += ' · Building the video so far…';
     else if (ok && !this.stale && this.status.preview_error && !this.status.preview_video) summary += ` · ${this.status.preview_error}`;
     setText(this.summaryEl, summary);
-    setText(this.renderButton, count && !remaining ? '✓ All rendered' : `▶ Render ${remaining} remaining`);
+    setIconLabel(this.renderButton,count&&!remaining?'All rendered':`Render ${remaining} remaining`);
     this.renderButton.disabled = this.host.hasVideo?.()===false || !remaining || this.queuing || this.host.feeding?.()
       || !this.seedInput.validity.valid || this.readOnly.length > 0;
     this.addButton.disabled = this.readOnly.length > 0;
@@ -2515,7 +2524,7 @@ export class TimelineEditor {
     if (!box) return;
     const context = this.host.context();
     setText(this.titleEl, `Clip ${this.selected + 1} · ${model.lengthLabel(this.state, this.selected, context)}`);
-    setText(this.clipActions.firstElementChild, `Clip ${this.selected + 1} actions`);
+    this.clipActions.setAttribute('aria-label',`Clip ${this.selected+1} actions`);
     const layer = this.pickedLayer(), label = this.pickedLabel();
     const info = this.pickedInfo(this.connectedSets(), context);
     const spoken = this.stale || layer ? '' : this.statusOf(box)?.dialogue_problem;
@@ -2524,7 +2533,7 @@ export class TimelineEditor {
     this.promptProblemEl.hidden = !blocking.length && !info.warnings.length;
     this.dialogueField.hidden = !this.state.dialogue?.cues?.length;
     this.dialogueSelect.value = this.video().dialogue === 'manual' ? 'manual' : 'cues';
-    setText(this.boxRenderButton, this.generateLabel());
+    setIconLabel(this.boxRenderButton,this.generateLabel());
     this.boxRenderButton.title = layer ? `Render only video ${label} of this clip, keeping the clip’s other videos`
       : 'Render only this clip using its seed mode, keeping its saved prompt and neighboring videos';
     setText(this.layerShotsNote, layer ? `Shot images for video ${label} come in a later version; its First and Last `

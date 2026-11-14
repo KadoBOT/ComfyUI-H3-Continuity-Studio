@@ -1,7 +1,7 @@
 // Videos in one clip: up to four H3 generations sharing the clip's time, and the switch plan that says which one is
 // on screen. The main video is the box itself; the others live in its `layers`. Mirrors h3_continuity/layers.py.
-import {isFresh, newId, playedFrames} from './h3c_timeline_model.mjs?v=84e4686d15bf';
-export {LAYERS_FEATURE as FEATURE} from './h3c_timeline_model.mjs?v=84e4686d15bf';
+import {isFresh, newId, playedFrames} from './h3c_timeline_model.mjs?v=5a547aaebfc2';
+export {LAYERS_FEATURE as FEATURE} from './h3c_timeline_model.mjs?v=5a547aaebfc2';
 
 export const MAX_VIDEOS = 4;
 export const MAX_FADE = 12;

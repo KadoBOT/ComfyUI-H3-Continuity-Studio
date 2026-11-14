@@ -1,18 +1,19 @@
+import {decorateIcon} from './h3c_icons.mjs';
 // The Studio: the page's one full-window view of a Timeline. While open it holds the editor's regions, and the linked
 // Story's actions, story and files, in its own layout, and it gives each one back to the place it came from when it
 // closes, opens another Timeline or the Timeline's Story changes. Its Story page edits the Story node's inputs.
 import { liveBadge, progressText } from './h3c_render_watch.mjs?v=7c8222569836';
 import { templateRow } from './h3c_templates.mjs?v=ff7103cdcba7';
-import { soundtrackLine, soundtrackSlots } from './h3c_timeline_model.mjs?v=84e4686d15bf';
+import { soundtrackLine, soundtrackSlots } from './h3c_timeline_model.mjs?v=5a547aaebfc2';
 
 import { ideaImagesRow } from './h3c_idea_images.mjs?v=3e6280e44a1b';
 import { partialBadge, partialTitle, previewBadge, previewLabel, previewTitle, timelineFrame, videoSeconds } from './h3c_partial_video.mjs?v=201bf0f48645';
 import {historyShortcut} from './h3c_history.mjs?v=d639ee9ffd57';
 import {setText} from './h3c_dom.mjs?v=584a9bf55653';
 
-const LIBRARY = ['references', 'cast', 'story', 'pictures', 'refmods'];
-const CENTER = ['viewer', 'story', 'cast', 'pictures', 'refmods'];
-const FOCUS = ['cast', 'story', 'pictures', 'refmods', 'project'];
+const LIBRARY = ['references', 'cast', 'story', 'pictures', 'refmods', 'assets'];
+const CENTER = ['viewer', 'story', 'cast', 'assets'];
+const FOCUS = ['cast', 'story', 'assets', 'project'];
 const CORE_HINT = 'For a moving preview, add KJNodes’ Model Preview Override before the sampler.';
 const OLDER_TAKE = 'Outdated take: this clip changed after it rendered. It still plays in the full video; regenerate the clip to update it.';
 const MOVING = 'Moving the take…';
@@ -356,6 +357,7 @@ export class Studio {
     this.inspectorToggle.setAttribute('aria-controls', 'h3cx-inspector');
     const bar = el('header', 'h3cx-bar');
     this.projectActions = el('div', 'h3cx-project-actions');
+    for(const [control,name,label] of [[close,'close','Close the Studio'],[this.undoButton,'undo','Undo'],[this.redoButton,'redo','Redo'],[this.historyButton,'history','History'],[this.newProjectButton,'new','New project'],[this.projectButton,'settings','Project settings'],[this.downloadVideo,'download','Download video'],[this.libraryToggle,'refs','Show references'],[this.inspectorToggle,'settings','Show inspector']])decorateIcon(control,name,label);
     this.projectActions.append(this.undoButton, this.redoButton, this.historyButton,
       this.newProjectButton, this.projectButton, this.downloadVideo);
     bar.append(close, this.libraryToggle, this.inspectorToggle, this.nameEl, this.summarySlot, this.savedSlot,
@@ -415,13 +417,14 @@ export class Studio {
     nav.setAttribute('role', 'tablist'); nav.setAttribute('aria-label', 'Workspace views');
     this.pageButtons = {};
     this.pages = {};
-    for (const name of ['box', 'audio', 'text', 'timeline', ...FOCUS]) {
+    for (const name of ['box', 'audio', 'text', 'timeline', 'pictures', 'refmods', ...FOCUS]) {
       this.pages[name] = el('div', 'h3cx-page');
       this.pages[name].dataset.page = name;
     }
     for (const name of CENTER) {
-      const label = name === 'refmods' ? 'RefMods' : name[0].toUpperCase() + name.slice(1);
+      const label=name==='assets'?'References':name[0].toUpperCase()+name.slice(1);
       this.pageButtons[name] = button(label, `Open ${label}`, () => name === 'viewer' ? this.backToViewer() : this.openFocus(name));
+      decorateIcon(this.pageButtons[name],{viewer:'viewer',story:'story',cast:'cast',assets:'refs'}[name],label,{text:true});
       this.pageButtons[name].setAttribute('role', 'tab');
       this.pageButtons[name].id = `h3cx-tab-${name}`;
       this.pageButtons[name].setAttribute('aria-controls', `h3cx-page-${name}`);
@@ -438,6 +441,7 @@ export class Studio {
       });
       nav.append(this.pageButtons[name]);
     }
+    this.pages.assets.append(el('h2','h3cx-title','Pictures'),this.pages.pictures,el('h2','h3cx-title','RefMods'),this.pages.refmods);
     this.library.append(el('h2', 'h3cx-title', 'References'), this.pages.timeline);
     this.storyPage = el('div', 'h3cx-story-page');
     this.pages.story.append(this.storyEl, this.storyPage);
@@ -488,7 +492,7 @@ export class Studio {
     this.mobileMore.setAttribute('aria-label', 'More Studio tools');
     this.mobileMore.append(el('h2', 'h3cx-title', 'Studio tools'));
     for (const page of FOCUS.filter(name => name !== 'project')) {
-      const label = page === 'refmods' ? 'RefMods' : page[0].toUpperCase() + page.slice(1);
+      const label=page==='assets'?'References':page[0].toUpperCase()+page.slice(1);
       this.mobileMore.append(button(label, `Open ${label}`, () => this.openFocus(page)));
     }
     main.append(this.mobileMore);
@@ -808,7 +812,8 @@ export class Studio {
       this.inspectorTarget = {kind:'text'};
     } else this.inspectorTarget = fallback;
     this.setLibrary(snapshot.libraryPage ?? 'references', {link});
-    const focus = snapshot.focusPage ?? (FOCUS.includes(snapshot.page) ? snapshot.page : null);
+    let focus = snapshot.focusPage ?? (FOCUS.includes(snapshot.page) ? snapshot.page : null);
+    if(focus==='pictures'||focus==='refmods')focus='assets';
     if (FOCUS.includes(focus)) this.openFocus(focus, {link});
     else this.backToViewer();
     this.setReferencesVisible(snapshot.referencesVisible ?? true);
@@ -986,15 +991,18 @@ export class Studio {
   }
 
   openFocus(page, {link = true} = {}) {
+    const referenceSection=page==='pictures'||page==='refmods'?page:null;
+    if(referenceSection)page='assets';
     if (!FOCUS.includes(page)) return;
     if(page==='project')this.loadGenerations();
     this.focusPage = page;
     this.libraryPage = page === 'project' ? 'references' : page;
     this.page = page;
-    this.focusTitle.textContent = page === 'refmods' ? 'RefMods' : page === 'project' ? 'Project settings'
+    this.focusTitle.textContent = page === 'assets' ? 'References' : page === 'project' ? 'Project settings'
       : page[0].toUpperCase() + page.slice(1);
     if (page === 'story' && this.host) this.host.editor.feedbackEl.open = true;
-    if (page === 'pictures' && this.host) this.host.editor.pictures.root.open = true;
+    if(page==='assets'&&this.host){this.host.editor.pictures.root.open=true;this.host.editor.refmodsEl.open=true;}
+    if(referenceSection)this.pages[referenceSection].scrollIntoView?.({block:'nearest'});
     if (page === 'cast') this.host?.editor.cast?.refresh({link});
     if (this.mobileMedia.matches) this.setMobilePage('focus');
     // Below 900 px the Inspector and References float over the centre, where this page opens.
@@ -1018,7 +1026,7 @@ export class Studio {
   }
 
   setPage(page, {link = true} = {}) {
-    if (FOCUS.includes(page)) return this.openFocus(page, {link});
+    if (FOCUS.includes(page)||page==='pictures'||page==='refmods') return this.openFocus(page, {link});
     if (page === 'timeline') { this.backToViewer(); this.setLibrary('references'); return; }
     this.backToViewer();
     this.inspect({kind: 'clip', box: this.host?.editor.box()?.id ?? null});
@@ -1142,7 +1150,8 @@ export class Studio {
     this.place(regions.sharedPrompt, this.projectPrompt);
     this.place(regions.chainSettings, this.projectChain);
     this.place(regions.readOnly, this.notice);
-    this.place(regions.stillPrompts, this.track);
+    this.place(regions.stillPrompts, this.actionsSlot);
+    if(regions.stillInstructions)this.place(regions.stillInstructions,this.pages.project);
     this.place(regions.lane, this.track);
     this.place(regions.hint, this.track);
     this.place(regions.audioSettings, this.pages.audio);

@@ -31,7 +31,7 @@ export function visibleSpans(state) {
  return result;
 }
 const CSS=`
-.h3ci-button{display:inline-flex;align-items:center;justify-content:center;gap:5px;min-width:28px;min-height:28px;padding:4px 6px!important;flex-shrink:0}
+.h3ct-still-prompt-preparation>.h3ct-project-instructions{display:none}.h3ct-still-prompt-preparation{display:flex;align-items:center;gap:6px;flex-wrap:wrap}.h3ct-still-prompt-preparation>.h3ct-hint{margin:0;font-size:12px}.h3ct-project-instructions textarea{width:100%;min-height:140px}.h3ci-button{display:inline-flex;align-items:center;justify-content:center;gap:5px;min-width:28px;min-height:28px;padding:4px 6px!important;flex-shrink:0}
 .h3ci-button svg{flex-shrink:0;pointer-events:none}.h3ci-sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
 .h3ci-button:focus-visible,.h3ct-track-clip:focus-visible{outline:2px solid #9dbef1;outline-offset:2px}
 .h3ct-track-editor{position:relative;min-height:48px;background:#15171c;--track-head:var(--h3ct-track-head,96px)}

@@ -17,7 +17,7 @@ export function icon(name) {
  for(const [key,value] of Object.entries({viewBox:'0 0 24 24',width:'18',height:'18',fill:'none',stroke:'currentColor','stroke-width':'1.6','stroke-linecap':'round','stroke-linejoin':'round','aria-hidden':'true',focusable:'false'}))svg.setAttribute(key,value);
  const path=document.createElementNS('http://www.w3.org/2000/svg','path');path.setAttribute('d',paths[name]??paths.more);svg.append(path);return svg;
 }
-export function setIconLabel(button,label) {button.title=label;button.setAttribute('aria-label',label);}
+export function setIconLabel(button,label) {button.title=label;button.setAttribute('aria-label',label);const caption=[...button.children].find(n=>n.classList.contains('h3ci-caption')||n.classList.contains('h3ci-sr'));if(caption)caption.textContent=label;}
 export function decorateIcon(button,name,label,{text=false}={}) {
  const caption=document.createElement('span');caption.textContent=label;caption.className=text?'h3ci-caption':'h3ci-sr';
  button.replaceChildren(icon(name),caption);button.classList.add('h3ci-button');setIconLabel(button,label);return button;

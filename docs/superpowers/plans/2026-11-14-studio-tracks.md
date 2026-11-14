@@ -101,10 +101,10 @@ New modules own layout, clock mapping and overlap resolution only. Existing time
 
 **Interfaces:** `icon(name): SVGElement`, `iconButton(name,label,action): HTMLButtonElement`, `setIconLabel(button,label): void`; icon SVG is aria-hidden, button name is authoritative. Preserve dynamic labels/counts and disabled reasons without replacing icons with text during refresh.
 
-- [ ] Read impeccable craft-floor immediately before UI edits. Test top toolbar, timeline toolbar and clip actions retain correct callbacks, names, busy/disabled states and keyboard access. Generate requests one take; remove the header count input.
-- [ ] Test semantic Viewer/Story/Cast/References tabs and existing deep links; grouped References includes both Pictures/RefMods. Keyboard arrows/Home/End move among tabs, focus and panel IDs agree.
-- [ ] Move reusable still conversion instructions to Project settings by reusing existing host fields/storage, test edits persist and detached Studio regions return correctly on close. Do not change the clip-only/no-hidden-text still submission policy.
-- [ ] Observe red where behavior changes, implement shared SVG icons and toolbar/tab layout, stamp modules, run targeted/full tests; commit.
+- [x] Read impeccable craft-floor immediately before UI edits. Test top toolbar, timeline toolbar and clip actions retain correct callbacks, names, busy/disabled states and keyboard access. Generate requests one take; remove the header count input.
+- [x] Test semantic Viewer/Story/Cast/References tabs and existing deep links; grouped References includes both Pictures/RefMods. Keyboard arrows/Home/End move among tabs, focus and panel IDs agree.
+- [x] Move reusable still conversion instructions to Project settings by reusing existing host fields/storage, test edits persist and detached Studio regions return correctly on close. Do not change the clip-only/no-hidden-text still submission policy.
+- [x] Observe red where behavior changes, implement shared SVG icons and toolbar/tab layout, stamp modules, run targeted/full tests; commit.
 
 ## Task 7: Contextual Resolve-style inspector (STU2c)
 
