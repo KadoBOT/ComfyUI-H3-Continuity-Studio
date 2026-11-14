@@ -1,6 +1,6 @@
 // Session-only edit snapshots. Files and running jobs are deliberately not part of an edit.
 import {parseJSON, stringifyJSON} from './h3c_project.mjs?v=0882b8a6265a';
-import {preparationOf} from './h3c_reference_preparation.mjs?v=dccc344c3c9a';
+import {preparationOf} from './h3c_reference_preparation.mjs?v=af8214646068';
 
 export function editingSnapshot(timeline) {
   return dropReceipts(structuredClone(timeline));

@@ -1,4 +1,4 @@
-import {ReferencePreparationPanel} from './h3c_reference_preparation.mjs?v=dccc344c3c9a';
+import {ReferencePreparationPanel} from './h3c_reference_preparation.mjs?v=af8214646068';
 // The Studio's Cast page: the Story bible's characters, places and props, and the boxes each appears in. Every change
 // goes through the bible route, which compiles the prompts, and lands as one Timeline edit.
 import * as model from './h3c_timeline_model.mjs?v=5a547aaebfc2';
@@ -319,7 +319,7 @@ export class CastPage {
     this.fieldset = el('fieldset', 'h3cc-fieldset');
     this.root.append(this.noteEl, this.fieldset);
     this.preparation=editor.host.referenceCatalog?new ReferencePreparationPanel(editor):null;
-    if(this.preparation)this.root.append(this.preparation.root);
+    if(this.preparation)this.root.prepend(this.preparation.root);
   }
 
   destroy() {

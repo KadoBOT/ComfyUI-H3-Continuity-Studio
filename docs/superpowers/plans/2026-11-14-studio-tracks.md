@@ -118,10 +118,10 @@ New modules own layout, clock mapping and overlap resolution only. Existing time
 
 **Files:** `web/h3c_reference_preparation.mjs`; new `tests/web/reference_preparation_navigation.test.mjs`, extend reference preparation/browser tests.
 
-- [ ] Test category filters, thumbnail/status list, focused asset, Generate missing inclusion, generator settings and batch stop. Test uploaded-ready versus candidate-needs-approval status remains truthful.
-- [ ] Test async refresh, asset disappearance, stale candidate fingerprint, upload failure and an input edit during refresh. Selection/focus remain on stable asset IDs; obsolete responses cannot approve another asset.
-- [ ] Replace repeated full forms with master/detail. Keep Generate/Upload/Use as reference explicit; move seed/dimensions into Advanced, Add object opens its form on demand. Phone list/detail uses Back with retained selection.
-- [ ] Observe red, implement without changing backend approval policy, run reference unit/browser and full suite; commit.
+- [x] Test category filters, thumbnail/status list, focused asset, Generate missing inclusion, generator settings and batch stop. Test uploaded-ready versus candidate-needs-approval status remains truthful.
+- [x] Test async refresh, asset disappearance, stale candidate fingerprint, upload failure and an input edit during refresh. Selection/focus remain on stable asset IDs; obsolete responses cannot approve another asset.
+- [x] Replace repeated full forms with master/detail. Keep Generate/Upload/Use as reference explicit; move seed/dimensions into Advanced, Add object opens its form on demand. Phone list/detail uses Back with retained selection.
+- [x] Observe red, implement without changing backend approval policy, run reference unit/browser and full suite; commit.
 
 ## Task 9: Integration, visual review and documentation (STU2e)
 
