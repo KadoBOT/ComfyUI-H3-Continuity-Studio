@@ -435,10 +435,15 @@ def picture_file(value):
 
 
 def box_start(timeline, index):
+    if timeline.tracks is not None:
+        return timeline.placements[timeline.boxes[index].id]["start"] / FPS
     return sum(played_frames(timeline, i) for i in range(index)) / FPS
 
 
 def audio_box_spans(timeline):
+    if timeline.tracks is not None:
+        return [dict(id=box.id, start=box_start(timeline,index), duration=played_frames(timeline,index)/FPS)
+                for index,box in enumerate(timeline.boxes)]
     start, spans = 0, []
     for index, box in enumerate(timeline.boxes):
         duration = played_frames(timeline, index) / FPS

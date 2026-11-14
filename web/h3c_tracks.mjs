@@ -15,6 +15,26 @@ export function placements(state, duration = length) {
   });
 }
 export const durationFrames = (state, duration) => Math.max(0, ...placements(state, duration).map(p => p.end));
+export const startFrame = (state, id) => placements(state).find(p=>p.id===id)?.start ?? 0;
+export function outputSpans(state) {
+  const events=(state.bridges??[]).filter(b=>b.mode!=='replace').map(b=>({at:startFrame(state,b.before),frames:b.frames,id:b.before})).sort((a,b)=>a.at-b.at);
+  const result=[]; let frame=0, output=0;
+  for (const event of events) {
+    if (event.at>frame) { result.push({start:frame,end:event.at,outputStart:output,outputEnd:output+event.at-frame,bridgeId:null}); output+=event.at-frame; }
+    result.push({start:event.at,end:event.at,outputStart:output,outputEnd:output+event.frames,bridgeId:event.id});
+    output+=event.frames; frame=event.at;
+  }
+  const end=durationFrames(state);
+  if (end>frame) result.push({start:frame,end,outputStart:output,outputEnd:output+end-frame,bridgeId:null});
+  return result;
+}
+export function outputFrame(state, frame) {
+  return frame+outputSpans(state).filter(s=>s.bridgeId && s.start<=frame).reduce((n,s)=>n+s.outputEnd-s.outputStart,0);
+}
+export function timelineFrame(state, frame) {
+  const spans=outputSpans(state), span=spans.find(s=>frame>=s.outputStart&&frame<s.outputEnd);
+  return span ? {frame:span.start+(span.bridgeId?0:frame-span.outputStart),bridgeId:span.bridgeId} : {frame:durationFrames(state),bridgeId:null};
+}
 export function predecessor(state, id, duration) {
   const spans = placements(state, duration), at = spans.find(p => p.id === id);
   return at ? spans.find(p => p.id !== id && p.track === at.track && p.end === at.start)?.id ?? null : null;

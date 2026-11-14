@@ -56,10 +56,10 @@ New modules own layout, clock mapping and overlap resolution only. Existing time
 
 **Interfaces:** `startFrame(state,id): int`, `outputFrame(state,timelineFrame): int`, `timelineFrame(state,outputFrame): {frame,bridgeId|null}`, `outputSpans(state): Span[]`. Span identifies Timeline interval or inserted bridge, with output start/end. Python exports snake_case equivalents. Frames inside an inserted bridge map to its paused Timeline boundary. Keep existing continuous/box-bound soundtrack policies.
 
-- [ ] Audit every prefix-duration sum and `index - 1` consumer; save categorized inventory with changed paths in the task ledger. Include Story, Cast, visual memory, reference plates, guide anchors, still preparation, audio locks, dialogue and API plans.
-- [ ] Test A[0,48),B[48,120),C[24,72) with a 12-frame insertion at48: Timeline duration120, movie132; C's source frame24 resumes after the bridge. Forward/inverse mappings agree outside insertion; inside it reports the bridge. Replacement coverage adds zero frames.
-- [ ] Test audio conditioning for C uses Timeline frame24, not its catalog prefix; text/beat/guide windows use the same start. Existing no-track bridge/audio fixtures stay unchanged.
-- [ ] Observe red, implement pure mappings, replace clock consumers, rerun targeted tests then full suite. Commit the coherent clock change.
+- [x] Audit every prefix-duration sum and `index - 1` consumer; save categorized inventory with changed paths in the task ledger. Include Story, Cast, visual memory, reference plates, guide anchors, still preparation, audio locks, dialogue and API plans.
+- [x] Test A[0,48),B[48,120),C[24,72) with a 12-frame insertion at48: Timeline duration120, movie132; C's source frame24 resumes after the bridge. Forward/inverse mappings agree outside insertion; inside it reports the bridge. Replacement coverage adds zero frames.
+- [x] Test audio conditioning for C uses Timeline frame24, not its catalog prefix; text/beat/guide windows use the same start. Existing no-track bridge/audio fixtures stay unchanged.
+- [x] Observe red, implement pure mappings, replace clock consumers, rerun targeted tests then full suite. Commit the coherent clock change.
 
 ## Task 3: Generation dependencies, memory and reuse (STU1c)
 

@@ -1,9 +1,9 @@
 import {ReferencePreparationPanel} from './h3c_reference_preparation.mjs?v=dccc344c3c9a';
 // The Studio's Cast page: the Story bible's characters, places and props, and the boxes each appears in. Every change
 // goes through the bible route, which compiles the prompts, and lands as one Timeline edit.
-import * as model from './h3c_timeline_model.mjs?v=c234ba2180cb';
+import * as model from './h3c_timeline_model.mjs?v=2697dd13c9c5';
 import { fillPicturePicker, referenceChip } from './h3c_reference_pictures.mjs?v=8198307be3fa';
-import { LONG_CLIP_SECONDS, dropVoiceClip, freeVoiceSlot, setVoiceClip, voiceClipOf } from './h3c_voices.mjs?v=2a64487a4784';
+import { LONG_CLIP_SECONDS, dropVoiceClip, freeVoiceSlot, setVoiceClip, voiceClipOf } from './h3c_voices.mjs?v=0e71ea71255c';
 import { drawsSame, setText } from './h3c_dom.mjs?v=584a9bf55653';
 
 export const BUILD_SENTENCE = 'Build bible links each clip’s subjects to characters, places and props. Nothing that renders changes.';

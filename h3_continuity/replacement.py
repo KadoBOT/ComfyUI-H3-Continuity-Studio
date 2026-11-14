@@ -50,7 +50,7 @@ def position(timeline, bridge):
 
 
 def sequence_start(timeline, index):
-    return sum(rules.played_frames(timeline, i) for i in range(index))
+    return round(rules.box_start(timeline, index) * 24)
 
 
 def _coverage(timeline):

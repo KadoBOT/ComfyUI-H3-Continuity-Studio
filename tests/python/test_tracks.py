@@ -36,3 +36,13 @@ class TracksTest(unittest.TestCase):
    with self.assertRaises(ValueError):rules.parse(json.dumps(data))
   data=copy.deepcopy(FIXTURE);data['tracks'].append(copy.deepcopy(data['tracks'][0]))
   with self.assertRaises(ValueError):rules.parse(json.dumps(data))
+
+ def test_tracks_share_authoring_time_and_insertion_output_clock(self):
+  data=copy.deepcopy(FIXTURE);data['bridges']=[dict(before='B',frames=12)]
+  parsed=rules.parse(json.dumps(data))
+  self.assertEqual(rules.box_start(parsed,1),1)
+  self.assertEqual(rules.audio_box_spans(parsed)[1]['start'],1)
+  self.assertEqual(tracks.output_frame(data,48),60)
+  self.assertEqual(tracks.timeline_frame(data,53),dict(frame=48,bridgeId='B'))
+  self.assertEqual(tracks.timeline_frame(data,84),dict(frame=72,bridgeId=None))
+  self.assertEqual(tracks.output_spans(data)[-1]['outputEnd'],132)

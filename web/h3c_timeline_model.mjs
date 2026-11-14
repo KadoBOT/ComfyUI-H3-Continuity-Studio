@@ -4,9 +4,9 @@ import {reconcileSceneAnchors} from './h3c_still_scene.mjs?v=1ca16919a3f9';
 // decide how a box runs. Mirrors h3_continuity/timeline.py.
 import {parseJSON, stringifyJSON, seedValue} from './h3c_project.mjs?v=0882b8a6265a';
 import {imageDescriptionPrompt, imageDescriptionSource} from './h3c_image_descriptions.mjs?v=5f858b2b6a5a';
-import {acceptedGuideFrames} from './h3c_shot_preview.mjs?v=c234ba2180cb';
+import {acceptedGuideFrames} from './h3c_shot_preview.mjs?v=2697dd13c9c5';
 import {AUDIO_WINDOWS_FEATURE, pruneWindows, resolveWindows, audioSourceLocked} from './h3c_audio_windows.mjs?v=cdefbd77b246';
-import {LAYER_FIELDS, SWAPS_DONT_FIT, clampSwitch, hasLayers, layerIds, switchFits} from './h3c_layers.mjs?v=c234ba2180cb';
+import {LAYER_FIELDS, SWAPS_DONT_FIT, clampSwitch, hasLayers, layerIds, switchFits} from './h3c_layers.mjs?v=2697dd13c9c5';
 export const FPS = 24;
 export const MAX_FRAMES = 362;
 export const GRID = 17;
@@ -417,7 +417,7 @@ export function bridgeProblem(state, index) {
 }
 
 export function totalFrames(state) {
-  return state.boxes.reduce((sum, box) => sum + (box.frames || 0), 0);
+  return tracks.durationFrames(state);
 }
 
 export function resolvedAudio(state) {
@@ -427,8 +427,7 @@ export function resolvedAudio(state) {
 }
 
 export function activeAudioClips(state, index, context = 0) {
-  let frames = 0;
-  for (let i = 0; i < index; i++) frames += state.boxes[i].frames;
+  const frames = tracks.startFrame(state,state.boxes[index].id);
   const start = frames / FPS, end = start + state.boxes[index].frames / FPS;
   let spans;
   return (state.audio_clips ?? []).filter(clip => {
@@ -441,12 +440,7 @@ export function activeAudioClips(state, index, context = 0) {
 }
 
 export function audioBoxSpans(state) {
-  let start = 0;
-  return state.boxes.map(box => {
-    const duration = box.frames / FPS, span = {id:box.id, start, duration};
-    start += duration;
-    return span;
-  });
+  return tracks.placements(state).map(p=>({id:p.id,start:p.start/FPS,duration:(p.end-p.start)/FPS}));
 }
 
 export function audioSourceDuration(clip) {
@@ -480,7 +474,7 @@ export function globalFrame(state, index, frame) {
   const box = state.boxes[index];
   const fresh = isFresh(state, index);
   if (!box || !Number.isInteger(frame) || frame < 0 || frame > box.frames - (fresh ? 1 : 0)) return null;
-  return state.boxes.slice(0, index).reduce((sum, b) => sum + b.frames, 0) + frame - (fresh ? 0 : 1);
+  return tracks.startFrame(state,box.id) + frame - (fresh ? 0 : 1);
 }
 
 export function effectivePlates(state, index, frame = 0) {

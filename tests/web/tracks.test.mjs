@@ -41,3 +41,13 @@ test('conversion keeps legacy stack and timed text and audio sources',()=>{
  assert.deepEqual(s.text_lanes[0].attachment,before.timed_text);assert.equal(s.timed_text,undefined);assert.equal(s.audio_clips[0].slot,'audio1');
  tracks.validate(s);assert.deepEqual(JSON.parse(model.serialize(model.parseState(model.serialize(s)))).text_lanes,s.text_lanes);
 });
+
+test('tracks share authoring time while insertion bridges pause the movie clock',()=>{
+ const s=sample();s.bridges=[{before:'B',frames:12}];
+ assert.equal(tracks.startFrame(s,'C'),24);assert.equal(tracks.outputFrame(s,48),60);
+ assert.deepEqual(tracks.timelineFrame(s,53),{frame:48,bridgeId:'B'});
+ assert.deepEqual(tracks.timelineFrame(s,84),{frame:72,bridgeId:null});
+ assert.equal(tracks.outputSpans(s).at(-1).outputEnd,132);
+ assert.equal(model.totalFrames(s),120);assert.equal(model.audioBoxSpans(s)[1].start,1);
+ s.audio_clips=[{slot:'audio1',start:1,source_start:0,duration:1}];assert.equal(model.activeAudioClips(s,1).length,1);
+});

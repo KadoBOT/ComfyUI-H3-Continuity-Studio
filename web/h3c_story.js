@@ -12,11 +12,11 @@ import { api } from '../../scripts/api.js';
 import { mountSavedState, AUTOSAVE_SETTING, autosaveEnabled } from './h3c_saved_state.mjs?v=285cb0ac96bb';
 import { migrateStoryDescriptionInputs, migrateSerializedStoryDescriptionInputs } from './h3c_story_inputs.mjs?v=46d6a455ab9a';
 import { showOwnElement } from './h3c_dom_widget.mjs?v=961e6d7f3bb7';
-import * as story from './h3c_story_model.mjs?v=dce738573189';
+import * as story from './h3c_story_model.mjs?v=54bafa58352b';
 import { StoryPanel } from './h3c_story_panel.mjs?v=3361c4324f46';
-import { StoryLibrary, isWiringConflict, saveBeforeNewProject, savedStoryContent, recoverSavedStoryContent, independentStoryContent } from './h3c_story_library.mjs?v=0f41335de66b';
+import { StoryLibrary, isWiringConflict, saveBeforeNewProject, savedStoryContent, recoverSavedStoryContent, independentStoryContent } from './h3c_story_library.mjs?v=c508939dd859';
 import { exportStory, importStory, downloadStory } from './h3c_story_archive.mjs?v=b07a438d2dc4';
-import { parseState, serialize, unknownFeatures, readOnlyNote } from './h3c_timeline_model.mjs?v=c234ba2180cb';
+import { parseState, serialize, unknownFeatures, readOnlyNote } from './h3c_timeline_model.mjs?v=2697dd13c9c5';
 
 import {exportGeneration,importGeneration,downloadGeneration,generationControl,setGenerationControl} from './h3c_generation_archive.mjs?v=dcb0de381f51';
 import {captureRecipe,hasVideoOutput as compiledVideoOutput} from './h3c_stills.mjs?v=df999ecd2dcd';

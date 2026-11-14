@@ -23,6 +23,46 @@ def duration_frames(data, duration=None):
     return max((p["end"] for p in placements(data, duration)), default=0)
 
 
+def start_frame(data, box_id):
+    return next((p["start"] for p in placements(data) if p["id"] == box_id), 0)
+
+
+def output_spans(data):
+    events = sorted((dict(at=start_frame(data, b["before"]), frames=b["frames"], id=b["before"])
+                     for b in data.get("bridges", []) if b.get("mode") != "replace"), key=lambda b: b["at"])
+    result, frame, output = [], 0, 0
+    for event in events:
+        at = event["at"]
+        if at > frame:
+            result.append(dict(start=frame, end=at, outputStart=output, outputEnd=output+at-frame, bridgeId=None))
+            output += at-frame
+        result.append(dict(start=at, end=at, outputStart=output, outputEnd=output+event["frames"], bridgeId=event["id"]))
+        output += event["frames"]
+        frame = at
+    end = duration_frames(data)
+    if end > frame:
+        result.append(dict(start=frame, end=end, outputStart=output, outputEnd=output+end-frame, bridgeId=None))
+    return result
+
+
+def output_frame(data, frame):
+    return frame + sum(p["outputEnd"]-p["outputStart"] for p in output_spans(data)
+                       if p["bridgeId"] and p["start"] <= frame)
+
+
+def timeline_frame(data, frame):
+    span = next((p for p in output_spans(data) if p["outputStart"] <= frame < p["outputEnd"]), None)
+    return (dict(frame=span["start"]+(0 if span["bridgeId"] else frame-span["outputStart"]), bridgeId=span["bridgeId"])
+            if span else dict(frame=duration_frames(data), bridgeId=None))
+
+
+def document(parsed):
+    """Validated frame layout for consumers that own a parsed Timeline rather than its raw JSON."""
+    return dict(tracks=parsed.tracks, boxes=[dict(id=b.id, track=parsed.placements[b.id]["track"],
+                start=parsed.placements[b.id]["start"], frames=parsed.placements[b.id]["end"]-parsed.placements[b.id]["start"])
+                for b in parsed.boxes], bridges=parsed.all_bridges, overlap_switches=parsed.overlap_switches)
+
+
 def predecessor(data, box_id, duration=None):
     spans = placements(data, duration)
     at = next((p for p in spans if p["id"] == box_id), None)
