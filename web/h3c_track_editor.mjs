@@ -1,8 +1,17 @@
 import {OverlapInspector} from './h3c_overlap_inspector.mjs';
 import * as tracks from './h3c_tracks.mjs';
 import * as model from './h3c_timeline_model.mjs';
-import {iconButton} from './h3c_icons.mjs';
+import {icon,iconButton} from './h3c_icons.mjs';
 const el=(tag,cls,text)=>{const n=document.createElement(tag);if(cls)n.className=cls;if(text!=null)n.textContent=text;return n;};
+// A lane's type as an icon and its number, with the full name for screen readers and as a tooltip.
+function laneLabel(track) {
+ const label=el('span','h3ct-track-name');label.title=track.name;
+ if(!['video','audio','text'].includes(track.type)){label.textContent=track.name;return label;}
+ label.append(icon(track.type));
+ const number=/\d+$/.exec(track.name??'')?.[0];if(number)label.append(el('span','h3ct-track-number',number));
+ label.append(el('span','h3ci-sr',track.name));return label;
+}
+const laneAction=(name,label,action)=>{const button=iconButton(name,label,action);button.classList.add('h3ct-lane-action');return button;};
 
 export function snapPlacement(state,{id,track,start,end,tolerance=4,bypass=false,playhead=null,edge='move'}) {
  const duration=end-start;start=Math.max(0,Math.round(start));end=start+duration;
@@ -39,8 +48,12 @@ const CSS=`
 .h3ci-button:focus-visible,.h3ct-track-clip:focus-visible{outline:2px solid #9dbef1;outline-offset:2px}
 .h3ct-track-editor{position:relative;min-height:48px;background:#15171c;--track-head:var(--h3ct-track-head,96px)}
 .h3ct-track-row{display:grid;grid-template-columns:var(--track-head) minmax(0,1fr);min-height:48px;border-bottom:1px solid #343a46}
-.h3ct-track-head{position:sticky;left:0;z-index:3;display:flex;align-items:center;gap:3px;padding:4px;background:#242932;min-width:0;font-size:12px}
-.h3ct-track-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.h3ct-track-body{position:relative;min-height:48px;min-width:0;background:#13161b}
+.h3ct-track-head{position:sticky;left:0;z-index:3;display:flex;align-items:center;gap:2px;padding:0 2px 0 8px;background:#242932;min-width:0;font-size:12px;color:#aab1bd}
+.h3ct-track-name{flex:1;display:flex;align-items:center;gap:3px;min-width:0;overflow:hidden;white-space:nowrap}.h3ct-track-name svg{flex:0 0 auto;width:15px;height:15px}
+.h3ct-track-number{font:600 11px/1 system-ui;color:#c3cad4}.h3ct-track-body{position:relative;min-height:48px;min-width:0;background:#13161b}
+.h3ct-lane .h3ci-button.h3ct-lane-action{min-width:22px;min-height:22px;padding:3px!important;color:#8b93a1;background:transparent;border-color:transparent}
+.h3ct-lane .h3ci-button.h3ct-lane-action:hover:not(:disabled){color:#e8ecf2;background:#ffffff14;filter:none}.h3ct-lane-action svg{width:14px;height:14px}
+.h3ct-lane-action.h3ct-lane-delete{opacity:0}.h3ct-track-head:hover .h3ct-lane-delete,.h3ct-lane-header:hover .h3ct-lane-delete,.h3ct-lane-delete:focus-visible{opacity:1}
 .h3ct-track-row.selected>.h3ct-track-head{background:#30405a}.h3ct-track-clip{position:absolute;top:4px;bottom:4px;background:#34584f;border:1px solid #63857c;border-radius:3px;overflow:hidden;color:#edf5f0;cursor:grab;touch-action:none;padding:3px 6px;text-align:left;font:12px/1.3 system-ui}
 .h3ct-track-row:nth-child(even) .h3ct-track-clip{background:#5c5130;border-color:#9a8951}.h3ct-track-clip.selected{outline:2px solid #9dbef1;outline-offset:-2px}
 .h3ct-track-clip img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.45;pointer-events:none}.h3ct-track-clip span{position:relative}
@@ -51,11 +64,12 @@ const CSS=`
 .h3ct-lane.h3ct-independent>.h3ct-stills,.h3ct-lane.h3ct-independent>.h3ct-ruler{margin-left:var(--h3ct-track-head,96px);width:calc(100% * var(--h3ct-zoom,1) - var(--h3ct-track-head,96px))}
 .h3ct-lane>.h3ct-track-editor{width:calc(100% * var(--h3ct-zoom,1))}
 .h3ct-independent>.h3ct-audio .h3ct-audio-lanes>.h3ct-audio-lane{margin-left:var(--h3ct-track-head,96px);overflow:visible}
-.h3ct-independent .h3ct-lane-header{position:sticky;left:0;margin-left:calc(-1 * var(--h3ct-track-head,96px));width:var(--h3ct-track-head,96px);height:40px;display:flex;align-items:center;gap:3px;background:#242932;padding:4px;z-index:3}
+.h3ct-independent .h3ct-lane-header{position:sticky;left:0;margin-left:calc(-1 * var(--h3ct-track-head,96px));width:var(--h3ct-track-head,96px);height:40px;display:flex;align-items:center;gap:2px;background:#242932;padding:0 2px 0 8px;z-index:3;font-size:12px;color:#aab1bd}
+.h3ct-lane.h3ct-independent{--h3ct-track-head:68px}
 .h3ct-independent .h3ct-audio>.h3ct-row,.h3ct-independent .h3ct-text-lane{display:none!important}
 .h3ct-independent .h3ct-audio .h3ct-audio-lanes>.h3ct-row{display:none!important}
-.h3cx-track{display:flex;flex-direction:column}.h3cx-track>.h3ct-lane{flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column;border-radius:3px}.h3cx-track>.h3ct-lane>*{flex-shrink:0}.h3cx-track>.h3ct-lane>.h3ct-track-editor{flex:1 0 auto;min-height:88px}.h3cx-track>.h3ct-hint{margin-bottom:0}.h3ct-track-editor .h3ct-text-cue{position:absolute;top:8px;bottom:8px;background:#4b405e;color:#f0e7fc;border:1px solid #847297;padding:3px;overflow:hidden;font:12px system-ui}
-@media(pointer:coarse){.h3ci-button{min-height:44px;min-width:44px}.h3ct-lane{--h3ct-track-head:112px}.h3ct-track-row,.h3ct-track-body{min-height:56px}}
+.h3cx-track{display:flex;flex-direction:column}.h3cx-track>.h3ct-lane{flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column;border-radius:3px}.h3cx-track>.h3ct-lane>*{flex-shrink:0}.h3cx-track>.h3ct-lane>.h3ct-track-editor{flex:0 0 auto;min-height:0}.h3cx-track>.h3ct-hint{margin-bottom:0}.h3ct-track-editor .h3ct-text-cue{position:absolute;top:8px;bottom:8px;background:#4b405e;color:#f0e7fc;border:1px solid #847297;padding:3px;overflow:hidden;font:12px system-ui}
+@media(pointer:coarse){.h3ci-button,.h3ct-lane .h3ci-button.h3ct-lane-action{min-height:44px;min-width:44px}.h3ct-lane,.h3ct-lane.h3ct-independent{--h3ct-track-head:96px}.h3ct-track-row,.h3ct-track-body{min-height:56px}.h3ct-lane-action.h3ct-lane-delete{opacity:1}}
 `;
 export class TrackEditor {
  constructor(editor) {
@@ -130,11 +144,12 @@ export class TrackEditor {
    lane._trackHeader?.remove();
    const header=el('div','h3ct-lane-header');
    const track=state.tracks?.find(t=>t.id===recording.track);
-   header.append(el('span','h3ct-track-name',track?.name??`Audio ${index+1}`));
-   header.append(iconButton('trash',`Delete ${track?.name??'audio lane'}`,()=>{
+   header.append(laneLabel({type:'audio',name:track?.name??`Audio ${index+1}`}));
+   const remove=laneAction('trash',`Delete ${track?.name??'audio lane'}`,()=>{
     if(!globalThis.confirm?.(`Delete this audio lane and its recording? Media files will be kept.`))return;
     this.mutate(state=>{tracks.enableTracks(state);const clip=state.audio_clips.find(c=>c.slot===recording.slot);if(clip)tracks.removeTrack(state,clip.track);});
-   }));
+   });
+   remove.classList.add('h3ct-lane-delete');header.append(remove);
    if(!tracks.enabled(state)){header.style.marginLeft='0';header.style.position='absolute';header.style.right='0';}
    lane._trackHeader=header;lane.prepend(header);
   }
@@ -146,8 +161,8 @@ export class TrackEditor {
   this.add.querySelectorAll?.('button').forEach(b=>b.disabled=this.editor.readOnly.length>0);
   if(!active){this.rows.replaceChildren();return;}
   const videoTracks=state.tracks.filter(t=>t.type==='video');
-  const master=this.row({id:'combined',type:'video',name:'Video'},false);
-  const toggle=iconButton(this.expanded?'collapse':'expand',this.expanded?'Collapse video lanes':'Expand video lanes',()=>{this.expanded=!this.expanded;this.render(this.span);});toggle.setAttribute('aria-expanded',String(this.expanded));master.head.prepend(toggle);
+  const master=this.row({id:'combined',type:'video',name:'All video lanes'},false);
+  const toggle=laneAction(this.expanded?'collapse':'expand',this.expanded?'Collapse video lanes':'Expand video lanes',()=>{this.expanded=!this.expanded;this.render(this.span);});toggle.setAttribute('aria-expanded',String(this.expanded));master.head.append(toggle);
   for(const p of visibleSpans(state))if(p.id)this.clip(master.body,state.boxes.findIndex(b=>b.id===p.id),p.start,p.end,false);
   rows.push(master.root);
   const placements=tracks.placements(state),pairs=[];
@@ -180,7 +195,7 @@ export class TrackEditor {
  }
  row(track,deletable=true) {
   const root=el('div','h3ct-track-row'),head=el('div','h3ct-track-head'),body=el('div','h3ct-track-body');root.dataset.track=track.id;
-  head.append(el('span','h3ct-track-name',track.name));if(deletable){const remove=iconButton('trash',`Delete ${track.name}`,()=>this.removeLane(track.id));remove.disabled=this.editor.readOnly.length>0;head.append(remove);}
+  head.append(laneLabel(track));if(deletable){const remove=laneAction('trash',`Delete ${track.name}`,()=>this.removeLane(track.id));remove.classList.add('h3ct-lane-delete');remove.disabled=this.editor.readOnly.length>0;head.append(remove);}
   root.append(head,body);return {root,head,body};
  }
  clip(body,index,start,end,editable) {

@@ -36,15 +36,22 @@ with sync_playwright() as p:
  panel=page.locator('.h3cr-preparation')
  assert panel.get_by_role('textbox',name='Mara image prompt',exact=True).count()==1
  assert panel.get_by_role('textbox',name='The field image prompt',exact=True).count()==0
- panel.get_by_role('button',name='Show locations',exact=True).click()
+ assert panel.locator('.h3cr-batch-options').count()==0
+ panel.get_by_role('tab',name='Locations',exact=True).click()
+ assert panel.get_by_role('switch',name='Prepare locations references',exact=True).get_attribute('aria-checked')=='false'
  assert panel.get_by_role('textbox',name='The field image prompt',exact=True).is_visible()
  assert not page.evaluate('editor.state.reference_preparation?.generate.locations??false')
- panel.get_by_role('button',name='Show all',exact=True).click();panel.get_by_role('button',name='Edit Mara reference',exact=True).click()
+ panel.get_by_role('tab',name='All',exact=True).click();panel.get_by_role('button',name='Edit Mara reference',exact=True).click()
  prompt=panel.get_by_role('textbox',name='Mara image prompt',exact=True);prompt.fill('A traveler, carrying a red satchel.')
  page.evaluate('editor.cast.preparation.refresh()')
  assert prompt.input_value()=='A traveler, carrying a red satchel.'
  prompt.dispatch_event('change');page.wait_for_function("stored().reference_preparation.assets.find(a=>a.key==='mara').prompt.includes('red satchel')")
- panel.get_by_role('checkbox',name='Prepare characters references',exact=True).check()
+ panel.get_by_role('tab',name='Characters',exact=True).click()
+ panel.get_by_role('switch',name='Prepare characters references',exact=True).click()
+ page.wait_for_function('editor.state.reference_preparation.generate.cast===true')
+ assert panel.get_by_role('switch',name='Prepare characters references',exact=True).get_attribute('aria-checked')=='true'
+ assert not page.evaluate('editor.state.reference_preparation.generate.locations')
+ panel.get_by_role('tab',name='All',exact=True).click();panel.get_by_role('button',name='Edit Mara reference',exact=True).click()
  panel.get_by_role('button',name='Generate reference',exact=True).click()
  page.wait_for_function("editor.cast.preparation.message.includes('Fixture generator unavailable')")
  assert panel.get_by_role('textbox',name='Mara image prompt',exact=True).input_value().endswith('red satchel.')

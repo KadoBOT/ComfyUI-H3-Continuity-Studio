@@ -1,4 +1,6 @@
 // Idea images belong to Story, independently of Timeline render references.
+import {decorateIcon} from './h3c_icons.mjs';
+
 function el(tag, className, text) {
   const node = document.createElement(tag);
   if (className) node.className = className;
@@ -18,13 +20,13 @@ export function ideaImagesRow(input, set) {
       .h3ci-grid{display:flex;flex-wrap:wrap;gap:8px}.h3ci-card{width:140px;max-width:100%;min-width:0}
       .h3ci-card img{width:100%;height:90px;object-fit:contain;background:#15171b;border-radius:4px}
       .h3ci-name{font-size:11px;overflow-wrap:anywhere}.h3ci-actions{display:flex;gap:4px;flex-wrap:wrap}
-      .h3ci-root button{cursor:pointer}.h3ci-note{font-size:11px;color:#aab1bd;overflow-wrap:anywhere}`;
+      .h3ci-root button{cursor:pointer}.h3ci-root>.h3cx-idea-add{align-self:flex-start}.h3ci-note{font-size:11px;color:#aab1bd;overflow-wrap:anywhere}`;
     document.head.append(style);
   }
   const root = el('div', 'h3ci-root'), grid = el('div', 'h3ci-grid');
   const note = el('div', 'h3ci-note', 'Optional visual inspiration. Your text idea takes priority.');
   const chooser = Object.assign(el('input'), {type: 'file', accept: 'image/*', multiple: true, hidden: true});
-  const add = el('button', null, '+ Idea images'); add.type = 'button';
+  const add = decorateIcon(el('button', 'h3ct-button h3cx-idea-add'), 'image', 'Add idea images', {text: true}); add.type = 'button';
   let replacing = null, busy = false;
   const read = () => images(input.read ? input.read() : input.value);
   const save = (value) => { input.value = JSON.stringify(value); set(input.value); render(); };
@@ -40,7 +42,7 @@ export function ideaImagesRow(input, set) {
       const preview = Object.assign(el('img'), {src: input.viewUrl(item.file), alt: `Idea image ${index + 1}`});
       const name = el('div', 'h3ci-name', `${index + 1}. ${item.file.filename}`);
       const actions = el('div', 'h3ci-actions');
-      const replace = el('button', null, 'Replace'), remove = el('button', null, 'Remove');
+      const replace = el('button', 'h3ct-button', 'Replace'), remove = el('button', 'h3ct-button', 'Remove');
       replace.type = remove.type = 'button'; replace.disabled = remove.disabled = !!blocked;
       replace.addEventListener('click', () => pick(index));
       remove.addEventListener('click', () => save(read().filter((_, position) => position !== index)));

@@ -3,6 +3,7 @@
 // ComfyUI's Load Image.
 import * as model from './h3c_timeline_model.mjs?v=448aca934518';
 import { referenceChip } from './h3c_reference_pictures.mjs?v=8198307be3fa';
+import { decorateIcon } from './h3c_icons.mjs';
 
 const FIRST_SLOT = 17;
 const STYLE_ID = 'h3cq-style';
@@ -219,7 +220,8 @@ export class PicturesPanel {
     const opened = this.root.open;
     this.root.replaceChildren(el('summary', null, `Pictures${pictures.length ? ` (${pictures.length})` : ''}`));
     this.root.open = opened;
-    const add = button('+ Picture', 'Upload pictures into the Timeline, each in the next free slot from @image17', () => this.add());
+    const add = decorateIcon(button('', '', () => this.add()), 'upload', 'Add pictures', {text: true});
+    add.title = 'Upload pictures into the Timeline, each in the next free slot from @image17';
     add.disabled = this.busy;
     const actions = el('div', 'h3ct-row');
     actions.append(add, this.input);
