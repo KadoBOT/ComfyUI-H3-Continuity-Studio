@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {EditHistory, TimelineHistory, editLabel, historyShortcut, editingSnapshot, withLiveReceipts} from '../../web/h3c_history.mjs?v=d639ee9ffd57';
-import {Studio} from '../../web/h3c_studio.mjs?v=226da3e4decf';
+import {Studio} from '../../web/h3c_studio.mjs?v=0608ef7a76d8';
 
 const state = (prompt = '', boxes = [{id:'a', prompt, frames:124, seed:1}]) => ({timeline:{prompt:'', boxes}, settings:{width:960}});
 

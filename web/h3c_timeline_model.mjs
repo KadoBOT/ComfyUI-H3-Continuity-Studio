@@ -1,11 +1,12 @@
+import * as tracks from './h3c_tracks.mjs';
 import {reconcileSceneAnchors} from './h3c_still_scene.mjs?v=1ca16919a3f9';
 // H3 Timeline editor model: the timeline JSON, lengths on the H3 frame grid, edits, and the rules that
 // decide how a box runs. Mirrors h3_continuity/timeline.py.
 import {parseJSON, stringifyJSON, seedValue} from './h3c_project.mjs?v=0882b8a6265a';
 import {imageDescriptionPrompt, imageDescriptionSource} from './h3c_image_descriptions.mjs?v=5f858b2b6a5a';
-import {acceptedGuideFrames} from './h3c_shot_preview.mjs?v=3e1fe9285010';
+import {acceptedGuideFrames} from './h3c_shot_preview.mjs?v=c234ba2180cb';
 import {AUDIO_WINDOWS_FEATURE, pruneWindows, resolveWindows, audioSourceLocked} from './h3c_audio_windows.mjs?v=cdefbd77b246';
-import {LAYER_FIELDS, SWAPS_DONT_FIT, clampSwitch, hasLayers, layerIds, switchFits} from './h3c_layers.mjs?v=3e1fe9285010';
+import {LAYER_FIELDS, SWAPS_DONT_FIT, clampSwitch, hasLayers, layerIds, switchFits} from './h3c_layers.mjs?v=c234ba2180cb';
 export const FPS = 24;
 export const MAX_FRAMES = 362;
 export const GRID = 17;
@@ -156,6 +157,9 @@ export function parseState(text) {
   if (!data || typeof data !== 'object' || Array.isArray(data)) data = {};
   const boxes = Array.isArray(data.boxes) ? data.boxes.filter((box) => box && typeof box === 'object') : [];
   return {
+    ...(Object.hasOwn(data,'tracks') ? {tracks:structuredClone(data.tracks)} : {}),
+    ...(Object.hasOwn(data,'text_lanes') ? {text_lanes:structuredClone(data.text_lanes)} : {}),
+    ...(Object.hasOwn(data,'overlap_switches') ? {overlap_switches:structuredClone(data.overlap_switches)} : {}),
     prompt: typeof data.prompt === 'string' ? data.prompt : '',
     ...(record(data.reference_preparation) ? {reference_preparation:structuredClone(data.reference_preparation)} : {}),
     ...(record(data.still_prompt_preparation) ? {still_prompt_preparation:structuredClone(data.still_prompt_preparation)} : {}),
@@ -184,6 +188,7 @@ export function parseState(text) {
     ...(Array.isArray(data.requires) ? { requires: data.requires.filter((item) => typeof item === 'string') } : {}),
     ...(Number.isInteger(data.max_frames) ? { max_frames: data.max_frames } : {}),
     boxes: boxes.map((box, index) => ({
+      ...(Object.hasOwn(box,'track') ? {track:box.track,start:box.start} : {}),
       id: String(box.id || `box${index + 1}`),
       frames: Number.isFinite(box.frames) ? Math.round(box.frames)
         : Number.isFinite(box.seconds) ? Math.round(box.seconds * FPS) : null,
@@ -218,6 +223,9 @@ export function serialize(state) {
   return stringifyJSON({
     version: 1,
     ...(requires.length ? { requires } : {}),
+    ...(tracks.enabled(state) ? {tracks:state.tracks} : {}),
+    ...(state.text_lanes ? {text_lanes:state.text_lanes} : {}),
+    ...(state.overlap_switches ? {overlap_switches:state.overlap_switches} : {}),
     prompt: state.prompt,
     ...(state.reference_preparation ? {reference_preparation:state.reference_preparation} : {}),
     ...(state.still_prompt_preparation ? {still_prompt_preparation:state.still_prompt_preparation} : {}),
@@ -242,6 +250,7 @@ export function serialize(state) {
     ...(state.dialogue ? { dialogue: state.dialogue } : {}),
     ...(Number.isInteger(state.max_frames) ? { max_frames: state.max_frames } : {}),
     boxes: state.boxes.map((box) => ({
+      ...(tracks.enabled(state) ? {track:box.track,start:box.start} : {}),
       id: box.id, frames: box.frames, prompt: box.prompt, seed: box.seed, cut: !!box.cut,
       ...(box.seed_mode === 'randomize' ? {seed_mode:'randomize'} : {}),
       first: box.first || '', last: box.last || '',
@@ -265,11 +274,12 @@ export function serialize(state) {
 
 export const LAYERS_FEATURE = 'video-layers-1';
 // Reader features this editor writes into "requires" when the file depends on them, as timeline.REQUIRES lists them.
-export const OWN_FEATURES = ['dialogue-cues-1', 'replacement-bridges-1', AUDIO_WINDOWS_FEATURE, LAYERS_FEATURE];
+export const OWN_FEATURES = ['dialogue-cues-1', 'replacement-bridges-1', AUDIO_WINDOWS_FEATURE, LAYERS_FEATURE, tracks.FEATURE];
 
 // What the Timeline needs a reader to understand: this editor's features in use, and any newer one it was given.
 export function requiredFeatures(state) {
   const own = [];
+  if (tracks.enabled(state)) own.push(tracks.FEATURE);
   if ((state.audio_clips ?? []).some(clip => Object.hasOwn(clip, 'box_windows'))) own.push(AUDIO_WINDOWS_FEATURE);
   if (state.dialogue?.cues?.length || state.dialogue?.observed?.length
     || (state.audio_clips ?? []).some((clip) => clip.locked === true)) own.push('dialogue-cues-1');

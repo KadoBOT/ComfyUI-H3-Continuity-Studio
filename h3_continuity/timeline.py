@@ -10,6 +10,7 @@ from copy import deepcopy
 from dataclasses import dataclass, field
 
 from .timing import FPS, seconds, effective_audio_context
+from . import tracks
 from . import timed_text
 from . import audio_windows
 from . import layers
@@ -35,7 +36,7 @@ RAW_TAG = re.compile(r"<(?:Picture|Audio|Video) \d+>")
 IMAGE_SLOT = re.compile(r"@?image(\d+)", re.IGNORECASE)
 MEMORY_MODES = ("off", "scene", "selected", "cast")
 # Reader features a Timeline can name in "requires"; an editor writes them when the file depends on them.
-REQUIRES = ("dialogue-cues-1", "replacement-bridges-1", audio_windows.FEATURE, layers.FEATURE)
+REQUIRES = ("dialogue-cues-1", "replacement-bridges-1", audio_windows.FEATURE, layers.FEATURE, tracks.FEATURE)
 
 
 @dataclass
@@ -103,6 +104,10 @@ class Timeline:
     layers: dict = field(default_factory=dict)
     switches: dict = field(default_factory=dict)
     render_layer: str | None = None
+    tracks: list | None = None
+    placements: dict = field(default_factory=dict)
+    text_lanes: list = field(default_factory=list)
+    overlap_switches: list = field(default_factory=list)
 
 
 @dataclass
@@ -196,6 +201,7 @@ def parse(text):
         if raw.get("dialogue", "cues") not in ("cues", "manual"):
             raise _error(f"box {n} dialogue must be cues or manual")
     parsed.manual_dialogue = [raw.get("dialogue") == "manual" for raw in boxes]
+    tracks.validate(parsed, data)
     layers.validate(parsed, boxes, requires)
     from . import still_scene, reference_assets
     parsed.reference_preparation = reference_assets.validate(data["reference_preparation"]) if "reference_preparation" in data else None
@@ -207,6 +213,8 @@ def parse(text):
     if not isinstance(parsed.still_requests, list) or any(not isinstance(item, dict) for item in parsed.still_requests):
         raise _error("still_requests must be a list of request receipts")
     parsed.timed_text = timed_text.validate(data.get("timed_text"))
+    for attachment in parsed.text_lanes:
+        attachment["attachment"] = timed_text.validate(attachment.get("attachment"))
     from . import dialogue
     parsed.dialogue = dialogue.validate(data.get("dialogue"))
     parsed.bible = data.get("bible")
