@@ -4,9 +4,9 @@ import {reconcileSceneAnchors} from './h3c_still_scene.mjs?v=1ca16919a3f9';
 // decide how a box runs. Mirrors h3_continuity/timeline.py.
 import {parseJSON, stringifyJSON, seedValue} from './h3c_project.mjs?v=0882b8a6265a';
 import {imageDescriptionPrompt, imageDescriptionSource} from './h3c_image_descriptions.mjs?v=5f858b2b6a5a';
-import {acceptedGuideFrames} from './h3c_shot_preview.mjs?v=40182e45e769';
+import {acceptedGuideFrames} from './h3c_shot_preview.mjs?v=84e4686d15bf';
 import {AUDIO_WINDOWS_FEATURE, pruneWindows, resolveWindows, audioSourceLocked} from './h3c_audio_windows.mjs?v=cdefbd77b246';
-import {LAYER_FIELDS, SWAPS_DONT_FIT, clampSwitch, hasLayers, layerIds, switchFits} from './h3c_layers.mjs?v=40182e45e769';
+import {LAYER_FIELDS, SWAPS_DONT_FIT, clampSwitch, hasLayers, layerIds, switchFits} from './h3c_layers.mjs?v=84e4686d15bf';
 export const FPS = 24;
 export const MAX_FRAMES = 362;
 export const GRID = 17;
@@ -116,7 +116,7 @@ export function newSeed() {
 }
 
 export function newId(state) {
-  const used = new Set([...state.boxes.map((box) => box.id), ...layerIds(state)]);
+  const used = new Set([...state.boxes.map((box) => box.id), ...layerIds(state),...(state.tracks??[]).map(t=>t.id),...(state.overlap_switches??[]).map(s=>s.id)]);
   let id = '';
   while (!id || used.has(id)) id = Math.random().toString(36).slice(2, 8);
   return id;

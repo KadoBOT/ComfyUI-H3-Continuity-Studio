@@ -90,10 +90,10 @@ New modules own layout, clock mapping and overlap resolution only. Existing time
 
 **Interfaces:** `TrackEditor(editor)` owns lane rendering, expand/collapse, header/add/delete and placement gestures. Calls Task1 edits through the existing commit/Undo gate. `snapPlacement(state,{id,track,start,end,tolerance,bypass,playhead}) -> {start,end,guide|null}` is pure. Selection stores stable clip/track/overlap IDs.
 
-- [ ] Test collapsed combined row and expanded individual rows resolve to the same edit list and selection. Add video/audio/text icons create typed lanes; audio/text cancelled import leaves deletable empty lanes. Preserve audio-slot limits with an actionable explanation.
-- [ ] Test nonempty deletion confirmation cancel/accept, last video track removal, overlap cleanup and Undo/Redo. Never delete files. Read-only mode blocks every new edit path.
-- [ ] Test drag snap to another track's left/right edges and playhead; Shift bypass, pixel-to-frame zoom mapping, negative start clamp, collisions and frame-grid resize. Move earlier/later and Duplicate operate on the selected track without changing another track's times.
-- [ ] Observe red, implement pure gestures then DOM wiring, run browser interactions including empty/populated tracks and interrupted drag. Fill available timeline height; maintain sticky headers, one shared horizontal ruler/scroll and resize divider; commit after full suite.
+- [x] Test collapsed combined row and expanded individual rows resolve to the same edit list and selection. Add video/audio/text icons create typed lanes; audio/text cancelled import leaves deletable empty lanes. Preserve audio-slot limits with an actionable explanation.
+- [x] Test nonempty deletion confirmation cancel/accept, last video track removal, overlap cleanup and Undo/Redo. Never delete files. Read-only mode blocks every new edit path.
+- [x] Test drag snap to another track's left/right edges and playhead; Shift bypass, pixel-to-frame zoom mapping, negative start clamp, collisions and frame-grid resize. Move earlier/later and Duplicate operate on the selected track without changing another track's times.
+- [x] Observe red, implement pure gestures then DOM wiring, run browser interactions including empty/populated tracks and interrupted drag. Fill available timeline height; maintain sticky headers, one shared horizontal ruler/scroll and resize divider; commit after full suite.
 
 ## Task 6: Icon system, toolbar and grouped tabs (STU2b)
 

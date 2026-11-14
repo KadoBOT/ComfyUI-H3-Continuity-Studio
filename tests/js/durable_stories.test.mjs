@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {savedStoryContent} from '../../web/h3c_story_library.mjs?v=2d38efb5b194';
+import {savedStoryContent} from '../../web/h3c_story_library.mjs?v=7517d865333c';
 import {groupStories, versionLabel} from '../../web/h3c_story_groups.mjs?v=734f66b40a7e';
 
 const workflow = (extra = {}) => ({

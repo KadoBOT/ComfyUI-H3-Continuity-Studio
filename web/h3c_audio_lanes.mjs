@@ -1,5 +1,6 @@
-import * as model from './h3c_timeline_model.mjs?v=40182e45e769';
-import { importWhisper, validateTimedText, setTextSync, textClock, projectTimedText } from './h3c_timed_text.mjs?v=4792512dd95f';
+import * as tracks from './h3c_tracks.mjs';
+import * as model from './h3c_timeline_model.mjs?v=84e4686d15bf';
+import { importWhisper, validateTimedText, setTextSync, textClock, projectTimedText } from './h3c_timed_text.mjs?v=28da5a57a455';
 import { loadAudio, loaded, beatTimes, drawWave } from './h3c_waveform.mjs?v=162256e10b5b';
 import {captureWindows,resolveWindows,unlockWindows,lockEligibility,sourceOrigin,outputWindows,equivalentWindows,timelineAudioParts} from './h3c_audio_windows.mjs?v=cdefbd77b246';
 import {replaceChanged, setText} from './h3c_dom.mjs?v=584a9bf55653';
@@ -95,6 +96,23 @@ export class AudioLanes {
         else this.addFile(file);
       }
     });
+  }
+
+  get text() {
+    const state=this.editor.state;
+    if(!tracks.enabled(state))return state.timed_text;
+    if(!state.tracks.some(t=>t.id===this.selectedTextTrack&&t.type==='text'))this.selectedTextTrack=state.tracks.find(t=>t.type==='text')?.id;
+    return state.text_lanes?.find(l=>l.track===this.selectedTextTrack)?.attachment;
+  }
+  set text(value) {
+    const state=this.editor.state;
+    if(!tracks.enabled(state)){if(value)state.timed_text=value;else delete state.timed_text;return;}
+    if(!state.tracks.some(t=>t.id===this.selectedTextTrack&&t.type==='text'))throw Error('The selected text lane no longer exists.');
+    state.text_lanes??=[];state.text_lanes=state.text_lanes.filter(l=>l.track!==this.selectedTextTrack);
+    if(value)state.text_lanes.push({track:this.selectedTextTrack,attachment:value});
+  }
+  syncText(value,enabled,slot) {
+    const proxy={...this.editor.state,timed_text:value};setTextSync(proxy,enabled,slot);
   }
 
   get clips() { return this.editor.state.audio_clips ?? []; }
@@ -210,12 +228,13 @@ export class AudioLanes {
   }
 
   selectText() {
-    if (!this.editor.state.timed_text) return;
+    if (!this.text) return;
     this.textSettings.open = true;
     this.editor.inspect({kind: 'text'});
   }
 
   async importText(file) {
+    const originalState=this.editor.state,targetTrack=this.selectedTextTrack;
     this.textButton.disabled = true; this.textMessage.textContent = 'Reading text…';
     try {
       const bytes = await file.arrayBuffer();
@@ -223,16 +242,17 @@ export class AudioLanes {
       const hash = Array.from(new Uint8Array(digest), value => value.toString(16).padStart(2, '0')).join('');
       const value = importWhisper(JSON.parse(new TextDecoder('utf-8', {fatal:true}).decode(bytes)), file.name, hash);
       await this.editor.host.uploadWhisper?.(file, hash);
-      this.editor.state.timed_text = value;
+      if(originalState!==this.editor.state||targetTrack!==this.selectedTextTrack)throw Error('The project or text lane changed; import the file again.');
+      this.text = value;
       this.textSettings.open = true; this.textMessage.textContent = '';
       this.editor.commit();
       this.selectText();
-    } catch (error) { this.textMessage.textContent = error.message; }
+    } catch (error) { this.textMessage.textContent = error.message; if(this.editor.trackEditor)this.editor.trackEditor.message.textContent=error.message; }
     finally { this.textButton.disabled = false; }
   }
 
   renderText() {
-    const state = this.editor.state, value = state.timed_text;
+    const state = this.editor.state, value = this.text;
     this.textSettings.hidden = !value;
     this.textSelect.hidden = !value;
     const signature = JSON.stringify([value, this.clips]);
@@ -241,7 +261,7 @@ export class AudioLanes {
     if ((!sameState || this.textKey !== signature) && !typing) {
       this.textKey = signature; this.textState = state; this.textValue = value;
       this.textSettings.replaceChildren(node('summary', null, 'Timed text · Whisper JSON'), button('Remove text', () => {
-        delete state.timed_text; this.textMessage.textContent = ''; this.editor.commit(); this.editor.inspectClip();
+        this.text = null; this.textMessage.textContent = ''; this.editor.commit(); this.editor.inspectClip();
       }));
       if (value) {
         this.textSettings.append(node('div', 'h3ct-hint', `${value.source_name ?? 'Text'} · SHA-256 ${value.source_sha256 ?? 'missing'}`));
@@ -253,7 +273,7 @@ export class AudioLanes {
             input.setAttribute('aria-label', label);
             input.addEventListener('change', () => {
               try {
-                if (key === 'sync_audio') setTextSync(state, input.checked); else value.enabled = input.checked;
+                if (key === 'sync_audio') this.syncText(value,input.checked); else value.enabled = input.checked;
                 this.editor.commit();
               }catch(error){input.checked=value[key];this.textMessage.textContent=error.message;this.textSummary.textContent=error.message;}
             });
@@ -265,7 +285,7 @@ export class AudioLanes {
             const option = node('option', null, `@${slot}${clip ? ` · ${clip.title ?? 'Audio'}` : ' (missing lane)'}`); option.value = slot; lane.append(option);
           }
           lane.value = value.audio_slot;
-          lane.addEventListener('change', () => { setTextSync(state, value.sync_audio, lane.value); this.editor.commit(); });
+          lane.addEventListener('change', () => { this.syncText(value,value.sync_audio,lane.value); this.editor.commit(); });
           row.append(lane); this.textSettings.append(row);
           const timing = node('div', 'h3ct-row'), clock = textClock(value, this.clips);
           for (const [key, label] of [['start','Text video start (s)'],['source_start','Text source in (s)'],['duration','Text length (s)']]) {
@@ -296,7 +316,7 @@ export class AudioLanes {
       if (!clock.resolved) { setText(this.textSummary, `@${value.audio_slot} lane is missing. Select a lane or turn sync off.`); return; }
       if (!value.enabled) { setText(this.textSummary, 'Timed text is disabled.'); return; }
       const index = this.editor.selected, box = state.boxes[index];
-      const start = state.boxes.slice(0, index).reduce((sum, box) => sum + box.frames, 0) / model.FPS;
+      const start = tracks.startFrame(state,state.boxes[index]?.id) / model.FPS;
       const window = projectTimedText(value, this.clips, start, box?.frames ?? model.totalFrames(state),
         box && !model.isFresh(state, index) ? this.editor.host.context() : 0, model.resolvedAudio(state));
       setText(this.textSummary, (clock.box_windows?'Audio follows boxes':`Movie ${clock.start} s · source ${clock.source_start}–${clock.source_start + clock.duration} s`)
@@ -310,7 +330,7 @@ export class AudioLanes {
     if (this.busy) return;
     const occupied = new Set([...this.editor.referenceOptions().map(ref => ref.name), ...this.clips.map(clip => clip.slot)]);
     const slot = LANE_SLOTS.find(slot => !occupied.has(slot));
-    if (!slot) { this.message.textContent = 'All three audio slots are in use. Remove a clip or disconnect a reference.'; return; }
+    if (!slot) { this.message.textContent = 'All three audio slots are in use. Remove a clip or disconnect a reference.'; if(this.editor.trackEditor)this.editor.trackEditor.message.textContent=this.message.textContent; return; }
     await this.add(slot, () => this.editor.host.uploadAudio(file), true);
   }
 
@@ -322,21 +342,24 @@ export class AudioLanes {
   }
 
   async add(slot, read, uploaded) {
+    const targetTrack=this.pendingTrack,originalState=this.editor.state;
     this.busy = true; this.addButton.disabled = true; this.message.textContent = 'Reading audio…';
     try {
       const source = await read();
+      if(originalState!==this.editor.state)throw Error('The project changed while reading audio; add the file again.');
+      if(tracks.enabled(this.editor.state)&&!this.editor.state.tracks.some(t=>t.id===targetTrack&&t.type==='audio'))throw Error('Select an audio lane before importing a source.');
       if (!Number.isFinite(source.duration) || source.duration <= 0) throw new Error('This file has no playable audio.');
       if (this.clips.some(clip => clip.slot === slot)) throw new Error(`${slot} is already in use.`);
       const video = model.totalFrames(this.editor.state) / model.FPS;
       this.editor.state.audio_clips ??= [];
-      this.clips.push({slot, ...(uploaded ? {file: source.file} : {}), title: source.title,
+      this.clips.push({slot, ...(tracks.enabled(this.editor.state)?{track:targetTrack}:{}), ...(uploaded ? {file: source.file} : {}), title: source.title,
         start: 0, source_start: 0, duration: video ? Math.min(video, source.duration) : source.duration,
         source_duration: source.duration, peaks: source.peaks, layer: 'music', description: ''});
       this.editor.state.disabled_refs = (this.editor.state.disabled_refs ?? []).filter(name => name !== slot);
       this.selected = slot; this.settings.open = true; this.message.textContent = '';
       this.editor.commit();
       this.selectAudio(slot);
-    } catch (error) { this.message.textContent = error.message; }
+    } catch (error) { this.message.textContent = error.message; if(this.editor.trackEditor)this.editor.trackEditor.message.textContent=error.message; }
     finally { this.busy = false; this.addButton.disabled = false; }
   }
 

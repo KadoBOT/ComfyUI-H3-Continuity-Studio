@@ -103,7 +103,7 @@ function nextId(state, prefix) {
 export function enableTracks(state) {
   if (enabled(state)) return;
   const spans=placements(state); state.tracks=[];
-  const video={id:nextId(state,'v'),type:'video',name:'Video 1'}; state.tracks.push(video);
+  const video={id:nextId(state,'v'),type:'video',name:'Video 1'}; if(state.boxes.length)state.tracks.push(video);
   state.boxes.forEach((box,i)=>Object.assign(box,{track:video.id,start:spans[i].start}));
   for (const audio of state.audio_clips ?? []) { const id=addTrack(state,'audio'); audio.track=id; }
   if (state.timed_text) { const id=addTrack(state,'text'); state.text_lanes=[{track:id,attachment:state.timed_text}]; delete state.timed_text; }

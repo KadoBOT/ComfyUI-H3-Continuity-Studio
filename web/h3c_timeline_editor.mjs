@@ -1,25 +1,27 @@
+import {TrackEditor} from './h3c_track_editor.mjs';
+import * as tracks from './h3c_tracks.mjs';
 // The H3 Timeline editor: a track of boxes, the selected box and the shared prompt.
 // Plain DOM without ComfyUI imports; the host object connects it to the node.
-import { MentionCard, MentionLayer } from './h3c_mentions.mjs?v=31f540142d03';
+import { MentionCard, MentionLayer } from './h3c_mentions.mjs?v=f0da69914f11';
 import { promptSections, promptShots, writePromptSections } from './h3c_prompt_sections.mjs?v=b58f04f78a75';
-import * as model from './h3c_timeline_model.mjs?v=40182e45e769';
-import * as videoLayers from './h3c_layers.mjs?v=40182e45e769';
+import * as model from './h3c_timeline_model.mjs?v=84e4686d15bf';
+import * as videoLayers from './h3c_layers.mjs?v=84e4686d15bf';
 import {audioSourceLocked} from './h3c_audio_windows.mjs?v=cdefbd77b246';
-import { AudioLanes } from './h3c_audio_lanes.mjs?v=c006268a3247';
-import { shotFrames, frameTargets, syncTargets, acceptedGuideFrames, endpointGuide, endpointReference, adoptEndpointGuides } from './h3c_shot_preview.mjs?v=40182e45e769';
-import {FrameImages, targetLabel, imageDrop} from './h3c_frame_images.mjs?v=c7443f04c69d';
-import { splitBox, splitTiming } from './h3c_shot_split.mjs?v=b5f1145939d9';
+import { AudioLanes } from './h3c_audio_lanes.mjs?v=355744e6f1f0';
+import { shotFrames, frameTargets, syncTargets, acceptedGuideFrames, endpointGuide, endpointReference, adoptEndpointGuides } from './h3c_shot_preview.mjs?v=84e4686d15bf';
+import {FrameImages, targetLabel, imageDrop} from './h3c_frame_images.mjs?v=54ff10dbfe92';
+import { splitBox, splitTiming } from './h3c_shot_split.mjs?v=4f353c85e384';
 import { fillReferenceSwitches } from './h3c_reference_switches.mjs?v=e94b5b02e02b';
-import { ReferenceReplacements } from './h3c_reference_replacements.mjs?v=1ba459315acf';
+import { ReferenceReplacements } from './h3c_reference_replacements.mjs?v=99ff205c14a1';
 import { fillPicturePicker, mentionedReferences, referenceChip } from './h3c_reference_pictures.mjs?v=8198307be3fa';
-import { CastPage } from './h3c_cast.mjs?v=71c3ebd97f75';
-import { PicturesPanel, highestSlot } from './h3c_pictures.mjs?v=2b41c8f18180';
+import { CastPage } from './h3c_cast.mjs?v=a6859d02475b';
+import { PicturesPanel, highestSlot } from './h3c_pictures.mjs?v=e852dce674d5';
 import { CheckPanel } from './h3c_check.mjs?v=c69786f95bd5';
-import { BridgePanel, bridgeLine } from './h3c_bridges.mjs?v=f39e6982cc4a';
-import { DialoguePanel } from './h3c_dialogue.mjs?v=84e33eebbd9c';
+import { BridgePanel, bridgeLine } from './h3c_bridges.mjs?v=cb2a32a9e2fc';
+import { DialoguePanel } from './h3c_dialogue.mjs?v=6033f2cb471c';
 import { ChainSettings } from './h3c_chain_settings.mjs?v=9f2d4061a6d6';
 import { exportedVideo } from './h3c_partial_video.mjs?v=201bf0f48645';
-import { MAX_TAKES, TakesPanel, followNote, renderLabel } from './h3c_takes.mjs?v=7cb104c123f9';
+import { MAX_TAKES, TakesPanel, followNote, renderLabel } from './h3c_takes.mjs?v=29b31b595261';
 import { drawsSame, replaceChanged, setText, showImages } from './h3c_dom.mjs?v=584a9bf55653';
 
 const STYLE_ID = 'h3ct-style';
@@ -415,9 +417,10 @@ export class TimelineEditor {
     this.stackEl = el('div', 'h3ct-stack');
     this.stackEl.hidden = true;
     this.audioLanes = new AudioLanes(this);
+    this.trackEditor = new TrackEditor(this);
     this.dialogue = new DialoguePanel(this);
     this.chain = new ChainSettings(this);
-    lane.append(this.stillsEl, this.rulerEl, this.trackEl, this.stackEl, this.audioLanes.root, this.audioLanes.settings,
+    lane.append(this.stillsEl, this.rulerEl, this.trackEl, this.trackEditor.root, this.stackEl, this.audioLanes.root, this.audioLanes.settings,
       this.dialogue.root);
     this.hintEl = el('p', 'h3ct-hint');
     this.readOnlyEl = el('p', 'h3ct-hint problem');
@@ -943,6 +946,7 @@ export class TimelineEditor {
 
   startIfEmpty() {
     if (this.state.boxes.length || this.readOnly.length) return;
+    if(tracks.enabled(this.state)){this.trackEditor.addClip();return;}
     model.addBox(this.state, this.host.context());
     this.save(model.serialize(this.state));
     this.render();
@@ -1061,6 +1065,7 @@ export class TimelineEditor {
   }
 
   addBox() {
+    if(tracks.enabled(this.state))return this.trackEditor.addClip();
     this.selected = model.addBox(this.state, this.host.context());
     this.commit();
     this.inspectClip();
@@ -1069,6 +1074,7 @@ export class TimelineEditor {
   // Moves the selected clip. A Continue clip that lands after a clip with several videos must become a Cut, so that
   // is asked first.
   move(delta) {
+    if(tracks.enabled(this.state))return this.trackEditor.move(delta);
     const context = this.host.context(), trial = model.parseState(model.serialize(this.state));
     model.moveBox(trial, this.selected, delta, context);
     const stacked = trial.boxes.findIndex((box, index) => videoLayers.continueAfterStack(trial, index));
@@ -1080,6 +1086,7 @@ export class TimelineEditor {
   }
 
   duplicate() {
+    if(tracks.enabled(this.state))return this.trackEditor.duplicate();
     this.selected = model.duplicateBox(this.state, this.selected, this.host.context());
     this.commit();
     this.inspectClip();
@@ -1088,6 +1095,7 @@ export class TimelineEditor {
   remove() {
     const videos = 1 + (this.box()?.layers?.length ?? 0);
     if (videos > 1 && !globalThis.confirm?.(`Delete clip ${this.selected + 1} and its ${videos} videos?`)) return;
+    if(tracks.enabled(this.state))return this.trackEditor.removeClip();
     this.picked = null;
     this.selected = Math.max(0, model.removeBox(this.state, this.selected, this.host.context()));
     this.commit();
@@ -1541,6 +1549,7 @@ export class TimelineEditor {
     let start = 0;
     const starts = [];
     this.state.boxes.forEach((box, index) => {
+      start=tracks.startFrame(this.state,box.id);
       starts.push(start);
       const info = this.describe(index, connected, context);
       const status = this.statusOf(box);
@@ -1641,6 +1650,8 @@ export class TimelineEditor {
     this.renderStills(span, stillsWidth);
     // AudioLanes guards typing by state/clip identity, including after its settings root is borrowed.
     this.audioLanes.render(span, laneWidth);
+    this.trackEditor.render(span);
+    this.trackEditor.decorateAudio();
     if (this.audioLanes.lanes.lastChild !== this.playheads[2]) this.audioLanes.lanes.append(this.playheads[2]);
     this.placePlayhead(span);
     this.dialogue.render();
