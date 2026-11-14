@@ -1,6 +1,6 @@
 import {parseJSON,stringifyJSON} from './h3c_project.mjs?v=0882b8a6265a';
 import {settledPreparation} from './h3c_reference_preparation.mjs?v=6d2f9a937e6a';
-import {applyResult,parseStoryState,serializeStoryState} from './h3c_story_model.mjs?v=cd547c80909c';
+import {applyResult,parseStoryState,serializeStoryState} from './h3c_story_model.mjs?v=8e1adc756d92';
 import {reconcileSceneAnchors} from './h3c_still_scene.mjs?v=1ca16919a3f9';
 
 const CONTENT_FIELDS=new Set(['name','timeline','idea','state','idea_images','template']);

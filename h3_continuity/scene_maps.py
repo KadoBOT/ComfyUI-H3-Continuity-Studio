@@ -89,6 +89,8 @@ def validate(raw, n):
                   'legend': item.get('legend', True) is not False}
         if isinstance(item.get('entity'), str) and item['entity']:
             marker['entity'] = item['entity']
+        if item.get('borrowed') is True:
+            marker['borrowed'] = True
         markers.append(marker)
     camera = raw.get('camera') if isinstance(raw.get('camera'), dict) else {}
     legend = raw.get('legend') if isinstance(raw.get('legend'), dict) else {}
@@ -165,8 +167,9 @@ def resolve(timeline, index, _memo=None):
         base['positions'] = {marker['id']: [marker['x'], marker['y']] for marker in end['markers']}
     inherited = {marker['id'] for marker in base['markers']}
     for marker in scene['markers']:
-        if marker['id'] not in inherited:
-            base['markers'].append(marker)
+        # A borrowed marker is the copy kept for when the link breaks; while linked the source decides.
+        if marker['id'] not in inherited and not (before is not None and marker.get('borrowed')):
+            base['markers'].append({key: value for key, value in marker.items() if key != 'borrowed'})
             base['owners'][marker['id']] = index
             base['positions'][marker['id']] = scene['opening']['markers'].get(marker['id'], [0.5, 0.5])
     opening = base['positions']
