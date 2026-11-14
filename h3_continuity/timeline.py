@@ -14,6 +14,7 @@ from . import tracks
 from . import timed_text
 from . import audio_windows
 from . import layers
+from . import scene_maps
 
 MAX_FRAMES = 362
 # A Timeline may raise its box limit to this with "max_frames"; boxes past MAX_FRAMES are sampled in context windows.
@@ -36,7 +37,8 @@ RAW_TAG = re.compile(r"<(?:Picture|Audio|Video) \d+>")
 IMAGE_SLOT = re.compile(r"@?image(\d+)", re.IGNORECASE)
 MEMORY_MODES = ("off", "scene", "selected", "cast")
 # Reader features a Timeline can name in "requires"; an editor writes them when the file depends on them.
-REQUIRES = ("dialogue-cues-1", "replacement-bridges-1", audio_windows.FEATURE, layers.FEATURE, tracks.FEATURE)
+REQUIRES = ("dialogue-cues-1", "replacement-bridges-1", audio_windows.FEATURE, layers.FEATURE, tracks.FEATURE,
+            scene_maps.FEATURE)
 
 
 @dataclass
@@ -108,6 +110,10 @@ class Timeline:
     placements: dict = field(default_factory=dict)
     text_lanes: list = field(default_factory=list)
     overlap_switches: list = field(default_factory=list)
+    # Each box's scene map as saved (see scene_maps.py), or None. Not on Box, whose every field a box plan records.
+    scene_maps: list = field(default_factory=list)
+    # {box index: Studio picture slot} of the boxes that send their map picture to H3.
+    scene_map_slots: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -201,6 +207,8 @@ def parse(text):
         if raw.get("dialogue", "cues") not in ("cues", "manual"):
             raise _error(f"box {n} dialogue must be cues or manual")
     parsed.manual_dialogue = [raw.get("dialogue") == "manual" for raw in boxes]
+    parsed.scene_maps = [scene_maps.validate(raw.get("scene_map"), n) for n, raw in enumerate(boxes, 1)]
+    scene_maps.check(parsed, requires)
     tracks.validate(parsed, data, lambda box,index: played_frames(parsed,index))
     layers.validate(parsed, boxes, requires)
     from . import still_scene, reference_assets
