@@ -9,6 +9,7 @@ import { ideaImagesRow } from './h3c_idea_images.mjs?v=3e6280e44a1b';
 import { partialBadge, partialTitle, previewBadge, previewLabel, previewTitle, timelineFrame, videoSeconds } from './h3c_partial_video.mjs?v=201bf0f48645';
 import {historyShortcut} from './h3c_history.mjs?v=d639ee9ffd57';
 import {setText} from './h3c_dom.mjs?v=584a9bf55653';
+import {ScriptView} from './h3c_script.mjs?v=e28eed0578c7';
 
 const LIBRARY = ['references', 'cast', 'story', 'pictures', 'refmods'];
 const CENTER = ['viewer', 'story', 'cast', 'pictures', 'refmods'];
@@ -30,6 +31,22 @@ const CSS = `
   overflow: hidden; background: #15171c; color: var(--input-text, #ddd); font: 14px/1.45 system-ui, sans-serif; }
 .h3cx-studio * { box-sizing: border-box; }
 .h3cx-studio[hidden], .h3cx-studio [hidden] { display: none !important; }
+/* The Script view: the clips as a list on the left, what H3 made of the selected one on the right. The Time view is
+   the classic layout, and narrow and phone screens always get it. */
+.h3cx-script-pane { display:none; }
+.h3cx-mode { display:inline-flex; border:1px solid #535b6c; border-radius:6px; overflow:hidden; }
+.h3cx-mode .h3ct-button { border:0; border-radius:0; margin:0; }
+.h3cx-mode .h3ct-button + .h3ct-button { border-left:1px solid #535b6c; }
+.h3cx-mode .h3ct-button[aria-pressed="true"] { background:#ebe8e1; color:#15171c; font-weight:600; }
+.h3cx-mode-script .h3cx-main { grid-template-columns:minmax(0,1fr) clamp(380px, 36vw, 620px); }
+.h3cx-mode-script .h3cx-script-pane { display:block; }
+.h3cx-mode-script .h3cx-main > .h3cx-library, .h3cx-mode-script .h3cx-main > .h3cx-inspector,
+.h3cx-mode-script .h3cx-main > .h3cx-split, .h3cx-mode-script > .h3cx-split, .h3cx-mode-script > .h3cx-track,
+.h3cx-mode-script .h3cx-center > .h3cx-library-nav, .h3cx-mode-script .h3cx-library-toggle,
+.h3cx-mode-script .h3cx-inspector-toggle { display:none; }
+.h3cx-mode-script .h3cx-center { background:#1a1c22; border-left:1px solid #2c313c; }
+.h3cx-mode-script .h3cx-stage { flex:0 0 auto; aspect-ratio:16/9; min-height:0; }
+@media(max-width:899px) { .h3cx-mode { display:none; } }
 .h3cx-new-project { max-width: min(620px, calc(100vw - 24px)); max-height: calc(100vh - 24px); overflow:auto; padding:20px; background:#1d2027; color:var(--input-text, #ddd); font:14px/1.45 system-ui,sans-serif; border:1px solid #535b6c; }
 .h3cx-new-project::backdrop { background:#0009; }
 .h3cx-new-project button { margin-right:8px; margin-top:8px; }
@@ -261,6 +278,8 @@ export class Studio {
     this.narrowMedia = matchMedia('(max-width:899px)');
     this.mobilePage = 'viewer';
     this.layout = this.loadLayout();
+    // 'script' lists the clips to read and write; 'time' is the classic layout with the Timeline lane.
+    this.mode = this.layout.mode;
     this.build();
     this.mobileMedia.addEventListener('change', () => this.layoutChanged());
     this.narrowMedia.addEventListener('change', () => this.layoutChanged());
@@ -354,12 +373,20 @@ export class Studio {
     this.inspectorVisible = innerWidth >= 900;
     this.inspectorToggle = button('Inspector', 'Show or hide clip, audio and text properties', () => this.setInspectorVisible(!this.inspectorVisible), 'h3cx-inspector-toggle');
     this.inspectorToggle.setAttribute('aria-controls', 'h3cx-inspector');
+    this.modeButtons = {script: button('New', 'The new Studio: read and write the clips in order', () => this.setMode('script')),
+      time: button('Legacy', 'The previous Studio layout, with every clip, audio and text setting', () => this.setMode('time'))};
+    const modes = el('span', 'h3cx-mode');
+    modes.setAttribute('role', 'group'); modes.setAttribute('aria-label', 'Studio view');
+    modes.append(this.modeButtons.script, this.modeButtons.time);
+    this.barActions = el('span', 'h3cx-slot');
+    this.script = new ScriptView({more: () => this.setMode('time')});
+    this.script.root.classList.add('h3cx-script-pane');
     const bar = el('header', 'h3cx-bar');
     this.projectActions = el('div', 'h3cx-project-actions');
     this.projectActions.append(this.undoButton, this.redoButton, this.historyButton,
       this.newProjectButton, this.projectButton, this.downloadVideo);
-    bar.append(close, this.libraryToggle, this.inspectorToggle, this.nameEl, this.summarySlot, this.savedSlot,
-      el('span', 'h3cx-grow'), this.projectActions);
+    bar.append(close, this.libraryToggle, this.inspectorToggle, this.nameEl, modes, this.summarySlot, this.savedSlot,
+      el('span', 'h3cx-grow'), this.barActions, this.projectActions);
     this.bar = bar;
     this.buildHistory();
     const activity = el('div', 'h3cx-activity');
@@ -483,7 +510,7 @@ export class Studio {
     const center = el('section', 'h3cx-center');
     center.append(nav, player, this.focus);
     const main = el('div', 'h3cx-main');
-    main.append(this.library, center, this.inspector);
+    main.append(this.script.root, this.library, center, this.inspector);
     this.mobileMore = el('section', 'h3cx-mobile-more');
     this.mobileMore.setAttribute('aria-label', 'More Studio tools');
     this.mobileMore.append(el('h2', 'h3cx-title', 'Studio tools'));
@@ -516,6 +543,7 @@ export class Studio {
     const zoom = el('span', 'h3cx-zoom');
     zoom.setAttribute('role', 'group'); zoom.setAttribute('aria-label', 'Timeline zoom');
     zoom.append(this.zoomOut, this.zoomText, this.zoomIn, this.zoomFit);
+    this.trackToolbar = toolbar; this.zoomGroup = zoom;
     toolbar.append(el('h2', 'h3cx-title', 'Timeline'), this.actionsSlot, zoom);
     this.track.append(toolbar);
     main.append(this.splitter('lib', 'v', 'References width'), this.splitter('insp', 'v', 'Inspector width'));
@@ -534,6 +562,33 @@ export class Studio {
     if (typeof ResizeObserver === 'function') new ResizeObserver(() => this.trackResized()).observe(this.track);
     this.setLibrary('references');
     this.setPage('box');
+    this.applyMode();
+  }
+
+  // The view the user chose survives a refresh. Narrow and phone screens keep the classic layout whatever it is.
+  setMode(mode) {
+    this.mode = this.layout.mode = mode === 'time' ? 'time' : 'script';
+    this.saveLayout();
+    this.applyMode();
+    if (this.host && !this.scriptShown) {
+      this.host.editor.renderPanel();
+      this.trackWidth = 0;
+      this.trackResized();
+    }
+    this.refresh();
+  }
+
+  get scriptShown() {
+    return this.mode === 'script' && !this.narrowMedia.matches && !this.mobileMedia.matches;
+  }
+
+  applyMode() {
+    const script = this.scriptShown;
+    this.root.classList.toggle('h3cx-mode-script', script);
+    for (const [name, control] of Object.entries(this.modeButtons)) control.setAttribute('aria-pressed', String(name === this.mode));
+    // Render next and Render remaining stay within reach: beside the name in the Script, on the Timeline in Time.
+    const home = script ? this.barActions : this.trackToolbar;
+    if (this.actionsSlot.parentNode !== home) script ? home.append(this.actionsSlot) : home.insertBefore(this.actionsSlot, this.zoomGroup);
   }
 
   // Layout: pane sizes and the timeline zoom survive a refresh. Each is a size the user chose, never below the original.
@@ -543,7 +598,7 @@ export class Studio {
     try { saved = JSON.parse(localStorage.getItem(LAYOUT_KEY) ?? '{}') ?? {}; } catch { saved = {}; }
     const number = (value, min, max) => Number.isFinite(value) ? Math.min(max, Math.max(min, value)) : null;
     return {lib: number(saved.lib, 0, 4000), insp: number(saved.insp, 0, 4000), track: number(saved.track, TRACK_MIN, 4000),
-      zoom: number(saved.zoom, 1, ZOOM_MAX) ?? 1};
+      zoom: number(saved.zoom, 1, ZOOM_MAX) ?? 1, mode: saved.mode === 'time' ? 'time' : 'script'};
   }
 
   saveLayout() {
@@ -946,6 +1001,7 @@ export class Studio {
       this.mobilePage = editing && this.inspector.contains(field) ? 'clip'
         : editing && this.library.contains(field) ? 'references' : this.focusPage ? 'focus' : 'viewer';
     }
+    this.applyMode();
     this.renderMobile();
     if (this.mobileMedia.matches && field?.isConnected && field.getClientRects().length && this.root.contains(field)
       && field.matches('input, textarea, select')) {
@@ -1082,6 +1138,7 @@ export class Studio {
     this.stopButton.hidden = host.editor.host.projectAttached === true || !(watch.running && !watch.turn);
     this.feedbackButton.hidden = host.editor.feedbackEl.hidden;
     this.renderNavigation();
+    if (this.scriptShown) this.script.render();
     const full = host.editor.fullLink.hidden ? null : host.editor.fullLink.getAttribute('href');
     const partial = full ? host.editor.partialVideo : null;
     const soFar = full ? host.editor.previewVideo : null;
@@ -1151,6 +1208,7 @@ export class Studio {
     regions.references.open = true;
     regions.refmods.open = true;
     regions.chainSettings.open = true;
+    this.script.setEditor(this.host.editor);
     this.setLibrary('references');
     this.trackWidth = this.track.clientWidth;
     this.applyLaneView();
@@ -1165,6 +1223,7 @@ export class Studio {
     this.setScreen();
     const editor = this.host?.editor;
     editor?.setLaneView();
+    this.script.setEditor(null);
     this.host = null;
     this.trackWidth = 0;
     if (editor) editor.touchPan = false;
