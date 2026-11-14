@@ -10,7 +10,7 @@ from comfy_execution.graph_utils import ExecutionBlocker
 
 from . import conditioning, latents, store, timing, shot_preview, refmods, audio_tracks, visual_memory
 from . import box_checks, bridges, dialogue, studio_pictures, voice_clips, reference_replacements, replacement_candidates
-from . import partial_video, replacement, regeneration, layers, stacks
+from . import partial_video, replacement, regeneration, layers, stacks, track_output, tracks
 from . import nodes as continuity
 from . import timeline as rules
 from .story_node import StoryType
@@ -193,7 +193,8 @@ def _status(name, folder, parsed, manifest, is_done, reasons=None, materialize=F
             view, waiting = stacks.substitute(folder, parsed, manifest, count, FULL_VIDEO_CRF, partial=True,
                                               make=materialize)
         complete = bool(count) and len(placed) == count and next_index is None
-        current = complete and not waiting
+        track_mode=parsed.tracks is not None
+        current = complete and not waiting and not track_mode
         joined = {**view, "segments": store.placed(view, count)}
         full_video = None
         building = False
@@ -234,7 +235,7 @@ def _status(name, folder, parsed, manifest, is_done, reasons=None, materialize=F
             if record:
                 full_video = _view(name, record["file"], record["sources"])
         partial = None
-        if materialize and not current and parsed.video_slices and manifest.get("source") and soundtrack is not None:
+        if materialize and not track_mode and not current and parsed.video_slices and manifest.get("source") and soundtrack is not None:
             from .timeline_api.service import authorize_sequence
             authorize_sequence(name, managed_owner, "full_video")
             try:
@@ -243,7 +244,7 @@ def _status(name, folder, parsed, manifest, is_done, reasons=None, materialize=F
                 note = f"Partial video could not be saved: {error}"
             export_error = export_error or note
         so_far, so_far_building, so_far_note = None, False, ""
-        if materialize and not current and not partial and not unchecked:
+        if materialize and not track_mode and not current and not partial and not unchecked:
             from .timeline_api.service import authorize_sequence
             authorize_sequence(name, managed_owner, "full_video")
             so_far, so_far_building, so_far_note = video_so_far(name, folder, parsed, view, done | kept, spliced,
@@ -270,6 +271,23 @@ def _status(name, folder, parsed, manifest, is_done, reasons=None, materialize=F
                                        "rendered": partial["rendered"], "boxes": partial["boxes"]}
             if parsed.all_bridges:
                 status["partial_video"]["note"] = "Bridges and replacements are left out."
+        if track_mode:
+            if materialize:
+                from .timeline_api.service import authorize_sequence
+                authorize_sequence(name,managed_owner,'full_video')
+            mode='full' if complete and not waiting else ('partial' if parsed.video_slices else 'so_far')
+            record,building,note=track_output.ensure(folder,name,parsed,manifest,FULL_VIDEO_CRF,mode,materialize)
+            spans=tracks.output_spans(tracks.document(parsed))
+            status['seconds']=(spans[-1]['outputEnd'] if spans else 0)/24
+            if record:
+                if mode=='full':
+                    status['full_video']=_view(name,record['file'],record['sources']);status['full_video_clock']=record['clock']
+                elif mode=='partial':
+                    status['partial_video']=dict(file=_view(name,record['file'],record['sources']),rendered=len(done|kept),boxes=count,note=note)
+                else:
+                    status['preview_video']=dict(file=_view(name,record['file'],record['sources']),boxes=len(done|kept),total=count,clock=record['clock'])
+            if building: status['full_video_building' if mode=='full' else 'preview_video_building']=True
+            if note: status['export_error' if mode=='full' else 'preview_error']=note
         if parsed.layers:
             found_layers = layers.states(folder, parsed, manifest, done | kept, known, known.get("context_frames"),
                                          next_index)
@@ -903,7 +921,7 @@ class H3C_Timeline(io.ComfyNode):
                 raise ValueError(f"H3 Timeline: box {next_index + 2} has no compatible saved overlap; "
                                  "render the remaining boxes to rebuild continuity")
         segment.box_order = [item.id for item in parsed.boxes]
-        segment.restack = stacks.restacker(parsed, len(parsed.boxes)) if parsed.layers else None
+        segment.restack = stacks.restacker(parsed, len(parsed.boxes)) if parsed.layers or parsed.tracks is not None else None
         segment.description = box.prompt
         segment.timeline = {"box": box.box.id, "layout": box.layout, "mode": box.slots.mode,
                             "settings": box.settings, "media": hashes[next_index].of(box.slots),
@@ -1016,7 +1034,7 @@ class H3C_Timeline(io.ComfyNode):
             latent, next_video, next_audio, frozen, carry_audio, segment.context_frames)
         segment.preserve_following = True
         segment.box_order = [item.id for item in parsed.boxes]
-        segment.restack = stacks.restacker(parsed, len(parsed.boxes)) if parsed.layers else None
+        segment.restack = stacks.restacker(parsed, len(parsed.boxes)) if parsed.layers or parsed.tracks is not None else None
         segment.description = plan.prompt
         segment.timeline = {"bridge": state.bridge["before"], "layout": plan.layout, "settings": plan.settings,
                             "from": bridges.link(folder, before), "to": bridges.link(folder, after),

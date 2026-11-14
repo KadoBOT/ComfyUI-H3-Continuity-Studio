@@ -819,6 +819,11 @@ def frame_movie_time(timeline, index, frame, context):
 
 
 def frame_text(timeline, index, frame, context):
+    if timeline.text_lanes:
+        at=frame_movie_time(timeline,index,frame,context)
+        parts=[timed_text.anchor_metadata(lane['attachment'],timeline.audio_clips,at,placements=resolved_audio(timeline)) for lane in timeline.text_lanes]
+        visible=[text for part in parts for text in part['visible_text']]
+        return dict(visible_text=visible,text_contract=hashlib.sha256(json.dumps(parts,sort_keys=True).encode()).hexdigest())
     return timed_text.anchor_metadata(timeline.timed_text, timeline.audio_clips,
                                       frame_movie_time(timeline, index, frame, context), placements=resolved_audio(timeline))
 
@@ -1217,7 +1222,9 @@ def plan_box(timeline, index, context, carry_audio, width, height, ref_image_siz
 def timed_prompt(timeline, index, context, prose, mode, window):
     """`prose` with box `index`'s timed text and its recordings' dialogue, as H3 receives it."""
     from . import dialogue
-    prompt = timed_text.insert(prose, mode, window)
+    prompt=prose
+    for part in window.get("lanes", [window]):
+        prompt=timed_text.insert(prompt,mode,part)
     return dialogue.insert(prompt, mode, dialogue.box_events(timeline, index, context))
 
 
@@ -1227,13 +1234,21 @@ def _digest(value):
 
 def text_window(timeline, index, context):
     frames, carried = box_length(timeline, index, context)
+    if timeline.text_lanes:
+        windows=[timed_text.project(lane['attachment'],timeline.audio_clips,box_start(timeline,index),frames,carried,
+                                   placements=resolved_audio(timeline)) for lane in timeline.text_lanes]
+        merged=dict(windows[0],lanes=windows,cues=[],words=[],direction='\n'.join(w['direction'] for w in windows))
+        for lane,window in zip(timeline.text_lanes,windows):
+            for key in ('cues','words'):
+                merged[key].extend(dict(cue,id=lane['track']+':'+cue['id']) for cue in window[key])
+        return merged
     return timed_text.project(timeline.timed_text, timeline.audio_clips, box_start(timeline, index), frames, carried,
                              placements=resolved_audio(timeline))
 
 
 def text_chain(timeline, index, context):
     """Text edits invalidate carried lettering up to the next cut, without hashing unrelated cues."""
-    if timeline.timed_text is None or not timeline.timed_text["enabled"]:
+    if not timeline.text_lanes and (timeline.timed_text is None or not timeline.timed_text["enabled"]):
         return ""
     values = []
     for i in continuation_chain(timeline,index):

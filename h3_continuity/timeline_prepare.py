@@ -479,8 +479,12 @@ def connected(inputs, api, prefix, allowed):
     return result
 
 
-def verify_text_audio(parsed, assets, inputs):
-    attachment = parsed.timed_text
+def verify_text_audio(parsed, assets, inputs, attachment=None):
+    if attachment is None and parsed.text_lanes:
+        for lane in parsed.text_lanes:
+            verify_text_audio(parsed,assets,inputs,lane['attachment'])
+        return
+    attachment = parsed.timed_text if attachment is None else attachment
     if attachment is None or "audio_sha256" not in attachment:
         return
     slot = attachment["audio_slot"]

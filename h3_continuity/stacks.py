@@ -132,6 +132,9 @@ def substitute(folder, timeline, manifest, count, crf, partial=False, make=True)
 
 def restacker(timeline, count, partial=False):
     """`substitute` bound to a Timeline, for nodes.rebuild_full_video: (folder, manifest, crf, make) -> manifest."""
+    if timeline.tracks is not None:
+        from . import track_output
+        return track_output.restacker(timeline)
     return lambda folder, manifest, crf, make=True: substitute(folder, timeline, manifest, count, crf, partial,
                                                                make)[0]
 
