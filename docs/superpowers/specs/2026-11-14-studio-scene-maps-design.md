@@ -1,6 +1,6 @@
 # Scene maps per Studio clip
 
-Status: approved, 2026-11-14 (user: "Approved"), including the seven proposals: `scene-map-1` requirement, borrow with local copy, editor in the Viewer pane, Cast-linked markers, end layout on last-frame stills, the video mode table with no T2VA upgrade, and section-aware first-shot text. The "end here" test passed in the user's own Studio render.
+Status: implemented on `feat/scene-map` (plan `docs/superpowers/plans/2026-11-14-studio-scene-maps.md`). Approved 2026-11-14 (user: "Approved"), including the seven proposals: `scene-map-1` requirement, borrow with local copy, editor in the Viewer pane, Cast-linked markers, end layout on last-frame stills, the video mode table with no T2VA upgrade, and section-aware first-shot text. The "end here" test passed in the user's own Studio render.
 
 ## Intent and confirmed decisions
 

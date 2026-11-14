@@ -78,6 +78,9 @@ A **bridge** is a generated move between two rendered clips; see [Joins and brid
 **Visual memory**
 :   Which earlier moments this clip is shown. See [Visual memory](../continuity/visual-memory.md).
 
+**Scene map**
+:   A top-down plan with the camera and characters for this clip, its preview, **Edit map** and **Send map picture to video**. See [Scene maps](scene-maps.md).
+
 ## Rendering
 
 | Button | Renders |
