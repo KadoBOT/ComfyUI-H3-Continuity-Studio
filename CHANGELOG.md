@@ -4,11 +4,24 @@ All notable changes to H3 Continuity Studio are recorded here. Versions follow [
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-11-14
+
+The first stable release. Projects saved with 0.x open as one video track with their original timing and video stacks, without rerendering. Older versions open projects that use several tracks read-only.
+
 ### Added
 
-- Independent video lanes with cross-lane snapping, upper-lane visibility through gaps, a compact combined output row and expandable lane editing. Overlap inspectors reuse switch, fade and sound controls. Typed video/audio/text lane controls stay beneath the timeline; nonempty lane deletion asks for confirmation and Undo restores it.
-- Studio icon action toolbars, icon-and-label navigation, grouped Pictures/RefMods under References, and a contextual clip/audio/text/overlap inspector. Generate requests one take. Reusable still conversion instructions now live in Project settings.
-- Cast reference preparation uses a searchable thumbnail list and one focused editor, with explicit candidate approval, batch options and a phone list/detail flow.
+- **Independent video tracks.** Clips can sit on separate video lanes with their own placement, continuity and render dependencies, sharing one clock with audio and text lanes. Clips snap across lanes, upper lanes show through gaps, and a compact output row shows the combined result. Lanes expand for editing; deleting a lane that has clips asks first, and Undo restores it.
+- **A contextual inspector.** Selecting a clip, audio, text or overlap opens its own properties. Overlaps reuse the switch, fade and sound controls. The selected clip's actions, including **Rewrite selected clip**, sit at the top of its inspector.
+- **Prompt sections as tabs.** A clip's structured prompt shows one section at a time, with counts and an **Include in prompt** switch per section; empty sections are dimmed.
+- **Shots filmstrip.** First, shots and Last are one strip in frame order above a large image with one **Generate candidates** action, a short prompt summary that opens the clip prompt, and a **Fixed image seed** switch.
+
+### Changed
+
+- **One Studio button system.** Icon buttons for frequent, obvious actions, icon and label for the rest, and one style for primary, pressed and plain buttons. Navigation uses icons and labels; mobile keeps 44 px touch targets.
+- **Story page tabs.** Brief, Outline, Continuity and Saved stories are separate tabs. The outline lists one line per clip; clicking a line selects that clip.
+- **Cast reference preparation focuses on one asset.** A searchable thumbnail list opens one editor with explicit candidate approval and a phone list/detail flow. Category tabs show counts, and each category tab has its own **Prepare references** switch in place of batch options; **Generate missing** counts the current tab.
+- **Settings and Project settings are aligned forms.** Fields sit on one row with short labels; Project settings are grouped into Shared prompt, Chain, Project files, Generations, Still instructions and Graph settings. Pictures and RefMods are grouped under References.
+- Generate requests one take. Takes show an empty state until the first render.
 
 ## [0.25.3] - 2026-11-13
 
