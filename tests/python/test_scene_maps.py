@@ -309,6 +309,104 @@ class PictureTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'no clip'):
             scene_maps.preview(clip_story(), 'zzz')
 
+    def test_preview_shows_each_still_line(self):
+        got = scene_maps.preview(clip_story(), 'a')['stills']
+        self.assertTrue(got['first'].startswith('The map is a storyboard reference: a top-down plan'))
+        self.assertNotEqual(got['first'], got['last'])
+        self.assertEqual(scene_maps.preview(clip_story(scene_map={'on': False}), 'a')['stills'], {})
+
+
+STILL = ('@still{k} is a storyboard reference: a top-down plan of this place defining the camera viewpoint and where '
+         'each subject stands; nothing from the plan is drawn.')
+
+
+class StillTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        from tests.continuity_support import enable_comfy_cpu
+        enable_comfy_cpu()
+
+    def test_first_frame_still_gets_opening_map_last_to_end(self):
+        parsed = rules.parse(clip_story())
+        resolved = scene_maps.resolve(parsed, 0)
+        self.assertEqual(scene_maps.still_layout(parsed, 0, {'kind': 'first'}), resolved['opening'])
+        self.assertEqual(scene_maps.still_layout(parsed, 0, {'kind': 'last'}), resolved['end'])
+        self.assertIsNone(scene_maps.still_layout(rules.parse(clip_story(scene_map=shot_map(picture=None))), 0, {}))
+        self.assertIsNone(scene_maps.still_layout(rules.parse(clip_story(scene_map={'on': False})), 0, {}))
+
+    def test_still_line_exact_copy(self):
+        parsed = rules.parse(clip_story())
+        line = scene_maps.still_line('@still2', scene_maps.still_layout(parsed, 0, {'kind': 'first'}))
+        self.assertTrue(line.startswith(STILL.format(k=2) + ' The camera stands'), line)
+        self.assertIn('STRAY', line)
+        bare = scene_maps.still_layout(rules.parse(clip_story(scene_map=shot_map(opening={'markers': {}}))), 0, {})
+        self.assertEqual(scene_maps.still_line('@still1', bare), STILL.format(k=1))
+
+    def prepare(self, scene_map=None, kind='first', inputs=None):
+        import os, tempfile
+        from unittest import mock
+        import folder_paths
+        from PIL import Image
+        from h3_continuity import minimax_image_nodes as image, stills
+        from tests.python.test_minimax_image_still import ARGS, FILES
+        from tests.python.test_ph3_image_recipe import recipe
+        story = json.loads(clip_story(prompt='STRAY on the trail.', pictures=(), scene_map=scene_map))
+        del story['bible']
+        saved = {'api': {'5': {'class_type': 'H3C_MiniMaxH3ImageStill', 'inputs': {**ARGS, **(inputs or {})}},
+                         '9': {'class_type': 'LoadImage', 'inputs': {'image': 'yard.png'}}}}
+        body = dict(name='scene-maps-test', box='a', target={'kind': kind}, workflow=saved, recipe=recipe(),
+                    timeline=json.dumps(story), prompt='stale')
+        root = tempfile.TemporaryDirectory()
+        self.addCleanup(root.cleanup)
+        os.makedirs(os.path.join(root.name, 'maps'))
+        Image.new('RGB', (W, H), (200, 180, 120)).save(os.path.join(root.name, 'maps', 'yard.png'))
+        Image.new('RGB', (64, 64)).save(os.path.join(root.name, 'yard.png'))
+        with mock.patch.object(folder_paths, 'get_directory_by_type', lambda kind: root.name), \
+                mock.patch.object(folder_paths, 'get_input_directory', lambda: root.name), \
+                mock.patch.object(folder_paths, 'get_output_directory', lambda: root.name), \
+                mock.patch('folder_paths.get_filename_list', lambda folder: FILES.get(folder, [])), \
+                mock.patch.dict('nodes.NODE_CLASS_MAPPINGS', {'H3C_MiniMaxH3ImageStill': image.H3C_MiniMaxH3ImageStill}):
+            result = stills.prepare(body)
+            self.assertTrue(result.get('ok'), result)
+            refs = result['provenance']['references']
+            files = [stills.file_path(ref['file']) for ref in refs if ref.get('title') == 'Scene map']
+            sizes = []
+            for path in files:
+                with Image.open(path) as made:
+                    sizes.append(made.width * made.height / 1e6)
+        return result, refs, sizes
+
+    def test_prepared_still_request_has_map_reference_last_at_one_megapixel(self):
+        result, refs, sizes = self.prepare(inputs={'images.image_2': ['9', 0]})
+        prompt = result['prompt']['5']['inputs']['prompt']
+        self.assertEqual([ref['slot'] for ref in refs], ['still2', 'still3'])
+        ref = refs[-1]
+        self.assertEqual((ref['roles'], ref['title'], ref['reference_megapixels']), (['blocking map: still3'], 'Scene map', 1.0))
+        self.assertNotIn('scene_map', ref)
+        self.assertAlmostEqual(sizes[0], 1.0, delta=0.01)
+        self.assertTrue(prompt.startswith('STRAY on the trail.\n\n' + STILL.replace('@still{k}', ref['label'])), prompt)
+        source = result['prompt'][ref['port']['node']]['inputs'][ref['port']['input']][0]
+        self.assertEqual(json.loads(result['prompt'][source]['inputs']['source'])['reference_megapixels'], 1.0)
+
+    def test_last_frame_still_draws_the_end_layout(self):
+        first = self.prepare()[1][-1]['sha256']
+        self.assertNotEqual(self.prepare(kind='last')[1][-1]['sha256'], first)
+
+    def test_map_off_still_request_unchanged(self):
+        result, refs, _ = self.prepare(scene_map={'on': False})
+        self.assertEqual(refs, [])
+        self.assertEqual(result['prompt']['5']['inputs']['prompt'], 'STRAY on the trail.')
+
+    def test_image_source_keeps_the_map_at_its_own_size(self):
+        from unittest import mock
+        import torch
+        from h3_continuity import scene_map, still_nodes
+        with mock.patch('h3_continuity.stills.load_pixel_source', lambda source: torch.zeros(1, 4, 4, 3)):
+            pixels = still_nodes.H3C_StillImageSource.execute(json.dumps({'reference_megapixels': 1.0})).result[0]
+            plain = still_nodes.H3C_StillImageSource.execute(json.dumps({})).result[0]
+        self.assertEqual(getattr(pixels, scene_map.REFERENCE_ATTRIBUTE), 1.0)
+        self.assertFalse(hasattr(plain, scene_map.REFERENCE_ATTRIBUTE))
+
 
 if __name__ == '__main__':
     unittest.main()

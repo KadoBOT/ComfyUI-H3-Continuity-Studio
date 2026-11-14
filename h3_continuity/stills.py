@@ -708,7 +708,15 @@ def _prepare_pixels(body, parsed, index, frame, name):
     for ref in refs:
         if ref.get('slot') in identity and 'identity' not in ref['roles']:
             ref['roles'].append('identity')
-    refs += _recipe_references(body)
+    recipe = _recipe_references(body)
+    refs += recipe
+    from . import scene_maps
+    layout = scene_maps.still_layout(parsed, index, body.get('target'))
+    if layout is not None:
+        slot = f'still{1 + max((int(ref["slot"][5:]) for ref in recipe), default=0)}'
+        refs.append({'slot': slot, 'kind': 'image', 'roles': ['blocking map: ' + slot], 'title': 'Scene map',
+                     'reference_megapixels': 1.0, 'scene_map': scene_maps.still_line('@' + slot, layout),
+                     **pin_image(import_image(scene_maps.still_picture(parsed, index, layout)))})
     # A blocking map the clip does not mention is introduced, as approved assets are; a mention leaves it to the clip.
     lines = []
     for ref in refs:

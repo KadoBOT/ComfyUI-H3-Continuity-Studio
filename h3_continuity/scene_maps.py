@@ -323,27 +323,68 @@ def digest(timeline, index):
     return picture['file']['filename'].rsplit('.', 1)[0] if picture else None
 
 
+def _base(picture, number):
+    """The path of a map's base picture; box `number` names the clip when the file is missing."""
+    from . import studio_pictures
+    base = studio_pictures.path(picture)
+    if base is None:
+        raise _error(f"box {number} uses a scene map picture ({picture['filename']}), but the file is missing from "
+                     f"ComfyUI's {picture['type']} folder")
+    return base
+
+
+def _draw(base, layout):
+    """The base picture at 1 MP with `layout` drawn on it (PIL, RGB)."""
+    from PIL import Image, ImageOps
+    from . import scene_map
+    with Image.open(base) as opened:
+        return scene_map.render(scene_map.resize(ImageOps.exif_transpose(opened).convert('RGB'), 1.0),
+                                scene_map.normalize(layout))
+
+
 def ensure(picture):
     """The path of a map picture's file, drawn from its base picture at 1 MP when missing or older than the base."""
     import os
     import folder_paths
-    from PIL import Image, ImageOps
-    from . import scene_map, studio_pictures
     info, file = picture['scene_map'], picture['file']
-    base = studio_pictures.path(info['picture'])
-    if base is None:
-        raise _error(f"box {info['number']} uses a scene map picture ({info['picture']['filename']}), but the file is "
-                     f"missing from ComfyUI's {info['picture']['type']} folder")
+    base = _base(info['picture'], info['number'])
     folder = os.path.join(folder_paths.get_directory_by_type(file['type']), file['subfolder'])
     found = os.path.join(folder, file['filename'])
     if not os.path.isfile(found) or os.path.getmtime(found) < os.path.getmtime(base):
-        with Image.open(base) as opened:
-            made = scene_map.render(scene_map.resize(ImageOps.exif_transpose(opened).convert('RGB'), 1.0), info['layout'])
+        made = _draw(base, info['layout'])
         os.makedirs(folder, exist_ok=True)
         partial = found + '.partial.png'
         made.save(partial)
         os.replace(partial, found)
     return found
+
+
+# --- stills ------------------------------------------------------------------------------------------------------------
+
+def still_layout(timeline, index, target):
+    """The layout a still of box `index` follows: the end for its last frame, otherwise the opening. None when the map
+    is off or has no picture."""
+    resolved = resolve(timeline, index)
+    if resolved is None or not resolved['picture'] or not resolved['width'] or not resolved['height']:
+        return None
+    return resolved['end'] if (target or {}).get('kind') == 'last' else resolved['opening']
+
+
+def still_line(name, layout):
+    """What a still prompt says about the map when it is the reference called `name`."""
+    from . import scene_map
+    text = (f'{name} is a storyboard reference: a top-down plan of this place defining the camera viewpoint and where '
+            'each subject stands; nothing from the plan is drawn.')
+    description = scene_map.describe(scene_map.normalize(layout), layout['width'], layout['height'])
+    return text + ' ' + description if description else text
+
+
+def still_picture(timeline, index, layout):
+    """PNG bytes of box `index`'s map picture at 1 MP with `layout` drawn on it."""
+    import io
+    buffer = io.BytesIO()
+    _draw(_base(resolve(timeline, index)['picture'], index + 1), layout).save(buffer, format='PNG')
+    return buffer.getvalue()
 
 
 def preview(text, box_id):
@@ -358,7 +399,9 @@ def preview(text, box_id):
         mode = rules.box_slots(parsed, index).mode
     except ValueError:
         mode = ''
-    return {'video': {'mode': mode, 'parts': parts, 'reason': parts['reason'] if parts else ''}, 'stills': {}}
+    layouts = {kind: still_layout(parsed, index, {'kind': kind}) for kind in ('first', 'last')}
+    stills = {kind: still_line('The map', layout) for kind, layout in layouts.items() if layout is not None}
+    return {'video': {'mode': mode, 'parts': parts, 'reason': parts['reason'] if parts else ''}, 'stills': stills}
 
 
 def _sections(prompt):
