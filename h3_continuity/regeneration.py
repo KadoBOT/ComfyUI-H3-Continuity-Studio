@@ -27,9 +27,10 @@ def _settings(known):
 
 
 def _reason(folder, parsed, known, index, following):
-    if index + 1 >= len(parsed.boxes) or rules.is_fresh(parsed, index + 1) or following is None:
+    after=rules.following_index(parsed,index)
+    if after is None or rules.is_fresh(parsed,after) or following is None:
         return ""
-    number = index + 2
+    number = after + 1
     if not store.has_segment_latents(folder, following):
         return f"Clip {number}'s saved starting frames are missing."
     if (following.get("latent_width"), following.get("latent_height")) != (known["width"], known["height"]):
@@ -94,10 +95,11 @@ def inspect(folder, parsed, known, box_id):
     manifest = store.load_manifest(folder)
     store.align(manifest, [box.id for box in parsed.boxes])
     entries = {store.box_of(entry): entry for entry in manifest["segments"]}
-    following = entries.get(parsed.boxes[index + 1].id) if index + 1 < len(parsed.boxes) else None
+    after=rules.following_index(parsed,index)
+    following = entries.get(parsed.boxes[after].id) if after is not None else None
     result = dict(ok=True, box=box_id, number=index + 1, needs_rebuild=False, reason="",
                   affected=[], bridges=[], replacements=[], receipt=None)
-    if following is None or rules.is_fresh(parsed, index + 1):
+    if following is None or rules.is_fresh(parsed,after):
         return result
     if any(known.get(key) is None for key in ("width", "height", "context_frames", "carry_audio", "ref_image_size")):
         # Producers without static scalar outputs resolve at execution; the renderer still checks the actual join.
@@ -108,19 +110,21 @@ def inspect(folder, parsed, known, box_id):
     if not reason:
         return result
     changed = {box_id}
-    for later in range(index + 1, len(parsed.boxes)):
+    for later in rules.render_order(parsed):
+        if later==index: continue
         box = parsed.boxes[later]
         dependencies = {parsed.boxes[source].id for source, _, _ in rules.memory_sources(parsed, later)}
         if not rules.is_fresh(parsed, later):
-            dependencies.add(parsed.boxes[later - 1].id)
+            dependencies.add(parsed.boxes[rules.previous_index(parsed,later)].id)
         dependencies.update(item["box"] for item in (entries.get(box.id, {}).get("timeline") or {}).get("memories", []))
         if dependencies & changed:
             changed.add(box.id)
             if box.id in entries:
                 result["affected"].append(dict(id=box.id, number=later + 1))
-    for later in range(1, len(parsed.boxes)):
+    for later in range(len(parsed.boxes)):
         box = parsed.boxes[later]
-        if not {box.id, parsed.boxes[later - 1].id} & changed:
+        previous=rules.previous_index(parsed,later)
+        if previous is None or not {box.id, parsed.boxes[previous].id} & changed:
             continue
         for key in ("bridges", "replacements"):
             if any(entry["box"] == box.id for entry in manifest.get(key, [])):

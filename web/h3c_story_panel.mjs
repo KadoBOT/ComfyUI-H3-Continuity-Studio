@@ -2,7 +2,8 @@
 // places the story of the last Write and the export and import row on its Story page.
 // Plain DOM without ComfyUI imports; the host object connects it to the node.
 import {groupLabel,groupStories,initialSelection,versionLabel} from './h3c_story_groups.mjs?v=734f66b40a7e';
-import {ideaImagesRow} from './h3c_idea_images.mjs?v=3e6280e44a1b';
+import {ideaImagesRow} from './h3c_idea_images.mjs?v=990e7177d821';
+import {decorateIcon} from './h3c_icons.mjs';
 
 const STYLE_ID = 'h3cs-style';
 const MIN_HEIGHT = 140;
@@ -31,7 +32,18 @@ const CSS = `
 .h3cs-part { display: flex; flex-direction: column; gap: 2px; }
 .h3cs-heading { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: #aab1bd; }
 .h3cs-sheet { white-space: pre-wrap; user-select: text; cursor: text; }
-.h3cs-outline, .h3cs-suggestions, .h3cs-notes { display: flex; flex-direction: column; gap: 2px; }
+.h3cs-suggestions, .h3cs-notes { display: flex; flex-direction: column; gap: 2px; }
+.h3cs-outline { display: flex; flex-direction: column; gap: 1px; margin: 0; padding: 0; list-style: none; }
+.h3cs-beat { display: flex; align-items: baseline; gap: 10px; width: 100%; padding: 6px 8px; font: inherit; color: inherit; text-align: left;
+  background: transparent; border: 0; border-radius: 5px; cursor: pointer; }
+.h3cs-beat:hover { background: #ffffff0d; }
+.h3cs-beat:focus-visible { outline: 2px solid #8fbcff; outline-offset: -2px; }
+.h3cs-beat[aria-current=true] { background: #2a3a55; }
+.h3cs-clip-number { flex: 0 0 auto; min-width: 22px; padding: 0 5px; border-radius: 4px; background: #ffffff12; color: #c9d1dd;
+  font-size: 11px; font-variant-numeric: tabular-nums; line-height: 18px; text-align: center; }
+.h3cs-beat-text { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.h3cs-beat[aria-current=true] .h3cs-beat-text { white-space: normal; }
+.h3cs-file-group { gap: 6px; }
 .h3cs-notes { font-size: 11px; color: #e6c07b; }
 .h3cs-settings { display: flex; flex-direction: column; flex: none; width: 100%; height: fit-content;
   box-sizing: border-box; color: var(--input-text, #ddd); font: 13px/1.45 system-ui, sans-serif; }
@@ -51,9 +63,10 @@ function el(tag, className, text) {
   return node;
 }
 
-function button(label, title, onClick, className = '') {
+function button(label, title, onClick, className = '', iconName = null) {
   const node = el('button', `h3cs-button ${className}`.trim(), label);
   node.type = 'button';
+  if (iconName) decorateIcon(node, iconName, label, {text: true});
   node.title = title;
   node.addEventListener('click', (event) => {
     event.preventDefault();
@@ -78,7 +91,7 @@ function injectStyle() {
 
 function suggestionText(item, numberOf) {
   const numbers = item.boxes.map(numberOf).filter((n) => n != null).sort((a, b) => a - b);
-  const where = numbers.length ? ` (${numbers.length === 1 ? 'box' : 'boxes'} ${numbers.join(', ')})` : '';
+  const where = numbers.length ? ` (${numbers.length === 1 ? 'clip' : 'clips'} ${numbers.join(', ')})` : '';
   const detail = [item.description, item.why].filter(Boolean).join(' ');
   return detail ? `${item.what}${where}: ${detail}` : `${item.what}${where}`;
 }
@@ -94,28 +107,29 @@ export class StoryPanel {
       if (!event.ctrlKey && !event.metaKey && !event.altKey) event.stopPropagation();
     });
     this.writeButton = button('Write story', 'Plan the story and write clip prompts in scope. Generate clips separately in the Timeline.',
-      () => host.write(), 'h3cs-primary');
+      () => host.write(), 'h3cs-primary', 'write');
     this.boxButton = button('Rewrite selected clip',
-      'Write prompts only for the selected Timeline clip, preserving its storyline and both neighbors. Generate the clip separately.', () => host.write(true));
-    this.rewriteButton = button('Rewrite entire Timeline',
+      'Write prompts only for the selected Timeline clip, preserving its storyline and both neighbors. Generate the clip separately.',
+      () => host.write(true), 'h3cs-box-button', 'write');
+    this.rewriteButton = button('Rewrite all clips',
       'Rewrite every clip prompt, including rendered clips and manual edits; keep clips and timing. Undo restores the previous prompts. Generate clips separately.',
-      () => host.rewrite());
-    this.checkAllButton = button('Check all rendered clips', "Check every rendered clip that has no current check with the Story's "
-      + "Vision model, then unload it; ComfyUI's queue must be empty", () => host.checkAll());
-    this.cancelButton = button('Cancel', 'Stop the Write or the check; what it finished is kept', () => host.cancel());
-    this.undoButton = button('Undo last Write', 'Put back the prompts the last Write replaced', () => host.undo());
+      () => host.rewrite(), '', 'rewrite');
+    this.checkAllButton = button('Check rendered clips', "Check every rendered clip that has no current check with the Story's "
+      + "Vision model, then unload it; ComfyUI's queue must be empty", () => host.checkAll(), '', 'check');
+    this.cancelButton = button('Cancel', 'Stop the Write or the check; what it finished is kept', () => host.cancel(), '', 'stop');
+    this.undoButton = button('Undo last Write', 'Put back the prompts the last Write replaced', () => host.undo(), '', 'undo');
     this.messageEl = el('span', 'h3cs-message');
     this.keepWorkflowButton = button('Keep this workflow',
       'Save this workflow and its current prompts as an independent story. The previously saved story stays unchanged.',
-      () => host.keepWorkflow?.());
+      () => host.keepWorkflow?.(), '', 'save');
     this.keepWorkflowButton.hidden = true;
     this.actionsEl = el('div', 'h3cs-row h3cs-actions');
     this.actionsEl.append(this.writeButton, this.boxButton, this.rewriteButton, this.checkAllButton,
       this.cancelButton, this.undoButton, this.keepWorkflowButton, this.messageEl);
 
     this.filesEl = el('div', 'h3cs-row');
-    this.exportButton = button('Export project JSON', 'Download the Story, Timeline and complete workflow wiring as project JSON. Media and RefMods stay file references; this does not download video.',
-      () => host.exportStory?.());
+    this.exportButton = button('Export project', 'Download the Story, Timeline and complete workflow wiring as project JSON. Media and RefMods stay file references; this does not download video.',
+      () => host.exportStory?.(), '', 'download');
     this.importInput = el('input');
     this.importInput.type = 'file';
     this.importInput.accept = '.json,application/json';
@@ -125,15 +139,17 @@ export class StoryPanel {
       this.importInput.value = '';
       if (file) host.importStory?.(file);
     });
-    this.filesEl.append(this.exportButton, button('Import project JSON', 'Restore project JSON and workflow wiring in a new workflow tab. Media and RefMods remain file references.',
-      () => this.importInput.click()), this.importInput,
-      el('span', 'h3cs-hosts', 'Includes workflow wiring. Media and RefMods remain file references.'));
+    const projectFiles = el('div', 'h3cs-row h3cs-file-group');
+    projectFiles.append(this.exportButton, button('Import project', 'Restore project JSON and workflow wiring in a new workflow tab. Media and RefMods remain file references.',
+      () => this.importInput.click(), '', 'upload'), this.importInput);
 
     const generationInput=el('input');generationInput.type='file';generationInput.accept='.json,application/json';generationInput.hidden=true;
     generationInput.addEventListener('change',()=>{const file=generationInput.files?.[0];generationInput.value='';if(file)host.importGeneration?.(file);});
-    this.filesEl.append(button('Export generation','Transfer Story, guides, candidates and saved takes to another generator workflow.',()=>host.exportGeneration?.()),
-      button('Import generation into this workflow','Keep this workflow and generator; import a verified independent generation.',()=>generationInput.click()),generationInput,
-      button('Fork as a copy','Download this generation as a file, then keep working on a copy with all its renders and takes, to try another continuation without changing this one.',()=>host.forkGeneration?.()));
+    const generationFiles=el('div','h3cs-row h3cs-file-group');
+    generationFiles.append(button('Export generation','Transfer Story, guides, candidates and saved takes to another generator workflow.',()=>host.exportGeneration?.(),'','download'),
+      button('Import generation','Keep this workflow and generator; import a verified independent generation into it.',()=>generationInput.click(),'','upload'),generationInput,
+      button('Fork as a copy','Download this generation as a file, then keep working on a copy with all its renders and takes, to try another continuation without changing this one.',()=>host.forkGeneration?.(),'','duplicate'));
+    this.filesEl.append(projectFiles, generationFiles);
 
     this.keyInput = el('input');
     this.keyInput.type = 'password';
@@ -173,14 +189,14 @@ export class StoryPanel {
     this.keysEl = el('details', 'h3cs-keys');
     this.keysEl.append(this.keysSummaryEl, keysBody);
 
-    this.studioButton = button('Open Studio', STUDIO_TITLE, () => host.openStudio?.());
+    this.studioButton = button('Open Studio', STUDIO_TITLE, () => host.openStudio?.(), '', 'viewer');
     this.targetEl = el('div', 'h3cs-target');
     const studio = el('div', 'h3cs-row');
     studio.append(this.studioButton, this.targetEl);
 
     this.storyEl = el('div', 'h3cs-story');
     this.titleEl = el('div', 'h3cs-title');
-    this.outlineEl = el('div', 'h3cs-outline');
+    this.outlineEl = el('ol', 'h3cs-outline');
     this.sheetEl = el('div', 'h3cs-sheet');
     this.suggestionsEl = el('div', 'h3cs-suggestions');
     this.notesEl = el('div', 'h3cs-notes');
@@ -199,14 +215,14 @@ export class StoryPanel {
       this.libraryGroups=[];this.libraryRows=[];
       this.libraryNote=el('span','h3cs-hosts','Saved on this ComfyUI server.');
       const row=el('div','h3cs-row'),storyRow=el('div','h3cs-row');
-      this.libraryOpen=button('Load version','Load an autosaved version into this Timeline, or open a named checkpoint as an independent editable workflow with its videos.',()=>host.openSavedStory(this.librarySelect.value));
-      this.libraryDelete=button('Delete version','Delete the selected version and its generated media. Other versions of the story are kept.',()=>host.deleteSavedStory(this.libraryRows.find(row=>row.id===this.librarySelect.value)));
-      this.libraryRename=button('Rename story','Give the selected story a name instead of its title.',()=>host.renameSavedStory(this.selectedGroup()));
-      this.libraryDeleteStory=button('Delete story','Delete every version of the selected story and its generated media.',()=>host.deleteSavedStoryGroup(this.selectedGroup()));
-      row.append(button('Refresh','Refresh stories saved on this server.',()=>this.refreshStories()),this.libraryOpen,this.libraryDelete);
+      this.libraryOpen=button('Load version','Load an autosaved version into this Timeline, or open a named checkpoint as an independent editable workflow with its videos.',()=>host.openSavedStory(this.librarySelect.value),'h3cs-primary','upload');
+      this.libraryDelete=button('Delete version','Delete the selected version and its generated media. Other versions of the story are kept.',()=>host.deleteSavedStory(this.libraryRows.find(row=>row.id===this.librarySelect.value)),'','trash');
+      this.libraryRename=button('Rename story','Give the selected story a name instead of its title.',()=>host.renameSavedStory(this.selectedGroup()),'','write');
+      this.libraryDeleteStory=button('Delete story','Delete every version of the selected story and its generated media.',()=>host.deleteSavedStoryGroup(this.selectedGroup()),'','trash');
+      row.append(this.libraryOpen,this.libraryDelete,button('Refresh','Refresh stories saved on this server.',()=>this.refreshStories(),'','history'));
       storyRow.append(this.libraryRename,this.libraryDeleteStory);
       const saveRow=el('div','h3cs-row');
-      this.checkpointButton=button('Save checkpoint…','Save a named snapshot of this workflow, Timeline and rendered videos. Later edits keep this checkpoint intact.',()=>host.saveCheckpoint?.());
+      this.checkpointButton=button('Save checkpoint…','Save a named snapshot of this workflow, Timeline and rendered videos. Later edits keep this checkpoint intact.',()=>host.saveCheckpoint?.(),'','save');
       saveRow.append(this.checkpointButton);
       if(host.autosaveEnabled) {
         const label=el('label','h3cs-row');
@@ -349,19 +365,30 @@ export class StoryPanel {
 
   // state: the parsed story state, or null. numberOf(id): the box's number in the Timeline now, or null.
   showStory(state, numberOf = () => null) {
-    const outline = (state?.outline ?? []).map((item) => [numberOf(item.box), item.beat])
+    const outline = (state?.outline ?? []).map((item) => [numberOf(item.box), item.beat, item.box])
       .filter(([number]) => number != null).sort((a, b) => a[0] - b[0]);
     const suggestions = state?.suggestions ?? [];
     const notes = state?.notes ?? [];
     this.titleEl.textContent = state?.title ?? '';
-    this.outlineEl.replaceChildren(...outline.map(([number, beat]) => el('div', null, `Box ${number}: ${beat}`)));
+    this.outlineEl.replaceChildren(...outline.map(([number, beat, box]) => {
+      const row = el('li', 'h3cs-beat-row');
+      const pick = el('button', 'h3cs-beat');
+      pick.type = 'button';
+      pick.dataset.box = box;
+      pick.title = `Clip ${number}: ${beat}`;
+      pick.append(el('span', 'h3cs-clip-number', String(number)), el('span', 'h3cs-beat-text', beat));
+      pick.addEventListener('click', () => this.onSelectBox?.(box));
+      row.append(pick);
+      return row;
+    }));
+    this.markBox(this.markedBox);
     this.sheetEl.textContent = state?.sheet ?? '';
     this.suggestionsEl.replaceChildren(...suggestions.map((item) => el('div', null, suggestionText(item, numberOf))));
     this.notesEl.replaceChildren(...notes.map((note) => el('div', null, note)));
     const drafts = Object.entries(state?.drafts ?? {});
     this.draftsEl.replaceChildren(...drafts.map(([id, draft]) => {
       const details = el('details');
-      const label = id === 'plan' ? 'Story plan' : id === 'revision' ? 'Revision' : `Box ${numberOf(id) ?? id}`;
+      const label = id === 'plan' ? 'Story plan' : id === 'revision' ? 'Revision' : `Clip ${numberOf(id) ?? id}`;
       const content = el('pre', null, draft.reply ?? '');
       content.style.cssText = 'white-space:pre-wrap;overflow-wrap:anywhere;max-height:240px;overflow:auto';
       details.append(el('summary', null, `${label} draft`), el('div', null, draft.error ?? ''), content);
@@ -372,6 +399,16 @@ export class StoryPanel {
     this.suggestionsPart.hidden = !suggestions.length;
     this.storyEl.hidden = !(this.titleEl.textContent || outline.length || this.sheetEl.textContent
       || suggestions.length || notes.length || drafts.length);
+    this.onShowStory?.();
+  }
+
+  // id: the selected Timeline clip, shown expanded in the outline.
+  markBox(id) {
+    this.markedBox = id;
+    for (const pick of [...this.outlineEl.children].map((row) => row.firstChild)) {
+      if (pick.dataset.box === id) pick.setAttribute('aria-current', 'true');
+      else pick.removeAttribute('aria-current');
+    }
   }
 
   height() {

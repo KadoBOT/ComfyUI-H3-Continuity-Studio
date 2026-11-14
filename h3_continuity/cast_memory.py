@@ -38,12 +38,13 @@ def windows(timeline, index):
         if entity is not None and entity["kind"] == "character" and not _shown(timeline, index, entity, ids):
             found.append(_moment(timeline, index, entity, ids, position, _character_box))
     place = by_id.get(schedule.get("place"))
-    previous = _saved(timeline, index - 1)["schedule"] if index else None
+    before=rules.previous_index(timeline,index,False)
+    previous = _saved(timeline,before)["schedule"] if before is not None else None
     at_place = place is not None and previous is not None and previous.get("place") == place["id"]
     if place is not None and not (at_place and not box.cut):
         found.append(_moment(timeline, index, place, ids, position, _place_box))
     if at_place and box.cut:
-        found.append((index - 1, _near_end(timeline, index - 1), "the moment before this cut"))
+        found.append((before, _near_end(timeline,before), "the moment before this cut"))
     result = []
     for window in found:
         if window is not None and all(window[:2] != chosen[:2] for chosen in result):
@@ -92,7 +93,8 @@ def _moment(timeline, index, entity, ids, position, earlier_box):
 def _character_box(timeline, index, entity, start):
     """The middle of the character's last shot in the first box of its look before `index` that schedules it, from
     that box's source, else 5 frames before that box's end."""
-    for source in range(start, index):
+    for source in rules.track_indices(timeline,index):
+        if source==index or rules.box_start(timeline,source)>=rules.box_start(timeline,index) or (source<start if timeline.tracks is None else rules.box_start(timeline,source)<rules.box_start(timeline,start)): continue
         saved = _saved(timeline, source)
         if saved["schedule"] is not None and entity["id"] in saved["schedule"]["entities"]:
             frame = _shot_middle(saved["source"], entity["id"])
@@ -102,7 +104,8 @@ def _character_box(timeline, index, entity, start):
 
 def _place_box(timeline, index, entity, start):
     """5 frames before the end of the latest box of the place's look before `index` that is set there."""
-    for source in range(index - 1, start - 1, -1):
+    for source in reversed(rules.track_indices(timeline,index)):
+        if source==index or rules.box_start(timeline,source)>=rules.box_start(timeline,index) or (source<start if timeline.tracks is None else rules.box_start(timeline,source)<rules.box_start(timeline,start)): continue
         schedule = _saved(timeline, source)["schedule"]
         if schedule is not None and schedule.get("place") == entity["id"]:
             return source, _near_end(timeline, source)

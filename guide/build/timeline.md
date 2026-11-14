@@ -1,6 +1,6 @@
 # Timeline and clips
 
-The Timeline is a list of **clips**. Each clip is one H3 generation with its own prompt, seed, length and join. The strip along the bottom of the Studio is where you arrange them.
+The Timeline contains **clips**, each with its own prompt, seed, length and join. The strip along the bottom of the Studio is where you arrange them. Independent video lanes can place clips at the same time.
 
 [![The Timeline strip, with six rendered clips and a bridge](../assets/screens/timeline-strip.png)](../assets/screens/timeline-strip.png)
 
@@ -8,18 +8,36 @@ The Timeline is a list of **clips**. Each clip is one H3 generation with its own
 
 | To | Do this |
 | --- | --- |
-| Add a clip | **+ Clip** in the Timeline toolbar, or drag after the last clip on the track to draw one. |
+| Add a clip | The **Add clip** plus icon in the Timeline toolbar. In expanded track mode, select a video lane first; the clip starts at the playhead. Legacy single-track projects also let you drag after the last clip to draw one. |
 | Resize a clip | Drag its right edge. Lengths snap to H3's frame grid (see below), unless the clip uses [Exact length](exact-lengths.md). With [beats detected](../sound/audio.md#add-audio) and **Snap to beats** ticked, the edge also lands on the nearest beat. |
 | Find a moment | Click or drag the ruler: the playhead moves there and the [video so far or the full video](../output/full-video-and-projects.md#the-full-video) plays from that moment. |
 | Select a clip | Click it. The right-hand panel and the Viewer follow. |
 | Add another video of a clip's time | **+ Video** in the clip's **Settings**: a second angle that the clip swaps to. See [Videos in one clip](video-layers.md). |
-| Move, copy or delete | **Clip N actions** in the panel: move earlier or later, **Duplicate** (the copy gets a new seed) or **Delete**. |
+| Move, copy or delete | The arrow, duplicate and trash icons above the clip's tabs. Hover or focus an icon for its action name. The copy gets a new seed. |
 | Split a clip | A clip whose prompt has more than one `[Shot N]` offers **Split before Shot N** in its **Shots** tab. Later shots need increasing `At MM:SS.mmm,` timestamps. The split separates the shots into two clips, with the second starting as a **Cut**; each half keeps the references it uses and accepted guides move with their shots. A bridge before the clip stays with the first half. Frame guides do not offer a separate split action. |
 
 !!! info "H3's frame grid"
     H3 generates at 24 fps, in lengths of `17k + 5` frames for a clip that starts fresh (at least 22) and `17k` new frames for a clip that continues the one before (at least 17). Without Exact length, every clip snaps to that grid. The default maximum is 362 frames; see [Long clips](long-clips.md) to raise it.
 
+## Independent video, audio and text lanes
+
+The **Add lane** strip stays below the scrolling tracks. Its video, audio and text icons create a lane of that type. Video adds an empty lane above the others. Audio offers the existing upload flow; text imports Whisper JSON. Cancelling an import leaves an empty lane. Audio lanes still share H3's three standard audio-reference slots.
+
+Use **Expand video lanes** beside the combined Video row to see each independent lane. **Collapse video lanes** restores the compact output view without changing the project. The uppermost video lane is visible wherever it contains a clip; gaps reveal lower lanes, and a gap in every lane is black. The combined row shows that visible output.
+
+Drag a clip in an expanded lane to move it without shifting other clips. It snaps to clip starts and ends across video lanes and to the playhead, with a vertical guide. Hold **Shift** to bypass snapping. Drag the right edge to resize. Clips on the same lane cannot overlap.
+
+The **Overlaps** row identifies pairs by clip number. Select a pair to open its inspector: enable **Use switch**, choose its source order, switch frame, centered fade (0–12 frames) and sound source. The complete fade must fit within the overlap. A third higher lane can still cover that pair. The existing [videos within one clip](video-layers.md) keep their own switch controls.
+
+The trash icon in a lane header deletes it immediately when empty. A lane with clips, audio or text asks for confirmation. **Undo** restores its contents, placement and switches. Deleting a lane keeps its media files.
+
+Existing projects keep their old layout until you add a typed lane. That edit converts their clips to one video lane at the same times and retains existing layers, audio and text. Simply opening a project does not migrate it.
+
+Clip placement, audio and text use the Timeline clock. An insertion bridge pauses that clock globally while its extra movie frames play; every track resumes at the same authored time. Output length is the latest clip end plus inserted bridges. A missing visible take prevents a complete export; the partial preview labels missing footage.
+
 ## Join with the previous clip
+
+With independent lanes, Continue uses the preceding adjacent clip on the **same video lane**. A gap needs Cut or New scene; a clip on another lane cannot provide its carry frames.
 
 Open a clip's **Settings** tab.
 

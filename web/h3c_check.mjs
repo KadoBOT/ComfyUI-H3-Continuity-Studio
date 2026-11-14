@@ -16,6 +16,8 @@ const CSS = `
 .h3ck-line { overflow-wrap: anywhere; }
 .h3ck-note { color: #ff8a80; overflow-wrap: anywhere; }
 .h3ck-retake { align-self: flex-start; }
+.h3sw-body > .h3ck-root { padding: 0; background: transparent; border: 0; }
+.h3sw-body > .h3ck-root .h3ck-title { visibility: hidden; }
 `;
 const IDLE = "Check this render against the bible with the Story's Vision model, and measure its drift";
 const STALE = "Wait for the Timeline's status to catch up with the last edit.";
@@ -134,6 +136,7 @@ export class CheckPanel {
     const box = editor.box();
     const status = box ? editor.statusOf(box) : null;
     this.root.hidden = !status?.video;
+    this.onRender?.(!this.root.hidden);
     if (this.root.hidden) return;
     const boxes = editor.state.boxes;
     const numberOf = (id) => {

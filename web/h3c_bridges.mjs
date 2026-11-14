@@ -3,7 +3,8 @@
 // so the video keeps its length and recordings stay in place. Plain DOM without ComfyUI imports; the editor's host
 // queues the run, and Play asks the Studio to show a take or candidate. Every region, protection and choice comes from
 // the Timeline's status.
-import * as model from './h3c_timeline_model.mjs?v=3e1fe9285010';
+import * as model from './h3c_timeline_model.mjs?v=448aca934518';
+import {decorateIcon} from './h3c_icons.mjs';
 
 const STYLE_ID = 'h3cb-style';
 const CSS = `
@@ -216,7 +217,8 @@ export class BridgePanel {
       if (this.seedInput.value !== '' && Number.isSafeInteger(seed) && seed >= 0) bridge.seed = seed;
       else delete bridge.seed;
     }));
-    const roll = button('🎲', 'Choose a new seed for the next render', () => this.edit((bridge) => { bridge.seed = model.newSeed(); }));
+    const roll = decorateIcon(button('', '', () => this.edit((bridge) => { bridge.seed = model.newSeed(); })),
+      'shuffle', 'Choose a new seed for the next render');
     const row = el('div', 'h3cb-row');
     row.append(field('Length', this.lengthSelect), this.leftField, this.suggestButton, field('Seed', this.seedInput, roll));
     this.allowedEl = el('div', 'h3ct-hint');

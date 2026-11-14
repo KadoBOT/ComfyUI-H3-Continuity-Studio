@@ -1,5 +1,5 @@
 // The Timeline face and native advanced widgets share the Studio editor's saved state.
-import {joinKind} from './h3c_timeline_model.mjs?v=3e1fe9285010';
+import {joinKind} from './h3c_timeline_model.mjs?v=448aca934518';
 import {setText} from './h3c_dom.mjs?v=584a9bf55653';
 export const FACE_HEIGHT = 120;
 const STYLE_ID = 'h3ct-face-style';
@@ -75,7 +75,7 @@ export class TimelineFace {
     };
     add('combo','h3c_clip','Selected clip','No clips', value => editor.select(this.controls.h3c_clip.options.values.indexOf(value)), {values:['No clips']});
     add('text','h3c_clip_seed','Clip seed','', value => edit('seedInput',value), {tooltip:'Unsigned 64-bit integer. Empty initializes a seed once.'});
-    add('button','h3c_new_seed','New seed',null, () => editor.seedSettings.querySelector('button').click());
+    add('button','h3c_new_seed','New seed',null, () => editor.rollSeedButton.click());
     add('combo','h3c_clip_seed_mode','Clip seed mode','Fixed', value => edit('seedMode',value.toLowerCase()), {values:['Fixed','Randomize']});
     add('number','h3c_clip_frames','Clip frames',1, value => edit('framesInput',value), {min:1,max:362,step:10,precision:0});
     add('toggle','h3c_clip_exact','Exact clip length',false, value => edit('exactInput',value));

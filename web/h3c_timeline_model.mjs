@@ -1,11 +1,12 @@
+import * as tracks from './h3c_tracks.mjs';
 import {reconcileSceneAnchors} from './h3c_still_scene.mjs?v=1ca16919a3f9';
 // H3 Timeline editor model: the timeline JSON, lengths on the H3 frame grid, edits, and the rules that
 // decide how a box runs. Mirrors h3_continuity/timeline.py.
 import {parseJSON, stringifyJSON, seedValue} from './h3c_project.mjs?v=0882b8a6265a';
 import {imageDescriptionPrompt, imageDescriptionSource} from './h3c_image_descriptions.mjs?v=5f858b2b6a5a';
-import {acceptedGuideFrames} from './h3c_shot_preview.mjs?v=3e1fe9285010';
+import {acceptedGuideFrames} from './h3c_shot_preview.mjs?v=448aca934518';
 import {AUDIO_WINDOWS_FEATURE, pruneWindows, resolveWindows, audioSourceLocked} from './h3c_audio_windows.mjs?v=cdefbd77b246';
-import {LAYER_FIELDS, SWAPS_DONT_FIT, clampSwitch, hasLayers, layerIds, switchFits} from './h3c_layers.mjs?v=3e1fe9285010';
+import {LAYER_FIELDS, SWAPS_DONT_FIT, clampSwitch, hasLayers, layerIds, switchFits} from './h3c_layers.mjs?v=448aca934518';
 export const FPS = 24;
 export const MAX_FRAMES = 362;
 export const GRID = 17;
@@ -19,7 +20,7 @@ const FILE_WIDGETS = { LoadImage: 'image', LoadImageOutput: 'image', LoadAudio: 
 const FILE_ANNOTATION = /(?:^|\s)\[(input|output|temp)\]$/;
 
 export function isFresh(state, index) {
-  return index === 0 || !!state.boxes[index]?.cut;
+  return !!state.boxes[index]?.cut || (tracks.enabled(state) ? tracks.previousIndex(state,index,false)===null : index===0);
 }
 
 // The Timeline's most generated frames: its own max_frames (a long Timeline), else the default 362.
@@ -82,8 +83,9 @@ export function setFrames(state, index, frames, context) {
 // The problem when box `index` drops generated frames and the next box continues it, or box `index` continues
 // a box that does; the same sentence on both boxes, as timeline.box_length raises it.
 export function dropConflict(state, index, context) {
-  for (const source of [index - 1, index]) {
-    if (source < 0 || source >= state.boxes.length - 1 || isFresh(state, source + 1)) continue;
+  for (const source of [tracks.previousIndex(state,index),index]) {
+    const after=source===null?null:tracks.followingIndex(state,source);
+    if (source===null || after===null || isFresh(state,after)) continue;
     const dropped = droppedFrames(state, source);
     if (!dropped) continue;
     const fresh = isFresh(state, source);
@@ -99,8 +101,10 @@ export function dropConflict(state, index, context) {
 
 // The problem when box `index` continues a box that plays fewer frames than it carries, as timeline.carry_conflict words it.
 export function carryConflict(state, index, context) {
-  if (isFresh(state, index) || !isFresh(state, index - 1)) return '';
-  const box = state.boxes[index - 1];
+  const previous=tracks.previousIndex(state,index);
+  if (tracks.enabled(state) && !state.boxes[index].cut && previous===null) return 'Continue requires an adjacent preceding clip on this track; choose Cut or New scene.';
+  if (isFresh(state,index) || previous===null || !isFresh(state,previous)) return '';
+  const box=state.boxes[previous];
   const played = box.exact ? box.frames : snapFrames(box.frames, true, context);
   if (!(played < context)) return '';
   return `Box ${index + 1} continues box ${index}, which plays ${played} frames, fewer than the ${context} it carries: `
@@ -112,7 +116,7 @@ export function newSeed() {
 }
 
 export function newId(state) {
-  const used = new Set([...state.boxes.map((box) => box.id), ...layerIds(state)]);
+  const used = new Set([...state.boxes.map((box) => box.id), ...layerIds(state),...(state.tracks??[]).map(t=>t.id),...(state.overlap_switches??[]).map(s=>s.id)]);
   let id = '';
   while (!id || used.has(id)) id = Math.random().toString(36).slice(2, 8);
   return id;
@@ -156,6 +160,9 @@ export function parseState(text) {
   if (!data || typeof data !== 'object' || Array.isArray(data)) data = {};
   const boxes = Array.isArray(data.boxes) ? data.boxes.filter((box) => box && typeof box === 'object') : [];
   return {
+    ...(Object.hasOwn(data,'tracks') ? {tracks:structuredClone(data.tracks)} : {}),
+    ...(Object.hasOwn(data,'text_lanes') ? {text_lanes:structuredClone(data.text_lanes)} : {}),
+    ...(Object.hasOwn(data,'overlap_switches') ? {overlap_switches:structuredClone(data.overlap_switches)} : {}),
     prompt: typeof data.prompt === 'string' ? data.prompt : '',
     ...(record(data.reference_preparation) ? {reference_preparation:structuredClone(data.reference_preparation)} : {}),
     ...(record(data.still_prompt_preparation) ? {still_prompt_preparation:structuredClone(data.still_prompt_preparation)} : {}),
@@ -184,6 +191,7 @@ export function parseState(text) {
     ...(Array.isArray(data.requires) ? { requires: data.requires.filter((item) => typeof item === 'string') } : {}),
     ...(Number.isInteger(data.max_frames) ? { max_frames: data.max_frames } : {}),
     boxes: boxes.map((box, index) => ({
+      ...(Object.hasOwn(box,'track') ? {track:box.track,start:box.start} : {}),
       id: String(box.id || `box${index + 1}`),
       frames: Number.isFinite(box.frames) ? Math.round(box.frames)
         : Number.isFinite(box.seconds) ? Math.round(box.seconds * FPS) : null,
@@ -218,6 +226,9 @@ export function serialize(state) {
   return stringifyJSON({
     version: 1,
     ...(requires.length ? { requires } : {}),
+    ...(tracks.enabled(state) ? {tracks:state.tracks} : {}),
+    ...(state.text_lanes ? {text_lanes:state.text_lanes} : {}),
+    ...(state.overlap_switches ? {overlap_switches:state.overlap_switches} : {}),
     prompt: state.prompt,
     ...(state.reference_preparation ? {reference_preparation:state.reference_preparation} : {}),
     ...(state.still_prompt_preparation ? {still_prompt_preparation:state.still_prompt_preparation} : {}),
@@ -242,6 +253,7 @@ export function serialize(state) {
     ...(state.dialogue ? { dialogue: state.dialogue } : {}),
     ...(Number.isInteger(state.max_frames) ? { max_frames: state.max_frames } : {}),
     boxes: state.boxes.map((box) => ({
+      ...(tracks.enabled(state) ? {track:box.track,start:box.start} : {}),
       id: box.id, frames: box.frames, prompt: box.prompt, seed: box.seed, cut: !!box.cut,
       ...(box.seed_mode === 'randomize' ? {seed_mode:'randomize'} : {}),
       first: box.first || '', last: box.last || '',
@@ -265,11 +277,12 @@ export function serialize(state) {
 
 export const LAYERS_FEATURE = 'video-layers-1';
 // Reader features this editor writes into "requires" when the file depends on them, as timeline.REQUIRES lists them.
-export const OWN_FEATURES = ['dialogue-cues-1', 'replacement-bridges-1', AUDIO_WINDOWS_FEATURE, LAYERS_FEATURE];
+export const OWN_FEATURES = ['dialogue-cues-1', 'replacement-bridges-1', AUDIO_WINDOWS_FEATURE, LAYERS_FEATURE, tracks.FEATURE];
 
 // What the Timeline needs a reader to understand: this editor's features in use, and any newer one it was given.
 export function requiredFeatures(state) {
   const own = [];
+  if (tracks.enabled(state)) own.push(tracks.FEATURE);
   if ((state.audio_clips ?? []).some(clip => Object.hasOwn(clip, 'box_windows'))) own.push(AUDIO_WINDOWS_FEATURE);
   if (state.dialogue?.cues?.length || state.dialogue?.observed?.length
     || (state.audio_clips ?? []).some((clip) => clip.locked === true)) own.push('dialogue-cues-1');
@@ -308,8 +321,10 @@ export function keptBridges(state) {
   const seen = new Set();
   return (state.bridges ?? []).filter((bridge) => {
     const index = state.boxes.findIndex((box) => box.id === bridge.before);
-    if (index < 1 || !state.boxes[index].cut || seen.has(bridge.before)) return false;
-    if (state.boxes[index].layers?.length || state.boxes[index - 1].layers?.length) return false;
+    // On tracks a bridge leads out of the clip right before this one on its own track, not the previous catalog entry.
+    const before = index < 0 ? null : tracks.enabled(state) ? tracks.previousIndex(state, index) : index > 0 ? index - 1 : null;
+    if (before === null || !state.boxes[index].cut || seen.has(bridge.before)) return false;
+    if (state.boxes[index].layers?.length || state.boxes[before].layers?.length) return false;
     seen.add(bridge.before);
     return true;
   });
@@ -407,7 +422,7 @@ export function bridgeProblem(state, index) {
 }
 
 export function totalFrames(state) {
-  return state.boxes.reduce((sum, box) => sum + (box.frames || 0), 0);
+  return tracks.durationFrames(state);
 }
 
 export function resolvedAudio(state) {
@@ -417,8 +432,7 @@ export function resolvedAudio(state) {
 }
 
 export function activeAudioClips(state, index, context = 0) {
-  let frames = 0;
-  for (let i = 0; i < index; i++) frames += state.boxes[i].frames;
+  const frames = tracks.startFrame(state,state.boxes[index].id);
   const start = frames / FPS, end = start + state.boxes[index].frames / FPS;
   let spans;
   return (state.audio_clips ?? []).filter(clip => {
@@ -431,12 +445,7 @@ export function activeAudioClips(state, index, context = 0) {
 }
 
 export function audioBoxSpans(state) {
-  let start = 0;
-  return state.boxes.map(box => {
-    const duration = box.frames / FPS, span = {id:box.id, start, duration};
-    start += duration;
-    return span;
-  });
+  return tracks.placements(state).map(p=>({id:p.id,start:p.start/FPS,duration:(p.end-p.start)/FPS}));
 }
 
 export function audioSourceDuration(clip) {
@@ -470,7 +479,7 @@ export function globalFrame(state, index, frame) {
   const box = state.boxes[index];
   const fresh = isFresh(state, index);
   if (!box || !Number.isInteger(frame) || frame < 0 || frame > box.frames - (fresh ? 1 : 0)) return null;
-  return state.boxes.slice(0, index).reduce((sum, b) => sum + b.frames, 0) + frame - (fresh ? 0 : 1);
+  return tracks.startFrame(state,box.id) + frame - (fresh ? 0 : 1);
 }
 
 export function effectivePlates(state, index, frame = 0) {
@@ -514,6 +523,16 @@ export function removeBox(state, index, context) {
   }
   normalize(state, context);
   return Math.min(index, state.boxes.length - 1);
+}
+
+// What a deleted clip leaves behind elsewhere in the Timeline: timed windows, Cast pins and looks that name it.
+export function forgetBoxes(state, ids) {
+  const gone = new Set(ids);
+  pruneWindows(state);
+  for (const entity of Array.isArray(state.bible?.entities) ? state.bible.entities : []) {
+    if (Array.isArray(entity?.pins)) entity.pins = entity.pins.filter((pin) => !gone.has(pin?.box));
+    if (Array.isArray(entity?.looks)) entity.looks = entity.looks.filter((look) => !gone.has(look?.from));
+  }
 }
 
 export function moveBox(state, index, delta, context) {
@@ -645,9 +664,10 @@ export function memorySources(state, index) {
   if (!box || !box.memory || box.memory === 'off') return [];
   const sources = box.memory === 'scene' ? sceneSources(state, index)
     : box.memory === 'cast' ? castSources(state, index) : box.memories ?? [];
-  if (!index || !box.cut) return sources;
-  const previous = state.boxes[index - 1];
-  if (speaks(state, index) || speaks(state, index - 1)) {
+  const beforeIndex=tracks.previousIndex(state,index,false);
+  if (beforeIndex===null || !box.cut) return sources;
+  const previous=state.boxes[beforeIndex];
+  if (speaks(state,index) || speaks(state,beforeIndex)) {
     const before = {box: previous.id, frame: Math.max(0, previous.frames - 5), label: 'the moment before this cut'};
     return sources.some((item) => item.box === before.box && item.frame === before.frame) ? sources : [...sources, before];
   }
@@ -657,10 +677,11 @@ export function memorySources(state, index) {
 
 function sceneSources(state, index) {
   const box = state.boxes[index];
-  let start = 0;
-  for (let i = 0; i <= index; i++) if ((state.boxes[i].cut && state.boxes[i].new_scene) || state.boxes[i].plate_changes?.length) start = i;
-  if (start === index) return [];
-  const previous = state.boxes[index - 1];
+  const indices=tracks.trackIndices(state,index), prior=indices.slice(0,indices.indexOf(index)+1);
+  let start=prior[0];
+  for(const i of prior) if ((state.boxes[i].cut&&state.boxes[i].new_scene)||state.boxes[i].plate_changes?.length) start=i;
+  if(start===index) return [];
+  const previous=state.boxes[prior.at(-2)];
   return [{box: state.boxes[start].id, frame: 0, label: 'scene establishing view'}, box.cut
     ? {box: previous.id, frame: Math.max(0, previous.frames - 5), label: 'the moment before this cut'}
     : {box: previous.id, frame: Math.max(0, Math.floor((previous.frames - 5) / 2)), label: 'earlier view of the current scene'}];
@@ -1079,7 +1100,7 @@ export function describeBox(state, index, connected, context) {
   const problems = [];
   for (const memory of memorySources(state, index)) {
     const source = state.boxes.findIndex(item => item.id === memory.box);
-    if (source < 0 || source >= index) problems.push('Visual memory needs an earlier source box; choose it again.');
+    if (source < 0 || (tracks.enabled(state) ? tracks.startFrame(state,memory.box)+memory.frame>=tracks.startFrame(state,box.id) : source>=index)) problems.push('Visual memory needs an earlier source box; choose it again.');
     else if (!Number.isInteger(memory.frame) || memory.frame < 0 || memory.frame >= state.boxes[source].frames)
       problems.push(`Visual memory is past the end of box ${source + 1}, which plays ${state.boxes[source].frames} `
         + 'frames; choose an earlier moment.');

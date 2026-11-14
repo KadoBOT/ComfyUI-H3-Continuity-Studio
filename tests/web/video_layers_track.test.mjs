@@ -87,14 +87,14 @@ test('Last caption names the closing video', () => {
 
 test('Render remaining counts videos', () => {
   const editor = open();
-  assert.equal(editor.renderButton.textContent, '▶ Render 2 remaining', 'before a status: the clip and its video');
+  assert.equal(editor.renderButton.textContent, 'Render 2 remaining', 'before a status: the clip and its video');
   editor.setStatus({ok: true, message: '', boxes: [{id: 'b2', status: 'done', videos: [{id: 'b2v1', status: 'next'}]}],
     layers_remaining: 1});
-  assert.equal(editor.renderButton.textContent, '▶ Render 1 remaining');
+  assert.equal(editor.renderButton.textContent, 'Render 1 remaining');
   assert.equal(editor.nextBox(), 1, 'the run after the clip is its video');
   editor.setStatus({ok: true, message: '', boxes: [{id: 'b2', status: 'done', videos: [{id: 'b2v1', status: 'done'}]}],
     layers_remaining: 0});
-  assert.equal(editor.renderButton.textContent, '✓ All rendered');
+  assert.equal(editor.renderButton.textContent, 'All rendered');
   assert.equal(editor.nextBox(), null);
 });
 
@@ -243,7 +243,7 @@ test('Generate on a picked video asks for that video', async () => {
 test('the switch controls write the switch', () => {
   const editor = panel();
   const settings = editor.videoSettings;
-  assert.match(settings.textContent, /Videos in this clip/);
+  assert.match(settings.textContent, /Multiple videos/);
   assert.match(settings.textContent, /1b/);
   const at = labelled(settings, 'Swap 1 frame');
   assert.equal(at.value, '27');

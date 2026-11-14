@@ -1,18 +1,20 @@
+import {decorateIcon} from './h3c_icons.mjs';
+import {SwitchSection, rememberDisclosures} from './h3c_switch_section.mjs?v=c253500f4908';
 // The Studio: the page's one full-window view of a Timeline. While open it holds the editor's regions, and the linked
 // Story's actions, story and files, in its own layout, and it gives each one back to the place it came from when it
 // closes, opens another Timeline or the Timeline's Story changes. Its Story page edits the Story node's inputs.
 import { liveBadge, progressText } from './h3c_render_watch.mjs?v=7c8222569836';
 import { templateRow } from './h3c_templates.mjs?v=ff7103cdcba7';
-import { soundtrackLine, soundtrackSlots } from './h3c_timeline_model.mjs?v=3e1fe9285010';
+import { soundtrackLine, soundtrackSlots } from './h3c_timeline_model.mjs?v=448aca934518';
 
-import { ideaImagesRow } from './h3c_idea_images.mjs?v=3e6280e44a1b';
+import { ideaImagesRow } from './h3c_idea_images.mjs?v=990e7177d821';
 import { partialBadge, partialTitle, previewBadge, previewLabel, previewTitle, timelineFrame, videoSeconds } from './h3c_partial_video.mjs?v=201bf0f48645';
-import {historyShortcut} from './h3c_history.mjs?v=d639ee9ffd57';
+import {historyShortcut} from './h3c_history.mjs?v=aa0916b99431';
 import {setText} from './h3c_dom.mjs?v=584a9bf55653';
 
-const LIBRARY = ['references', 'cast', 'story', 'pictures', 'refmods'];
-const CENTER = ['viewer', 'story', 'cast', 'pictures', 'refmods'];
-const FOCUS = ['cast', 'story', 'pictures', 'refmods', 'project'];
+const LIBRARY = ['references', 'cast', 'story', 'pictures', 'refmods', 'assets'];
+const CENTER = ['viewer', 'story', 'cast', 'assets'];
+const FOCUS = ['cast', 'story', 'assets', 'project'];
 const CORE_HINT = 'For a moving preview, add KJNodes’ Model Preview Override before the sampler.';
 const OLDER_TAKE = 'Outdated take: this clip changed after it rendered. It still plays in the full video; regenerate the clip to update it.';
 const MOVING = 'Moving the take…';
@@ -20,12 +22,106 @@ const FPS = 24;
 // The Timeline frame where box `index` starts.
 const boxStart = (state, index) => state.boxes.slice(0, index).reduce((sum, box) => sum + box.frames, 0);
 const NO_STORY = 'Link an H3 Story node to this Timeline’s story input to write with a model.';
+const STORY_TABS = [['brief', 'Brief'], ['outline', 'Outline'], ['continuity', 'Continuity'], ['saved', 'Saved stories']];
 const STYLE_ID = 'h3cx-style';
 const LAYOUT_KEY = 'h3cx-layout';
 const TRACK_MIN = 250;
 const ZOOM_MAX = 16;
 const MOBILE_QUERY = '(max-width:600px), (max-width:1100px) and (max-height:500px)';
 const CSS = `
+.h3cx-inspector .h3ct-panelhead{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:8px}
+.h3cx-inspector .h3ct-panelhead>.h3ct-title{flex-basis:100%;font-size:12px;line-height:1.5;color:#c3cad4}
+.h3cx-inspector .h3ct-panelhead>.h3ct-grow{display:none}.h3cx-inspector .h3ct-clip-actions{flex:1}.h3cx-inspector .h3ct-clip-actions>.h3ct-row{gap:3px}
+.h3cx-studio .h3ct-panel-tabs{flex-wrap:nowrap;overflow-x:auto;gap:0;border-bottom:1px solid #434b58;margin-bottom:10px}
+.h3cx-studio .h3ct-panel-tabs [role=tab]{white-space:nowrap;border:0;border-bottom:2px solid transparent;border-radius:0;background:transparent;font-size:12px;min-height:38px;padding:6px!important}
+.h3cx-studio .h3ct-panel-tabs [aria-selected=true]{border-bottom-color:#9dbef1;color:#d6e5ff;background:#293342}
+.h3cx-library-nav{gap:0!important;margin:0!important;padding:0 10px;background:#1d2027;border-bottom:1px solid #343a46;flex-wrap:nowrap!important;overflow-x:auto}
+.h3cx-library-nav [role=tab]{border:0;border-bottom:2px solid transparent;border-radius:0;background:transparent;white-space:nowrap;padding:8px 10px!important;min-height:40px}
+.h3cx-library-nav [aria-selected=true]{background:#283342;border-bottom-color:#9dbef1;color:#d6e5ff}
+.h3cx-inspector .h3ct-panel{border:0;background:transparent;padding:0}
+.h3cx-inspector .h3ct-tabpanel>details,.h3cx-inspector .h3ct-audio-settings{border:0;border-top:1px solid #343a46;border-radius:0;padding:8px 0;margin:0}
+.h3cx-inspector summary{font-size:13px;font-weight:500;padding:4px 0;cursor:pointer}.h3cx-inspector details[open]>summary{margin-bottom:6px}
+.h3cx-inspector input:not([type=checkbox]),.h3cx-inspector select{min-width:0;width:100%;font-size:13px}
+.h3cx-inspector textarea{font-size:13px;line-height:1.5}.h3ct-overlap-toggle,.h3ct-overlap-sources{display:flex;align-items:center;gap:8px;margin:12px 0}
+.h3ct-overlap-row,.h3ct-overlap-row .h3ct-track-body{min-height:34px}.h3ct-overlap-mark{position:absolute;top:2px;min-height:28px;z-index:2;white-space:nowrap}
+.h3cx-project-actions{gap:3px}.h3cx-track-toolbar{gap:8px}.h3cx-studio ::selection{background:#45648d;color:#fff}.h3cx-studio input,.h3cx-studio textarea{caret-color:#c5dcff}
+@media(pointer:coarse){.h3cx-library-nav [role=tab],.h3cx-studio .h3ct-panel-tabs [role=tab]{min-height:44px}}
+.h3cx-center>.h3cx-library-nav,.h3cx-studio .h3ct-panel-tabs{flex:0 0 auto}
+.h3cx-activity.h3cx-empty{display:none}
+.h3cx-studio{--h3b-bg:#252a33;--h3b-line:#3a414d;--h3b-hover:#2e343f;--h3b-hover-line:#4b5363;--h3b-text:#dfe3ea;--h3b-muted:#aab1bd;--h3b-accent:#3d6bb8;--h3b-accent-line:#5283d6;--h3b-pressed:#2a3a55;--h3b-pressed-line:#5b84c9}
+.h3cx-studio :is(.h3ct-button,.h3cs-button):not([role=tab],.h3ct-target,.h3ct-image-thumbnail,.h3ct-still){display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:28px;padding:3px 10px;
+  border:1px solid var(--h3b-line);border-radius:5px;background:var(--h3b-bg);color:var(--h3b-text);font-size:13px;font-weight:500;line-height:1.25;cursor:pointer;filter:none;
+  transition:background-color .15s,border-color .15s,color .15s}
+.h3cx-studio :is(.h3ct-button,.h3cs-button):not([role=tab],.h3ct-target,.h3ct-image-thumbnail,.h3ct-still):hover:not(:disabled){background:var(--h3b-hover);border-color:var(--h3b-hover-line);filter:none}
+.h3cx-studio :is(.h3ct-button,.h3cs-button):active:not(:disabled){background:#21252d}
+.h3cx-studio :is(.h3ct-button,.h3cs-button):focus-visible{outline:2px solid #8fbcff;outline-offset:1px}
+.h3cx-studio :is(.h3ct-button,.h3cs-button):disabled{opacity:.45;cursor:default}
+.h3cx-studio :is(.h3ct-button,.h3cs-button):not([role=tab])[aria-pressed=true]{background:var(--h3b-pressed);border-color:var(--h3b-pressed-line);color:#e3edff}
+.h3cx-studio :is(.h3ct-primary,.h3cs-primary):not(:has(>.h3ci-sr)){background:var(--h3b-accent);border-color:var(--h3b-accent-line);color:#fff}
+.h3cx-studio :is(.h3ct-primary,.h3cs-primary):not(:has(>.h3ci-sr)):hover:not(:disabled){background:#4777c6;border-color:#6b97e0}
+.h3cx-studio .h3ci-button svg{width:16px;height:16px;flex:0 0 16px}
+.h3cx-studio .h3ci-button:has(>.h3ci-caption){padding:3px 10px 3px 8px!important}
+.h3cx-studio .h3ci-button:not([role=tab]):has(>.h3ci-sr){color:var(--h3b-muted);background:transparent;border-color:transparent;border-radius:5px;padding:4px!important}
+.h3cx-studio .h3ci-button:not([role=tab]):has(>.h3ci-sr):hover:not(:disabled){color:#e8ecf2;background:#ffffff12;border-color:transparent}
+.h3cx-studio .h3ci-button:not([role=tab]):has(>.h3ci-sr):is([aria-pressed=true],[aria-expanded=true]){color:#9dbef1;background:#9dbef11a}
+.h3cx-studio .h3ci-button.h3ct-primary:has(>.h3ci-sr){color:#8fbcff}
+.h3cx-studio .h3ci-button.h3ct-primary:has(>.h3ci-sr):hover:not(:disabled){color:#c5dcff;background:#3f6fbf33}
+.h3cx-studio .h3ci-button:disabled{opacity:.35}
+.h3cx-studio [role=tab].h3ci-button:not([aria-selected=true]){color:#aab1bd}
+.h3cx-studio .h3ct-video-pick{border-left-width:4px}
+.h3cx-studio :is(.h3cx-history-list,.h3cx-mobile-more) .h3ct-button{justify-content:flex-start;text-align:left}
+.h3cx-studio .h3cx-mobile-nav .h3ct-button{min-height:44px;padding:8px 2px;border-color:transparent;background:transparent;font-size:12px;white-space:nowrap;overflow-wrap:normal}
+.h3cx-studio .h3cx-mobile-nav .h3ct-button[aria-pressed=true]{background:var(--h3b-pressed);border-color:var(--h3b-pressed-line)}
+@media ${MOBILE_QUERY}{.h3cx-studio :is(.h3ct-button,.h3cs-button):not([role=tab],.h3ct-target,.h3ct-image-thumbnail,.h3ct-still,.h3cx-mobile-nav .h3ct-button){min-height:44px;padding:8px 12px}}
+@media(pointer:coarse){.h3cx-studio :is(.h3ct-button,.h3cs-button):not([role=tab],.h3ct-target,.h3ct-image-thumbnail,.h3ct-still){min-height:44px}}
+.h3cx-studio :is(.h3cx-subtabs,.h3ct-section-tabs){display:flex;flex-wrap:wrap;gap:2px;padding:2px;border-radius:7px;background:#ffffff08;width:fit-content;max-width:100%}
+.h3cx-studio :is(.h3cx-subtabs,.h3ct-section-tabs) [role=tab]{display:inline-flex;align-items:center;gap:6px;min-height:28px;padding:3px 10px!important;border:0!important;border-radius:5px;background:transparent;color:var(--h3b-muted);font-size:12px;font-weight:500;white-space:nowrap}
+.h3cx-studio :is(.h3cx-subtabs,.h3ct-section-tabs) [role=tab]:hover{color:#e8ecf2;background:#ffffff0d;filter:none}
+.h3cx-studio :is(.h3cx-subtabs,.h3ct-section-tabs) [role=tab][aria-selected=true]{background:var(--h3b-pressed);color:#e3edff}
+.h3cx-studio :is(.h3cx-subtabs,.h3ct-section-tabs) [role=tab]:focus-visible{outline:2px solid #8fbcff;outline-offset:-2px}
+.h3cx-count:empty{display:none}
+.h3cx-count{min-width:18px;padding:0 5px;border-radius:9px;background:#ffffff14;color:#c9d1dd;font-size:11px;line-height:16px;text-align:center;font-variant-numeric:tabular-nums}
+.h3cx-story{flex-wrap:wrap;margin-bottom:12px}
+.h3cx-story .h3cs-actions{gap:6px}
+.h3cx-story-pane{display:flex;flex-direction:column;gap:10px;padding-top:12px;max-width:760px}
+.h3cx-story-pane .h3cs-title{font-size:15px}
+#h3cx-story-pane-outline .h3cs-heading{display:none}
+.h3cx-story-pane .h3cs-part{gap:4px}
+.h3cx-story-pane .h3cs-heading{text-transform:none;letter-spacing:0;font-size:12px;font-weight:600;color:#c9d1dd}
+.h3cx-story-pane .h3cs-sheet{padding:10px 12px;border:1px solid #2c313c;border-radius:6px;background:#ffffff05;line-height:1.55}
+.h3cx-story-pane .h3cs-suggestions>div{padding:6px 0;border-bottom:1px solid #ffffff0d}
+.h3cx-story-pane .h3cs-notes{font-size:12px;gap:4px}
+.h3cx-story-pane>.h3cs-library>summary{display:none}
+.h3cx-story-pane>.h3cs-library{display:flex;flex-direction:column;gap:8px}
+.h3cx-story-pane>.h3cs-library select{margin-top:0;max-width:420px;min-height:30px;border:1px solid var(--h3b-line);border-radius:5px}
+.h3cx-story-pane>.h3cs-library .h3cs-row{margin-top:0}
+.h3cx-story-page .h3cx-idea-add,.h3cx-story-page .h3cx-field>button{align-self:flex-start}
+.h3cx-page[data-page=assets] > .h3cx-page > details{border:0;padding:0;margin:0 0 16px;background:none}
+.h3cx-page[data-page=assets] > .h3cx-page > details > summary{display:none}
+.h3cx-focus .h3cr-preparation{border:0;padding:0}
+.h3cx-focus .h3cr-preparation>summary{display:none}
+.h3cx-focus .h3cr-body{padding-top:0}
+.h3cx-project-section{display:flex;flex-direction:column;gap:8px;padding:14px 0;border-top:1px solid #2c313c;max-width:760px}
+.h3cx-project-section:first-child{border-top:0;padding-top:0}
+.h3cx-project-section:has(> :only-child:empty){display:none}
+.h3cx-project-prompt>*>.h3ct-label:first-child{display:none}
+.h3cx-project-section>.h3cx-note{font-size:12px}
+.h3cx-project-files{display:flex;flex-wrap:wrap;gap:12px}
+.h3cx-project-files .h3cs-row{flex-wrap:wrap}
+.h3cx-project-section>button{align-self:flex-start}
+.h3cx-project-notes{margin:0;padding-left:18px;color:var(--h3b-muted);font-size:12px;display:flex;flex-direction:column;gap:4px}
+.h3cx-studio .h3ct-callout,.h3cx-inspector .h3ct-mode.problem{margin:0;padding:8px 10px;border:1px solid #ff8a8040;border-radius:6px;background:#ff8a8012;color:#ffc2bb;font-size:12px;line-height:1.5}
+.h3cx-studio :is(.h3ct-label,.h3ct-section-heading,.h3sw-subhead,.h3ck-heading,.h3cs-heading){text-transform:none;letter-spacing:0;font-size:12px}
+.h3cx-studio :is(.h3ct-section-heading,.h3sw-subhead,.h3ck-heading){font-weight:600;color:#c9d1dd}
+:is(.h3cx-inspector,.h3cx-project-section) .h3ct-field{display:flex;align-items:center;gap:8px;margin:4px 0;font-size:12px;min-width:0}
+:is(.h3cx-inspector,.h3cx-project-section) .h3ct-field>.h3ct-label{flex:0 0 92px;text-transform:none;letter-spacing:0;font-size:12px;color:var(--h3b-muted)}
+:is(.h3cx-inspector,.h3cx-project-section) .h3ct-field>:is(input:not([type=checkbox]),select){flex:1 1 auto;width:auto!important;min-width:0}
+:is(.h3cx-inspector,.h3cx-project-section) .h3ct-field>.h3ct-number{flex:0 1 120px}
+:is(.h3cx-inspector,.h3cx-project-section) .h3ct-field>input[type=checkbox]{margin:0}
+.h3cx-inspector .h3ct-field:has(textarea),.h3cx-inspector .h3ct-field:has(.h3ct-picture-picker){flex-direction:column;align-items:stretch}
+.h3cx-inspector .h3ct-field:has(textarea)>.h3ct-label{flex:none}
+.h3cx-inspector :is(input:not([type=checkbox]),select){min-height:28px;padding:3px 8px;border-radius:5px}
+
 .h3cx-studio { position: fixed; inset: 0; z-index: 1500; display: flex; flex-direction: column; outline: none;
   overflow: hidden; background: #15171c; color: var(--input-text, #ddd); font: 14px/1.45 system-ui, sans-serif; }
 .h3cx-studio * { box-sizing: border-box; }
@@ -171,7 +267,7 @@ const CSS = `
  .h3cx-focus-body { padding:12px; scroll-padding:12px; }
  .h3cx-track { display:none; }
  .h3cx-studio[data-mobile-page="timeline"] .h3cx-main { display:none; }
- .h3cx-studio[data-mobile-page="timeline"] .h3cx-track { display:block; flex:1; max-height:none; padding:12px; }
+ .h3cx-studio[data-mobile-page="timeline"] .h3cx-track { display:flex; flex:1; min-height:0; max-height:none; padding:12px; }
  .h3cx-track .h3ct-lane { overscroll-behavior-x:contain; touch-action:pan-x pan-y; }
  .h3cx-track .h3ct-lane > .h3ct-stills, .h3cx-track .h3ct-lane > .h3ct-ruler,
  .h3cx-track .h3ct-lane > .h3ct-track, .h3cx-track .h3ct-lane > .h3ct-audio { min-width:var(--h3cx-track-width,480px); }
@@ -275,6 +371,7 @@ export class Studio {
     root.setAttribute('role', 'dialog');
     root.setAttribute('aria-modal', 'true');
     root.setAttribute('aria-label', 'H3 Studio');
+    rememberDisclosures(root);
     root.addEventListener('keydown', (event) => this.key(event));
     // A button that its own click replaces, such as a take's Use, takes the focus with it to the page, where neither the
     // Studio nor ComfyUI hears keys, so while the Studio is open the page's keys come to it.
@@ -337,7 +434,6 @@ export class Studio {
     this.storyEl = el('div', 'h3cx-story h3cx-slot');
     this.writeOff = button('Write story', NO_STORY, () => {});
     this.writeOff.disabled = true;
-    this.feedbackButton = button('Revise story', 'Ask the Story writer to change the written story', () => this.openFeedback(), 'h3cx-feedback');
     this.actionsSlot = el('span', 'h3cx-slot');
     this.newProjectButton = button('New project', 'Clear the current Timeline for a new project and keep its available sources', () => this.openNewProject());
     this.projectButton = button('Project settings', 'Shared prompt and graph settings', () => this.openFocus('project'));
@@ -356,6 +452,7 @@ export class Studio {
     this.inspectorToggle.setAttribute('aria-controls', 'h3cx-inspector');
     const bar = el('header', 'h3cx-bar');
     this.projectActions = el('div', 'h3cx-project-actions');
+    for(const [control,name,label] of [[close,'close','Close the Studio'],[this.undoButton,'undo','Undo'],[this.redoButton,'redo','Redo'],[this.historyButton,'history','History'],[this.newProjectButton,'new','New project'],[this.projectButton,'settings','Project settings'],[this.downloadVideo,'download','Download video'],[this.libraryToggle,'refs','Show references'],[this.inspectorToggle,'settings','Show inspector']])decorateIcon(control,name,label);
     this.projectActions.append(this.undoButton, this.redoButton, this.historyButton,
       this.newProjectButton, this.projectButton, this.downloadVideo);
     bar.append(close, this.libraryToggle, this.inspectorToggle, this.nameEl, this.summarySlot, this.savedSlot,
@@ -365,7 +462,7 @@ export class Studio {
     const activity = el('div', 'h3cx-activity');
     this.writerCancel = el('span', 'h3cx-slot');
     this.writerMessage = el('span', 'h3cx-writer-message');
-    activity.append(this.progressEl, this.stopButton, this.writerCancel, this.writerMessage, el('span', 'h3cx-grow'), this.feedbackButton);
+    activity.append(this.progressEl, this.stopButton, this.writerCancel, this.writerMessage);
     this.activity = activity;
     this.notice = el('div', 'h3cx-notice');
 
@@ -415,13 +512,14 @@ export class Studio {
     nav.setAttribute('role', 'tablist'); nav.setAttribute('aria-label', 'Workspace views');
     this.pageButtons = {};
     this.pages = {};
-    for (const name of ['box', 'audio', 'text', 'timeline', ...FOCUS]) {
+    for (const name of ['box', 'audio', 'text', 'overlap', 'timeline', 'pictures', 'refmods', ...FOCUS]) {
       this.pages[name] = el('div', 'h3cx-page');
       this.pages[name].dataset.page = name;
     }
     for (const name of CENTER) {
-      const label = name === 'refmods' ? 'RefMods' : name[0].toUpperCase() + name.slice(1);
+      const label=name==='assets'?'References':name[0].toUpperCase()+name.slice(1);
       this.pageButtons[name] = button(label, `Open ${label}`, () => name === 'viewer' ? this.backToViewer() : this.openFocus(name));
+      decorateIcon(this.pageButtons[name],{viewer:'viewer',story:'story',cast:'cast',assets:'refs'}[name],label,{text:true});
       this.pageButtons[name].setAttribute('role', 'tab');
       this.pageButtons[name].id = `h3cx-tab-${name}`;
       this.pageButtons[name].setAttribute('aria-controls', `h3cx-page-${name}`);
@@ -438,9 +536,42 @@ export class Studio {
       });
       nav.append(this.pageButtons[name]);
     }
+    this.pages.assets.append(el('h2','h3cx-title','Pictures'),this.pages.pictures,el('h2','h3cx-title','RefMods'),this.pages.refmods);
     this.library.append(el('h2', 'h3cx-title', 'References'), this.pages.timeline);
     this.storyPage = el('div', 'h3cx-story-page');
-    this.pages.story.append(this.storyEl, this.storyPage);
+    this.storyTabs = el('div', 'h3cx-subtabs');
+    this.storyTabs.setAttribute('role', 'tablist');
+    this.storyTabs.setAttribute('aria-label', 'Story sections');
+    this.storyTabButtons = {};
+    this.storyPanes = {};
+    this.storyTab = 'brief';
+    for (const [name, label] of STORY_TABS) {
+      const tab = this.storyTabButtons[name] = button('', `Show ${label}`, () => this.setStoryTab(name), 'h3cx-subtab');
+      tab.setAttribute('role', 'tab');
+      tab.id = `h3cx-story-tab-${name}`;
+      tab.setAttribute('aria-controls', `h3cx-story-pane-${name}`);
+      tab.append(el('span', null, label), el('span', 'h3cx-count'));
+      tab.addEventListener('keydown', event => {
+        const names = STORY_TABS.map(([key]) => key).filter(key => !this.storyTabButtons[key].hidden);
+        if (!['ArrowLeft','ArrowRight','Home','End'].includes(event.key)) return;
+        event.preventDefault();
+        const index = names.indexOf(name), next = event.key === 'Home' ? 0 : event.key === 'End' ? names.length - 1
+          : (index + (event.key === 'ArrowRight' ? 1 : -1) + names.length) % names.length;
+        this.setStoryTab(names[next]); this.storyTabButtons[names[next]].focus();
+      });
+      const pane = this.storyPanes[name] = el('div', 'h3cx-story-pane');
+      pane.id = `h3cx-story-pane-${name}`;
+      pane.setAttribute('role', 'tabpanel');
+      pane.setAttribute('aria-labelledby', tab.id);
+      this.storyTabs.append(tab);
+    }
+    this.storyPanes.brief.append(this.storyPage);
+    this.outlineEmpty = el('p', 'h3cx-note', 'Write the story to get one beat per clip.');
+    this.continuityEmpty = el('p', 'h3cx-note', 'Write the story to get the continuity sheet, suggested references and notes.');
+    this.storyPanes.outline.append(this.outlineEmpty);
+    this.storyPanes.continuity.append(this.continuityEmpty);
+    this.pages.story.append(this.storyEl, this.storyTabs, ...Object.values(this.storyPanes));
+    this.setStoryTab('brief');
     this.inspector = el('section', 'h3cx-inspector');
     this.inspector.id = 'h3cx-inspector';
     this.inspector.setAttribute('aria-label', 'Inspector');
@@ -453,7 +584,7 @@ export class Studio {
     this.clipPromptButton.setAttribute('aria-label', 'Inspect selected clip prompt');
     this.emptyInspector = el('p', 'h3cx-note h3cx-empty-inspector',
       'Start with + Clip in the Timeline, or open Story to write prompts.');
-    this.inspector.append(this.inspectorTitle, this.clipPromptButton, this.emptyInspector, this.pages.box, this.pages.audio, this.pages.text);
+    this.inspector.append(this.inspectorTitle, this.clipPromptButton, this.emptyInspector, this.pages.box, this.pages.audio, this.pages.text, this.pages.overlap);
     this.focus = el('section', 'h3cx-focus');
     this.focus.setAttribute('aria-label', 'Project focus');
     this.focusTitle = el('h2', 'h3cx-title');
@@ -462,23 +593,36 @@ export class Studio {
     focusHead.append(this.focusTitle, this.focusContext);
     this.focusBody = el('div', 'h3cx-focus-body');
     this.focusBody.append(...FOCUS.map(name => this.pages[name]));
-    this.pages.project.append(el('h3', 'h3cx-title', 'Shared prompt · applies to every clip'));
+    const section = (title, ...children) => {
+      const node = el('section', 'h3cx-project-section');
+      if (title) node.append(el('h3', 'h3cx-title', title));
+      node.append(...children);
+      return node;
+    };
     this.projectPrompt = el('div', 'h3cx-project-prompt');
     this.projectChain = el('div');
     this.projectFiles = el('div', 'h3cx-project-files');
     this.projectFileNote = el('p', 'h3cx-note');
-    this.generationButton=button('Start a new generation','Keep this Timeline and all previous videos, with every clip unrendered',()=>this.startGeneration());
+    this.generationButton=decorateIcon(button('','Keep this Timeline and all previous videos, with every clip unrendered',()=>this.startGeneration()),'new','Start a new generation',{text:true});
+    this.generationButton.title='Keep this Timeline and all previous videos, with every clip unrendered';
     this.generationNote=el('p','h3cx-note');
     this.generationNote.setAttribute('aria-live','polite');
     this.generationHistory=el('div');
-    this.pages.project.append(this.projectPrompt, this.projectChain, this.projectFiles, this.projectFileNote,
-      el('h3','h3cx-title','Generations'),
-      el('p','h3cx-note','Generate another version from the same Timeline and prompts. Previous videos and Takes are kept.'),
-      this.generationButton,this.generationNote,this.generationHistory,
-      el('p', 'h3cx-note', 'Each Clip is one generation box. Project JSON and backend messages keep the existing box names.'),
-      el('p', 'h3cx-note', 'API keys and provider settings are on the linked H3 Story node in the graph. Open its API keys group to Save or Forget keys; advanced inputs hold model, thinking, Vision and memory settings.'),
-      el('p', 'h3cx-note', 'Timeline name, width, height, context frames, carry audio and reference image size remain on the H3 Timeline node in the graph.'),
-      button('Back to graph', 'Close Studio to edit the node settings', () => this.close()));
+    this.projectStill = el('div');
+    const notes = el('ul', 'h3cx-project-notes');
+    for (const note of ['Each Clip is one generation box. Project JSON and backend messages keep the existing box names.',
+      'API keys and provider settings are on the linked H3 Story node. Open its API keys group to Save or Forget keys; advanced inputs hold model, thinking, Vision and memory settings.',
+      'Timeline name, width, height, context frames, carry audio and reference image size stay on the H3 Timeline node.']) notes.append(el('li', null, note));
+    const back = decorateIcon(button('', '', () => this.close()), 'left', 'Back to graph', {text:true});
+    back.title = 'Close Studio to edit the node settings';
+    this.pages.project.append(
+      section('Shared prompt', el('p', 'h3cx-note', 'Applies to every clip.'), this.projectPrompt),
+      section(null, this.projectChain),
+      section('Project files', this.projectFiles, this.projectFileNote),
+      section('Generations', el('p','h3cx-note','Generate another version from the same Timeline and prompts. Previous videos and Takes are kept.'),
+        this.generationButton, this.generationNote, this.generationHistory),
+      section(null, this.projectStill),
+      section('Graph settings', notes, back));
     this.focus.append(focusHead, this.focusBody);
     const center = el('section', 'h3cx-center');
     center.append(nav, player, this.focus);
@@ -488,7 +632,7 @@ export class Studio {
     this.mobileMore.setAttribute('aria-label', 'More Studio tools');
     this.mobileMore.append(el('h2', 'h3cx-title', 'Studio tools'));
     for (const page of FOCUS.filter(name => name !== 'project')) {
-      const label = page === 'refmods' ? 'RefMods' : page[0].toUpperCase() + page.slice(1);
+      const label=page==='assets'?'References':page[0].toUpperCase()+page.slice(1);
       this.mobileMore.append(button(label, `Open ${label}`, () => this.openFocus(page)));
     }
     main.append(this.mobileMore);
@@ -803,12 +947,16 @@ export class Studio {
     if (target?.kind === 'audio' && editor.audioLanes.clips.some(clip => clip.slot === target.slot)) {
       editor.audioLanes.selectAudio(target.slot);
       this.inspectorTarget = {...target};
-    } else if (target?.kind === 'text' && editor.state.timed_text) {
+    } else if(target?.kind==='overlap'&&boxes.some(b=>b.id===target.from)&&boxes.some(b=>b.id===target.to)){
+      editor.trackEditor.overlap.show(target.from,target.to);this.inspectorTarget={...target};
+    } else if (target?.kind === 'text' && (editor.state.timed_text||editor.state.text_lanes?.some(l=>l.track===target.track))) {
+      editor.audioLanes.selectedTextTrack=target.track;editor.audioLanes.renderText();
       editor.audioLanes.selectText();
       this.inspectorTarget = {kind:'text'};
     } else this.inspectorTarget = fallback;
     this.setLibrary(snapshot.libraryPage ?? 'references', {link});
-    const focus = snapshot.focusPage ?? (FOCUS.includes(snapshot.page) ? snapshot.page : null);
+    let focus = snapshot.focusPage ?? (FOCUS.includes(snapshot.page) ? snapshot.page : null);
+    if(focus==='pictures'||focus==='refmods')focus='assets';
     if (FOCUS.includes(focus)) this.openFocus(focus, {link});
     else this.backToViewer();
     this.setReferencesVisible(snapshot.referencesVisible ?? true);
@@ -962,9 +1110,7 @@ export class Studio {
     this.mobileMore.hidden = !mobile || this.mobilePage !== 'more';
     this.activity.classList.toggle('h3cx-empty', !this.progressEl.textContent && !this.writerMessage.textContent && this.stopButton.hidden && !this.writerCancel.textContent);
     const actionParent = mobile ? this.mobileMore : this.bar;
-    const feedbackParent = mobile ? this.mobileMore : this.activity;
     if (this.projectActions.parentNode !== actionParent) actionParent.append(this.projectActions);
-    if (this.feedbackButton.parentNode !== feedbackParent) feedbackParent.append(this.feedbackButton);
     for (const [page, control] of Object.entries(this.mobileButtons))
       control.setAttribute('aria-pressed', String(page === (this.mobilePage === 'focus' ? 'more' : this.mobilePage)));
     this.root.style.setProperty('--h3cx-track-width', `${Math.max(480, (this.host?.editor.state.boxes.length ?? 0) * 96)}px`);
@@ -986,16 +1132,18 @@ export class Studio {
   }
 
   openFocus(page, {link = true} = {}) {
+    const referenceSection=page==='pictures'||page==='refmods'?page:null;
+    if(referenceSection)page='assets';
     if (!FOCUS.includes(page)) return;
     if(page==='project')this.loadGenerations();
     this.focusPage = page;
     this.libraryPage = page === 'project' ? 'references' : page;
     this.page = page;
-    this.focusTitle.textContent = page === 'refmods' ? 'RefMods' : page === 'project' ? 'Project settings'
+    this.focusTitle.textContent = page === 'assets' ? 'References' : page === 'project' ? 'Project settings'
       : page[0].toUpperCase() + page.slice(1);
-    if (page === 'story' && this.host) this.host.editor.feedbackEl.open = true;
-    if (page === 'pictures' && this.host) this.host.editor.pictures.root.open = true;
-    if (page === 'cast') this.host?.editor.cast?.refresh({link});
+    if(page==='assets'&&this.host){this.host.editor.pictures.root.open=true;this.host.editor.refmodsEl.open=true;}
+    if(referenceSection)this.pages[referenceSection].scrollIntoView?.({block:'nearest'});
+    if(page==='cast'){const preparation=this.host?.editor.cast?.preparation;if(preparation){if(!preparation.root.open)preparation.root.open=true;else preparation.refresh();}this.host?.editor.cast?.refresh({link});}
     if (this.mobileMedia.matches) this.setMobilePage('focus');
     // Below 900 px the Inspector and References float over the centre, where this page opens.
     else if (this.narrowMedia.matches) { this.setInspectorVisible(false); this.setReferencesVisible(false); }
@@ -1011,14 +1159,14 @@ export class Studio {
   }
 
   inspect(target) {
-    if (!target || !['clip', 'audio', 'text'].includes(target.kind)) return;
+    if (!target || !['clip', 'audio', 'text', 'overlap'].includes(target.kind)) return;
     this.inspectorTarget = target;
     if (this.trimmingPointer == null) this.setInspectorVisible(true);
     this.refresh();
   }
 
   setPage(page, {link = true} = {}) {
-    if (FOCUS.includes(page)) return this.openFocus(page, {link});
+    if (FOCUS.includes(page)||page==='pictures'||page==='refmods') return this.openFocus(page, {link});
     if (page === 'timeline') { this.backToViewer(); this.setLibrary('references'); return; }
     this.backToViewer();
     this.inspect({kind: 'clip', box: this.host?.editor.box()?.id ?? null});
@@ -1041,12 +1189,14 @@ export class Studio {
     this.pages.box.hidden = target !== 'clip';
     this.pages.audio.hidden = target !== 'audio';
     this.pages.text.hidden = target !== 'text';
+    this.pages.overlap.hidden=target!=='overlap';
     const editor = this.host?.editor;
     this.clipPromptButton.hidden = target === 'clip' || !editor?.box();
     this.emptyInspector.hidden = target !== 'clip' || !!editor?.box();
     setText(this.inspectorTitle, target === 'audio' ? `Audio @${this.inspectorTarget.slot}`
-      : target === 'text' ? 'Timed text' : editor?.box() ? `Clip ${editor.selected + 1}` : 'No clip selected');
+      : target==='overlap'?'Overlap':target === 'text' ? 'Timed text' : editor?.box() ? `Clip ${editor.selected + 1}` : 'No clip selected');
     setText(this.focusContext, editor?.box() ? `Selected clip ${editor.selected + 1}` : 'No clip selected');
+    this.story?.panel?.markBox?.(editor?.box()?.id ?? null);
     this.renderMobile();
   }
 
@@ -1062,12 +1212,6 @@ export class Studio {
     this.refresh();
   }
 
-  openFeedback() {
-    if (!this.host) return;
-    this.setPage('story');
-    this.host.editor.feedbackInput.focus();
-  }
-
   refresh() {
     if (this.root.hidden || !this.host) return;
     const host = this.host;
@@ -1080,7 +1224,6 @@ export class Studio {
     this.nameEl.title = host.sequenceName?.() ?? '';
     setText(this.progressEl, host.progress?.() ?? progressText(watch, host.runningBox(), (id) => host.titleOf(id)));
     this.stopButton.hidden = host.editor.host.projectAttached === true || !(watch.running && !watch.turn);
-    this.feedbackButton.hidden = host.editor.feedbackEl.hidden;
     this.renderNavigation();
     const full = host.editor.fullLink.hidden ? null : host.editor.fullLink.getAttribute('href');
     const partial = full ? host.editor.partialVideo : null;
@@ -1135,19 +1278,22 @@ export class Studio {
     this.place(regions.download, this.fullLinks);
     this.place(regions.panel, this.pages.box);
     this.place(regions.cast, this.pages.cast);
-    this.place(regions.feedback, this.pages.story);
+    this.place(regions.feedback, this.storyPanes.brief);
     this.place(regions.references, this.pages.timeline);
     this.place(regions.pictures, this.pages.pictures);
     this.place(regions.refmods, this.pages.refmods);
     this.place(regions.sharedPrompt, this.projectPrompt);
     this.place(regions.chainSettings, this.projectChain);
     this.place(regions.readOnly, this.notice);
-    this.place(regions.stillPrompts, this.track);
+    this.place(regions.stillPrompts, this.actionsSlot);
+    if(regions.stillInstructions)this.place(regions.stillInstructions,this.projectStill);
     this.place(regions.lane, this.track);
+    this.place(regions.laneFooter, this.track);
     this.place(regions.hint, this.track);
     this.place(regions.audioSettings, this.pages.audio);
     this.place(regions.dialogueSettings, this.pages.audio);
     this.place(regions.timedTextSettings, this.pages.text);
+    if(regions.overlapSettings)this.place(regions.overlapSettings,this.pages.overlap);
     regions.references.open = true;
     regions.refmods.open = true;
     regions.chainSettings.open = true;
@@ -1191,29 +1337,104 @@ export class Studio {
       this.storyPage.replaceChildren(el('p', 'h3cx-note', NO_STORY));
       return;
     }
-    this.place(story.panel.actionsEl, this.storyEl, this.storyBorrowed);
-    this.place(story.panel.messageEl, this.writerMessage, this.storyBorrowed);
+    const panel = story.panel;
+    this.place(panel.actionsEl, this.storyEl, this.storyBorrowed);
+    this.place(panel.messageEl, this.writerMessage, this.storyBorrowed);
     this.storyPage.replaceChildren(this.inputsOf(story));
-    if(story.panel.libraryEl){this.place(story.panel.libraryEl,this.storyPage,this.storyBorrowed);this.storyPage.prepend(story.panel.libraryEl);}
-    this.place(story.panel.storyEl, this.pages.story, this.storyBorrowed);
-    this.place(story.panel.filesEl, this.projectFiles, this.storyBorrowed);
+    const clipRow = this.host?.editor.clipActions?.firstChild;
+    if (panel.boxButton && clipRow) {
+      this.place(panel.boxButton, clipRow, this.storyBorrowed);
+      clipRow.prepend(panel.boxButton);
+      panel.boxButton.querySelector('.h3ci-caption')?.classList.replace('h3ci-caption', 'h3ci-sr');
+    }
+    if (panel.titleEl) for (const part of [panel.titleEl, panel.outlinePart]) this.place(part, this.storyPanes.outline, this.storyBorrowed);
+    if (panel.sheetPart) for (const part of [panel.sheetPart, panel.suggestionsPart, panel.notesEl, panel.draftsEl])
+      this.place(part, this.storyPanes.continuity, this.storyBorrowed);
+    if (panel.libraryEl) {
+      this.libraryWasOpen = panel.libraryEl.open;
+      this.place(panel.libraryEl, this.storyPanes.saved, this.storyBorrowed);
+    }
+    this.place(panel.filesEl, this.projectFiles, this.storyBorrowed);
+    panel.onSelectBox = id => this.selectStoryBox(id);
+    panel.onShowStory = () => this.syncStoryTabs();
     this.projectFileNote.textContent = 'Project JSON includes workflow wiring. Media and RefMods remain file references.';
+    this.syncStoryTabs();
   }
 
   returnStory() {
     if (this.cancelBorrowed) { this.restore(this.cancelBorrowed); this.cancelBorrowed = null; }
+    const panel = this.story?.panel;
+    if (panel) {
+      panel.boxButton?.querySelector('.h3ci-sr')?.classList.replace('h3ci-sr', 'h3ci-caption');
+      panel.onSelectBox = panel.onShowStory = null;
+      if (panel.libraryEl && this.libraryWasOpen !== undefined) panel.libraryEl.open = this.libraryWasOpen;
+    }
+    this.libraryWasOpen = undefined;
     this.restore(this.storyBorrowed);
     this.storyBorrowed = [];
     this.storyEl.replaceChildren();
     this.storyPage.replaceChildren();
     this.story = undefined;
+    this.syncStoryTabs();
+  }
+
+  setStoryTab(name) {
+    if (!this.storyTabButtons[name] || this.storyTabButtons[name].hidden) name = 'brief';
+    this.storyTab = name;
+    for (const [key, tab] of Object.entries(this.storyTabButtons)) {
+      const selected = key === name;
+      tab.setAttribute('aria-selected', String(selected));
+      tab.tabIndex = selected ? 0 : -1;
+      this.storyPanes[key].hidden = !selected;
+    }
+    const library = this.story?.panel?.libraryEl;
+    if (name === 'saved' && library && !library.open) library.open = true;
+  }
+
+  syncStoryTabs() {
+    const panel = this.story?.panel;
+    const beats = panel?.outlineEl?.children.length ?? 0;
+    const continuity = !!panel && (!panel.sheetPart?.hidden || !panel.suggestionsPart?.hidden
+      || !!panel.notesEl?.children.length || !!panel.draftsEl?.children.length);
+    const counts = {outline: beats ? String(beats) : '', continuity: '', brief: '', saved: ''};
+    for (const [name, tab] of Object.entries(this.storyTabButtons)) setText(tab.lastChild, counts[name]);
+    this.storyTabButtons.outline.hidden = this.storyTabButtons.continuity.hidden = !panel;
+    this.storyTabButtons.saved.hidden = !panel?.libraryEl;
+    this.outlineEmpty.hidden = !!beats;
+    this.continuityEmpty.hidden = continuity;
+    if (this.storyTabButtons[this.storyTab].hidden) this.setStoryTab('brief');
+    panel?.markBox?.(this.host?.editor.box()?.id ?? null);
+  }
+
+  selectStoryBox(id) {
+    const editor = this.host?.editor;
+    const index = editor?.state.boxes.findIndex(box => box.id === id) ?? -1;
+    if (index < 0) return;
+    editor.select(index);
+    this.inspect({kind: 'clip', box: id});
   }
 
   inputsOf(story) {
     const form = el('div', 'h3cx-inputs');
-    const advanced = el('details', 'h3cx-story-advanced');
-    const advancedInputs = el('div', 'h3cx-inputs');
-    advanced.append(el('summary', null, 'Advanced'), advancedInputs);
+    // On while any of its typed settings has a value; off empties them, kept until it comes back on.
+    const typed = () => story.inputs().filter(input => input.advanced && input.kind === 'string' && input.linked == null);
+    const advanced = new SwitchSection('Advanced', {className: 'h3cx-story-advanced', onToggle: (on) => {
+      this.advancedPinned = on;
+      if (on) {
+        for (const [name, value] of Object.entries(this.advancedKept ?? {})) story.setInput(name, value);
+        this.advancedKept = null;
+      } else {
+        const filled = typed().filter(input => String(input.value ?? '').trim());
+        if (filled.length && !globalThis.confirm?.(`Clear ${filled.map(input => input.label).join(', ')}? Turning Advanced on again brings them back.`)) return;
+        this.advancedKept = Object.fromEntries(filled.map(input => [input.name, input.value]));
+        for (const input of filled) story.setInput(input.name, '');
+      }
+      this.returnStory();
+      this.showStory(story);
+    }});
+    const advancedInputs = advanced.body;
+    advanced.set(typed().some(input => String(input.value ?? '').trim()) || !!this.advancedPinned);
+    advanced.root.addEventListener('input', () => { if (!typed().some(input => String(input.value ?? '').trim())) this.advancedPinned = true; });
     story.panel.refreshSettings?.();
     for (const input of story.inputs()) {
       const parent = input.advanced ? advancedInputs : form;
@@ -1235,7 +1456,7 @@ export class Studio {
       field.append(...(check ? [control, label] : [label, control]));
       parent.append(field);
     }
-    if (advancedInputs.childElementCount) form.append(advanced);
+    if (advancedInputs.childElementCount) form.append(advanced.root);
     return form;
   }
 

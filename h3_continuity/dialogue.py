@@ -252,7 +252,7 @@ def speaks(timeline, index):
         return True
     if index < len(timeline.manual_dialogue) and timeline.manual_dialogue[index]:
         return False
-    start = sum(rules.played_frames(timeline, i) for i in range(index))
+    start = round(rules.box_start(timeline, index) * 24)
     end = start + rules.played_frames(timeline, index)
     return any(portrayal != "voiceover" and first < end and last > start
                for item in projected(timeline) for first, last, portrayal in item["segments"])

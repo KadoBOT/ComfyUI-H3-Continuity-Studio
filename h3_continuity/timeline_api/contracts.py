@@ -149,7 +149,7 @@ def _schemas():
     switch = _object({"cuts": _array(_object({"at": FRAME, "to": ID}, ("at", "to")), minItems=1),
                       "fade": {"type": "integer", "minimum": 0, "maximum": 12}, "sound": ID,
                       "align": {"type": "object"}}, ("cuts", "fade", "sound"))
-    box = _object({"id": ID, "frames": POSITIVE, "seconds": POSITIVE, "seed": SEED, "prompt": TEXT,
+    box = _object({"track": ID, "start": FRAME, "id": ID, "frames": POSITIVE, "seconds": POSITIVE, "seed": SEED, "prompt": TEXT,
                    "cut": BOOL, "new_scene": BOOL, "exact": BOOL, "first": {"anyOf": [IMAGE, {"const": ""}]},
                    "last": {"anyOf": [IMAGE, {"const": ""}]}, "previews": _array(preview),
                    "plate_changes": _array(change), "memory": {"enum": ["off", "scene", "selected", "cast"]},
@@ -173,13 +173,18 @@ def _schemas():
                                                 ('start', 'source_start', 'duration')),
                            'by_box': {'type': 'object', 'additionalProperties': audio_window}},
                           ('version', 'source', 'placement', 'by_box'))
-    audio = _object({"slot": {"enum": ["audio1", "audio2", "audio3"]}, "file": FILE, "start": NONNEGATIVE,
+    audio = _object({"track": ID, "slot": {"enum": ["audio1", "audio2", "audio3"]}, "file": FILE, "start": NONNEGATIVE,
                      "source_start": NONNEGATIVE, "duration": POSITIVE, "source_duration": POSITIVE, "description": TEXT,
                      "layer": {"enum": ["music", "soundscape", "shot"]}, "in_full_video": BOOL, "locked": BOOL,
                      'box_windows': box_windows},
                     ("slot", "start", "source_start", "duration"), extra=True)
     line = _object({"version": {"type": "integer", "const": 1}, "prompt": TEXT, "boxes": _array(box, minItems=1),
                     "requires": _array({"type": "string", "minLength": 1}, uniqueItems=True),
+                    "tracks": _array(_object({"id": ID, "type": {"enum": ["video", "audio", "text"]}, "name": TEXT}, ("id", "type", "name"))),
+                    "text_lanes": _array(_object({"track": ID, "attachment": {"type": "object"}}, ("track", "attachment"))),
+                    "overlap_switches": _array(_object({"id": ID, "from": ID, "to": ID, "at": FRAME,
+                        "fade": {"type": "integer", "minimum": 0, "maximum": 12}, "sound": ID},
+                        ("id", "from", "to", "at", "fade", "sound"))),
                     "dialogue": {"type": ["object", "null"]},
                     "bridges": _array(bridge), "still_requests": _array(receipt), "audio_clips": _array(audio, maxItems=3),
                     "pictures": _array(_object({"slot": IMAGE, "file": FILE, "title": TEXT}, ("slot",), extra=True)),

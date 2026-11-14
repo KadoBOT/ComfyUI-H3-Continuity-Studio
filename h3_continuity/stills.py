@@ -168,7 +168,7 @@ def sources(body):
         frame = _target_frame(parsed, index, target, int((body.get('settings') or {}).get('context_frames') or 39))
         preferred = [body['box']]
         if index and not rules.is_fresh(parsed, index):
-            preferred.insert(0 if target.get('kind') == 'first' else 1, parsed.boxes[index - 1].id)
+            preferred.insert(0 if target.get('kind') == 'first' else 1, parsed.boxes[rules.previous_index(parsed,index)].id)
         choices = []
         for directory, entry in _entries(folder):
             box = (entry.get('timeline') or {}).get('box')

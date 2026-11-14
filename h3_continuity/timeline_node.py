@@ -10,7 +10,7 @@ from comfy_execution.graph_utils import ExecutionBlocker
 
 from . import conditioning, latents, store, timing, shot_preview, refmods, audio_tracks, visual_memory
 from . import box_checks, bridges, dialogue, studio_pictures, voice_clips, reference_replacements, replacement_candidates
-from . import partial_video, replacement, regeneration, layers, stacks
+from . import partial_video, replacement, regeneration, layers, stacks, track_output, tracks
 from . import nodes as continuity
 from . import timeline as rules
 from .story_node import StoryType
@@ -174,7 +174,7 @@ def _status(name, folder, parsed, manifest, is_done, reasons=None, materialize=F
         # A box with a saved take keeps it in the Timeline and the full video even when it is outdated; Render only
         # renders the boxes that have none.
         kept = {entry["index"] - 1 for entry in placed if store.has_segment_latents(folder, entry)} - done
-        next_index = next((i for i in range(count) if i not in done and i not in kept), None)
+        next_index = next((i for i in rules.render_order(parsed) if i not in done and i not in kept), None)
         known = known or {}
         keys = bridges.splice(parsed, known)
         spliced = bridges.spliced(folder, manifest, keys) if keys else []
@@ -193,7 +193,8 @@ def _status(name, folder, parsed, manifest, is_done, reasons=None, materialize=F
             view, waiting = stacks.substitute(folder, parsed, manifest, count, FULL_VIDEO_CRF, partial=True,
                                               make=materialize)
         complete = bool(count) and len(placed) == count and next_index is None
-        current = complete and not waiting
+        track_mode=parsed.tracks is not None
+        current = complete and not waiting and not track_mode
         joined = {**view, "segments": store.placed(view, count)}
         full_video = None
         building = False
@@ -234,7 +235,7 @@ def _status(name, folder, parsed, manifest, is_done, reasons=None, materialize=F
             if record:
                 full_video = _view(name, record["file"], record["sources"])
         partial = None
-        if materialize and not current and parsed.video_slices and manifest.get("source") and soundtrack is not None:
+        if materialize and not track_mode and not current and parsed.video_slices and manifest.get("source") and soundtrack is not None:
             from .timeline_api.service import authorize_sequence
             authorize_sequence(name, managed_owner, "full_video")
             try:
@@ -243,7 +244,7 @@ def _status(name, folder, parsed, manifest, is_done, reasons=None, materialize=F
                 note = f"Partial video could not be saved: {error}"
             export_error = export_error or note
         so_far, so_far_building, so_far_note = None, False, ""
-        if materialize and not current and not partial and not unchecked:
+        if materialize and not track_mode and not current and not partial and not unchecked:
             from .timeline_api.service import authorize_sequence
             authorize_sequence(name, managed_owner, "full_video")
             so_far, so_far_building, so_far_note = video_so_far(name, folder, parsed, view, done | kept, spliced,
@@ -270,6 +271,23 @@ def _status(name, folder, parsed, manifest, is_done, reasons=None, materialize=F
                                        "rendered": partial["rendered"], "boxes": partial["boxes"]}
             if parsed.all_bridges:
                 status["partial_video"]["note"] = "Bridges and replacements are left out."
+        if track_mode:
+            if materialize:
+                from .timeline_api.service import authorize_sequence
+                authorize_sequence(name,managed_owner,'full_video')
+            mode='full' if complete and not waiting else ('partial' if parsed.video_slices else 'so_far')
+            record,building,note=track_output.ensure(folder,name,parsed,manifest,FULL_VIDEO_CRF,mode,materialize)
+            spans=tracks.output_spans(tracks.document(parsed))
+            status['seconds']=(spans[-1]['outputEnd'] if spans else 0)/24
+            if record:
+                if mode=='full':
+                    status['full_video']=_view(name,record['file'],record['sources']);status['full_video_clock']=record['clock']
+                elif mode=='partial':
+                    status['partial_video']=dict(file=_view(name,record['file'],record['sources']),rendered=len(done|kept),boxes=count,note=note,clock=record['clock'])
+                else:
+                    status['preview_video']=dict(file=_view(name,record['file'],record['sources']),boxes=len(done|kept),total=count,clock=record['clock'])
+            if building: status['full_video_building' if mode=='full' else 'preview_video_building']=True
+            if note: status['export_error' if mode=='full' else 'preview_error']=note
         if parsed.layers:
             found_layers = layers.states(folder, parsed, manifest, done | kept, known, known.get("context_frames"),
                                          next_index)
@@ -746,7 +764,7 @@ class H3C_Timeline(io.ComfyNode):
         # Render renders the boxes without a saved take; an outdated box is rendered again only when selected.
         next_index = (parsed.render_box - 1 if parsed.render_box is not None
                       else rules.next_box(len(parsed.boxes), by_index,
-                                          lambda index, entry: store.has_segment_latents(folder, entry)))
+                                          lambda index, entry: store.has_segment_latents(folder, entry), order=rules.render_order(parsed)))
         known = bridges.settings(width, height, context, carry_audio, audio_context_frames=audio_context_frames)
         taken = {i for i in range(len(parsed.boxes)) if i + 1 in by_index and store.has_segment_latents(folder, by_index[i + 1])}
         # A clip's other videos render right after its main video, before the next box, bridges and replacements.
@@ -800,22 +818,23 @@ class H3C_Timeline(io.ComfyNode):
         conflict = rules.carry_conflict(parsed, next_index, context)
         if conflict:
             raise ValueError(f"H3 Timeline: {conflict}")
-        previous = by_index.get(next_index)
+        previous_index = rules.previous_index(parsed,next_index)
+        previous = by_index.get(previous_index+1) if previous_index is not None else None
         video = audio = None
         if not box.fresh:
             if (previous is None or not store.has_segment_latents(folder, previous)
-                    or (previous.get("timeline") or {}).get("box") != parsed.boxes[next_index - 1].id):
+                    or (previous.get("timeline") or {}).get("box") != parsed.boxes[previous_index].id):
                 raise ValueError(f"H3 Timeline: render box {next_index} first, or enable Cut on box {next_index + 1}")
-            if ((previous.get("timeline") or {}).get("guide_chain", "") != rules.guide_chain(parsed, next_index - 1, context)
-                    or (rules.guide_chain(parsed, next_index - 1, context) and not is_done(next_index - 1, previous))):
+            if ((previous.get("timeline") or {}).get("guide_chain", "") != rules.guide_chain(parsed, previous_index, context)
+                    or (rules.guide_chain(parsed, previous_index, context) and not is_done(previous_index, previous))):
                 raise ValueError(f"H3 Timeline: preview guides changed; render box {next_index} first to rebuild continuity")
-            if (previous.get("timeline") or {}).get("plate_chain", "") != rules.plate_chain(parsed, next_index - 1):
+            if (previous.get("timeline") or {}).get("plate_chain", "") != rules.plate_chain(parsed, previous_index):
                 raise ValueError(f"H3 Timeline: appearance plates changed; render box {next_index} first to rebuild continuity")
-            if (previous.get("timeline") or {}).get("text_chain", "") != rules.text_chain(parsed, next_index - 1, context):
+            if (previous.get("timeline") or {}).get("text_chain", "") != rules.text_chain(parsed, previous_index, context):
                 raise ValueError(f"H3 Timeline: timed text changed; render box {next_index} first to rebuild continuity")
-            if rules.memory_sources(parsed, next_index - 1) and not is_done(next_index - 1, previous):
+            if rules.memory_sources(parsed, previous_index) and not is_done(previous_index, previous):
                 raise ValueError(f"H3 Timeline: visual memory changed; render box {next_index} first to rebuild continuity")
-            if not references_match(next_index - 1, previous):
+            if not references_match(previous_index, previous):
                 raise ValueError(f"H3 Timeline: references changed; render box {next_index} first, "
                                  f"or enable Cut on box {next_index + 1}")
             video, audio = store.load_segment_latents(folder, previous)
@@ -852,25 +871,26 @@ class H3C_Timeline(io.ComfyNode):
             noise_vae=vae if parsed.context_noise else None, audio_feather=parsed.audio_feather)
         segment.preserve_following = True
         segment.regeneration = recovery
-        following = by_index.get(next_index + 2)
+        following_index = rules.following_index(parsed,next_index)
+        following = by_index.get(following_index+1) if following_index is not None else None
         ending = 0
-        if following and next_index + 1 < len(parsed.boxes):
-            same_box = (following.get("timeline") or {}).get("box") == parsed.boxes[next_index + 1].id
-            cut = rules.is_fresh(parsed, next_index + 1)
-            saved = by_index.get(next_index + 1)
+        if following is not None:
+            same_box = (following.get("timeline") or {}).get("box") == parsed.boxes[following_index].id
+            cut = rules.is_fresh(parsed, following_index)
+            saved = by_index.get(next_index+1)
             references_changed = (saved is not None and (saved.get("timeline") or {}).get("box") == box.box.id
                                   and not references_match(next_index, saved))
             guides_changed = ((following.get("timeline") or {}).get("guide_chain", "")
-                              != rules.guide_chain(parsed, next_index + 1, context))
+                              != rules.guide_chain(parsed, following_index, context))
             guides_changed |= ((following.get("timeline") or {}).get("plate_chain", "")
-                               != rules.plate_chain(parsed, next_index + 1))
+                               != rules.plate_chain(parsed, following_index))
             compatible = (same_box and store.has_segment_latents(folder, following)
                           and following.get("latent_width") == width and following.get("latent_height") == height
                           and following.get("context_frames", 0) > 0)
             text_changed = ((following.get("timeline") or {}).get("text_chain", "")
-                            != rules.text_chain(parsed, next_index + 1, context))
+                            != rules.text_chain(parsed, following_index, context))
             rebuilding_next = owner_job and any(
-                attempt["unit_id"] == "box:" + parsed.boxes[next_index + 1].id
+                attempt["unit_id"] == "box:" + parsed.boxes[following_index].id
                 and attempt["state"] == "pending" for attempt in owner_job["attempts"])
             if recovery:
                 box.notes.append("Affected clips will move to Takes only after this render saves successfully.")
@@ -883,7 +903,7 @@ class H3C_Timeline(io.ComfyNode):
             elif guides_changed and not cut:
                 # Rebuild this end from the accepted guide, not the obsolete neighbor's frozen overlap.
                 segment.preserve_following = True
-            elif same_box and not cut and (references_changed or not references_match(next_index + 1, following)):
+            elif same_box and not cut and (references_changed or not references_match(following_index, following)):
                 box.notes.append("References changed; the boxes that continue this one are outdated until you "
                                  "regenerate them.")
             elif compatible and not cut:
@@ -901,7 +921,7 @@ class H3C_Timeline(io.ComfyNode):
                 raise ValueError(f"H3 Timeline: box {next_index + 2} has no compatible saved overlap; "
                                  "render the remaining boxes to rebuild continuity")
         segment.box_order = [item.id for item in parsed.boxes]
-        segment.restack = stacks.restacker(parsed, len(parsed.boxes)) if parsed.layers else None
+        segment.restack = stacks.restacker(parsed, len(parsed.boxes)) if parsed.layers or parsed.tracks is not None else None
         segment.description = box.prompt
         segment.timeline = {"box": box.box.id, "layout": box.layout, "mode": box.slots.mode,
                             "settings": box.settings, "media": hashes[next_index].of(box.slots),
@@ -998,7 +1018,7 @@ class H3C_Timeline(io.ComfyNode):
     def bridge(cls, state, parsed, name, folder, manifest, by_index, is_done, known, complete,
                clip, vae, audio_vae, ref_image_size, negative):
         """Renders the bridge of `state` between the saved segments of its two boxes."""
-        before, after = by_index[state.index], by_index[state.index + 1]
+        before, after = by_index[rules.previous_index(parsed,state.index)+1], by_index[state.index + 1]
         width, height, context, carry_audio = (known[key] for key in ("width", "height", "context_frames", "carry_audio"))
         audio_context_frames = known.get('audio_context_frames', 0)
         plan = bridges.plan(parsed, state.bridge, context, carry_audio, width, height, before, after,
@@ -1014,7 +1034,7 @@ class H3C_Timeline(io.ComfyNode):
             latent, next_video, next_audio, frozen, carry_audio, segment.context_frames)
         segment.preserve_following = True
         segment.box_order = [item.id for item in parsed.boxes]
-        segment.restack = stacks.restacker(parsed, len(parsed.boxes)) if parsed.layers else None
+        segment.restack = stacks.restacker(parsed, len(parsed.boxes)) if parsed.layers or parsed.tracks is not None else None
         segment.description = plan.prompt
         segment.timeline = {"bridge": state.bridge["before"], "layout": plan.layout, "settings": plan.settings,
                             "from": bridges.link(folder, before), "to": bridges.link(folder, after),
@@ -1036,7 +1056,7 @@ class H3C_Timeline(io.ComfyNode):
     def replace(cls, state, parsed, name, folder, manifest, by_index, is_done, known,
                 clip, vae, audio_vae, ref_image_size, negative):
         """Renders a candidate for the reviewed replacement of `state` from the footage that survives around it."""
-        before, after = by_index[state.index], by_index[state.index + 1]
+        before, after = by_index[rules.previous_index(parsed,state.index)+1], by_index[state.index + 1]
         width, height, context, carry_audio = (known[key] for key in ("width", "height", "context_frames", "carry_audio"))
         audio_context_frames = known.get('audio_context_frames', 0)
         plan = replacement_candidates.plan(parsed, state, width, height, context, carry_audio,

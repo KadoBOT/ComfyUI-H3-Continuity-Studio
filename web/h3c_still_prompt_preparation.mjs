@@ -1,3 +1,4 @@
+import {decorateIcon,setIconLabel} from './h3c_icons.mjs';
 // One explicit batch owns the editable prompts; previews and render jobs do not invalidate its source.
 import {replaceChanged,setText} from './h3c_dom.mjs?v=584a9bf55653';
 const canonical = target => target?.kind==='shot'&&target.shot===1?{kind:'first'}:target;
@@ -79,10 +80,11 @@ export class StillPromptPreparation {
     this.instructionsEl=el('textarea',null,'h3ct-text');this.instructionsEl.rows=5;this.instructionsEl.setAttribute('aria-label','Still prompt conversion instructions');
     this.instructionsEl.addEventListener('input',()=>this.invalidate());
     this.instructionsEl.addEventListener('change',()=>this.editInstructions(this.instructionsEl.value));
-    const details=el('details',null,'h3ct-image-details');details.append(el('summary','Still prompt conversion instructions'),
+    const details=this.instructionsRoot=el('section',null,'h3ct-project-instructions');details.append(el('h3','Still prompt conversion instructions','h3cx-title'),
       el('p','Prepare all First, Last and Shot prompts in one batch. Review or edit each final prompt before generating images.','h3ct-hint'),this.instructionsEl);
     this.components=el('details',null,'h3ct-image-details');this.components.append(el('summary','Prepared visual details'));
     this.componentBody=el('div');this.components.append(this.componentBody);
+    decorateIcon(this.button,'stills','Prepare all still prompts');
     this.root.append(this.button,this.cancelButton,this.useAllButton,this.status,details);
     this.context=this.host.referenceContext?.();
   }
@@ -125,7 +127,7 @@ export class StillPromptPreparation {
       this.context=context;this.busy=null;this.cancelling=null;this.instructionsLoading=null;this.instructionsLoaded=false;this.invalidate();
       this.instructionsEl.value=this.editor.state.still_prompt_preparation?.instructions??'';
     }
-    this.root.hidden=!this.host.prepareStillPrompts;
+    this.root.hidden=!this.host.prepareStillPrompts;this.instructionsRoot.hidden=this.root.hidden;
     const saved=this.editor.state.still_prompt_preparation;
     const knownJob=this.host.stillPromptJob?.();
     this.cancelButton.hidden=!this.busy&&!knownJob;
@@ -134,12 +136,12 @@ export class StillPromptPreparation {
     this.useAllButton.disabled=!!this.busy;
     if(saved&&document.activeElement!==this.instructionsEl)this.instructionsEl.value=saved.instructions;
     this.button.disabled=!!this.busy||!!this.cancelling||!!this.instructionsLoading||!this.editor.state.boxes.length;
-    setText(this.button,this.busy?'Preparing all still prompts…':knownJob?'Resume still prompt preparation':saved?.prompts?.length?'Regenerate all still prompts':'Prepare all still prompts');
+    setIconLabel(this.button,this.busy?'Preparing all still prompts…':knownJob?'Resume still prompt preparation':saved?.prompts?.length?'Regenerate all still prompts':'Prepare all still prompts');
     if(!this.busy) {
       const stale=stillPromptsStale(this.editor.state,currentSource(this.editor,this.instructionsEl.value));
       setText(this.status,stale?'Still prompts are out of date. Regenerate to use the current Timeline; existing prompts and images remain available.':
         saved?.prompts?.length?`${saved.prompts.length} prepared prompts across all clips. Continuous Last and next First share their prompt.`:
-          `Prepare First, Last and Shot prompts for all ${this.editor.state.boxes.length} clips in one batch.`);
+          `${this.editor.state.boxes.length} clips`);
     }
     const selected=preparedStillPrompt(this.editor.state,boxId,target);this.components.hidden=!selected;
     const body=[];

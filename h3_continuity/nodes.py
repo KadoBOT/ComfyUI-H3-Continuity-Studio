@@ -779,6 +779,11 @@ def rebuild_full_video(folder, name, manifest, crf, spliced=(), soundtrack=(), *
         authorize_sequence(name, managed_owner, "full_video")
         if restack is not None:
             manifest = restack(folder, manifest, crf)
+        if manifest.get('_track_timeline') is not None:
+            from . import track_output
+            record,building,note=track_output.ensure(folder,name,manifest['_track_timeline'],manifest,crf,
+                                                     'full' if kind=='full' else 'so_far')
+            return BUILDING if building else (f"Full video: {record['file']}" if record else note)
         plan, note = _plan_full_video(folder, name, manifest, crf, spliced, soundtrack, replaced)
         if plan is not None:
             plan["kind"] = kind
@@ -812,6 +817,9 @@ def wait_full_video(folder, timeout=None):
     """Waits for the background builds of `folder`, if any (tests and shutdown)."""
     with _BUILDS_LOCK:
         threads = [(_BUILDS.get((os.path.normcase(folder), kind)) or {}).get("thread") for kind in VIDEO_KINDS]
+    from . import track_output
+    with track_output._LOCK:
+        threads.extend(job.get('thread') for key,job in track_output._JOBS.items() if key[0]==os.path.normcase(folder))
     for thread in threads:
         if thread is not None:
             thread.join(timeout)

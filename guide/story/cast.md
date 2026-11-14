@@ -13,6 +13,12 @@ Build bible reads every `<Subject N> is …` line in the clips' `subject_definit
 
 ## The Cast page
 
+**Reference images** opens first. Filter Characters, Locations or Objects, or search by name; filtering does not change which categories are generated. Select a reference in the thumbnail list to edit one description and review its images. On a phone, **Back to references** returns to the list.
+
+**Batch options** selects categories for **Generate missing**; **Include in batch** controls one asset. Generator settings and stop-after-current remain beside the batch action. **Add object** opens a short object form. Seed and dimensions live under Advanced.
+
+An uploaded reference is ready immediately. A generated candidate needs an explicit **Use as reference** approval; an out-of-date candidate cannot silently replace the approved image. Prompt edits survive catalog refreshes, and generation or upload errors leave the editor available for recovery.
+
 [![The Cast page with three entities](../assets/screens/cast-built.png)](../assets/screens/cast-built.png)
 
 One row per entity shows its first picture, name and kind, the clips it appears in and its number of looks (plus, in amber, how many of its clips differ). Click a row to open the entity.
