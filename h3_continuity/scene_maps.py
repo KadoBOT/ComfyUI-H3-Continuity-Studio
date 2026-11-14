@@ -219,34 +219,143 @@ def _quiet(reason, slot=''):
     return {'blocking': '', 'definition': '', 'retention': '', 'slot': slot, 'reason': reason}
 
 
+def _gate(timeline, index, resolved):
+    """(reason box `index` gets no map text or '', its slots without the map or None)."""
+    from . import timeline as rules
+    if not rules.is_fresh(timeline, index):
+        return 'This clip continues the previous one.', None
+    try:
+        slots = base_slots(timeline, index)
+    except ValueError as error:
+        return f'This clip cannot be checked yet: {error}', None
+    if slots.first:
+        return 'This clip has a start frame, which already shows the opening.', slots
+    if slots.mode not in ('t2va', 'ref2va'):
+        return 'This clip renders as FLF2VA.', slots
+    if not resolved['picture'] or not resolved['width'] or not resolved['height']:
+        return 'The map has no picture.', slots
+    if not resolved['opening']['camera']:
+        return 'The map has no camera, so the video gets no map text.', slots
+    return '', slots
+
+
+def _full(timeline, index, slots):
+    """Whether box `index` wants its map picture but already sends as many pictures as H3 takes."""
+    from . import timeline as rules
+    return (timeline.scene_maps[index]['video_picture'] and slots.mode == 'ref2va'
+            and len(slots.image_inputs) >= rules.MAX_REF_IMAGES)
+
+
 def video_parts(timeline, index):
     """What box `index`'s map adds to its video prompt: {"blocking", "definition", "retention", "slot", "reason"}, or
-    None when its map is off. "reason" says why a box with a map gets no text."""
+    None when its map is off. "reason" says why a box with a map gets no text or no picture."""
     from . import timeline as rules
     resolved = resolve(timeline, index)
     if resolved is None:
         return None
-    if not rules.is_fresh(timeline, index):
-        return _quiet('This clip continues the previous one.')
-    try:
-        slots = base_slots(timeline, index)
-    except ValueError as error:
-        return _quiet(f'This clip cannot be checked yet: {error}')
-    if slots.first:
-        return _quiet('This clip has a start frame, which already shows the opening.')
-    if slots.mode not in ('t2va', 'ref2va'):
-        return _quiet('This clip renders as FLF2VA.')
-    if not resolved['picture'] or not resolved['width'] or not resolved['height']:
-        return _quiet('The map has no picture.')
-    if not resolved['opening']['camera']:
-        return _quiet('The map has no camera, so the video gets no map text.')
+    reason, slots = _gate(timeline, index, resolved)
+    if reason:
+        return _quiet(reason)
     from . import scene_map
     labels = names(timeline, index, resolved, rules.assemble_prompt(_without(timeline, index), index))
     width, height = resolved['width'], resolved['height']
     blocking = ' '.join(part for part in (scene_map.frame_text(resolved['opening'], width, height, labels),
                                           scene_map.motion_text(resolved['opening'], resolved['end'], width, height,
                                                                 labels)) if part)
-    return {'blocking': blocking, 'definition': '', 'retention': '', 'slot': '', 'reason': ''}
+    slot = timeline.scene_map_slots.get(index, '')
+    if not slot:
+        return {'blocking': blocking, 'definition': '', 'retention': '', 'slot': '',
+                'reason': 'This clip already sends 9 pictures, so the map goes in as text only.'
+                if _full(timeline, index, slots) else ''}
+    return {'blocking': blocking, 'slot': slot, 'reason': '',
+            'definition': f'@{slot} is a storyboard reference for [Shot 1]: a top-down plan of this place defining the '
+                          'camera viewpoint and where each subject starts.',
+            'retention': f'@{slot} ([Shot 1] storyboard): weak_reference - only the camera viewpoint and where each '
+                         "subject starts are followed; the plan's view, symbols, arrow, labels and legend are not "
+                         'reproduced.'}
+
+
+# --- map picture -------------------------------------------------------------------------------------------------------
+
+def _taken(timeline):
+    """Every image slot number the Timeline names anywhere, so a map picture never reuses one."""
+    from . import timeline as rules
+    named = [picture['slot'] for picture in timeline.pictures] + [ref['slot'] for ref in timeline.refmods]
+    named += list(timeline.reference_replacements) + list(timeline.disabled_refs)
+    for text in [timeline.prompt] + [box.prompt for box in timeline.boxes]:
+        named += [name for kind, name in rules.mentions(text) if kind == 'image']
+    return {len(rules.IMAGE_SLOTS)} | {rules.slot_number(name) for name in named if rules.is_picture_slot(name)}
+
+
+def attach(timeline):
+    """Adds a Studio picture for each box that sends its map picture to H3, numbered after every slot in use."""
+    import hashlib
+    import json
+    timeline.scene_map_slots = {}
+    taken = None
+    for index, scene in enumerate(timeline.scene_maps):
+        if not scene or not scene['on'] or not scene['video_picture']:
+            continue
+        resolved = resolve(timeline, index)
+        reason, slots = _gate(timeline, index, resolved)
+        if reason or slots.mode != 'ref2va' or _full(timeline, index, slots):
+            continue
+        taken = _taken(timeline) if taken is None else taken
+        number = max(taken) + 1
+        taken.add(number)
+        slot = f'image{number}'
+        digest = hashlib.sha1(json.dumps([resolved['opening'], resolved['picture']], sort_keys=True)
+                              .encode('utf-8')).hexdigest()[:20]
+        timeline.pictures.append({'slot': slot, 'title': 'Scene map',
+                                  'file': {'type': 'input', 'subfolder': 'h3c_scene_maps', 'filename': digest + '.png'},
+                                  'scene_map': {'box': timeline.boxes[index].id, 'number': index + 1,
+                                                'layout': resolved['opening'], 'picture': resolved['picture']}})
+        timeline.scene_map_slots[index] = slot
+
+
+def digest(timeline, index):
+    """The content name of the map picture box `index` sends, or None."""
+    slot = timeline.scene_map_slots.get(index)
+    picture = next((picture for picture in timeline.pictures if picture['slot'] == slot), None) if slot else None
+    return picture['file']['filename'].rsplit('.', 1)[0] if picture else None
+
+
+def ensure(picture):
+    """The path of a map picture's file, drawn from its base picture at 1 MP when missing or older than the base."""
+    import os
+    import folder_paths
+    from PIL import Image, ImageOps
+    from . import scene_map, studio_pictures
+    info, file = picture['scene_map'], picture['file']
+    base = studio_pictures.path(info['picture'])
+    if base is None:
+        raise _error(f"box {info['number']} uses a scene map picture ({info['picture']['filename']}), but the file is "
+                     f"missing from ComfyUI's {info['picture']['type']} folder")
+    folder = os.path.join(folder_paths.get_directory_by_type(file['type']), file['subfolder'])
+    found = os.path.join(folder, file['filename'])
+    if not os.path.isfile(found) or os.path.getmtime(found) < os.path.getmtime(base):
+        with Image.open(base) as opened:
+            made = scene_map.render(scene_map.resize(ImageOps.exif_transpose(opened).convert('RGB'), 1.0), info['layout'])
+        os.makedirs(folder, exist_ok=True)
+        partial = found + '.partial.png'
+        made.save(partial)
+        os.replace(partial, found)
+    return found
+
+
+def preview(text, box_id):
+    """What the Studio panel shows for a clip's map: {"video": {"mode", "parts", "reason"}, "stills": {...}}."""
+    from . import timeline as rules
+    parsed = rules.parse(text)
+    index = next((number for number, box in enumerate(parsed.boxes) if box.id == box_id), None)
+    if index is None:
+        raise _error(f'there is no clip {box_id!r}')
+    parts = video_parts(parsed, index)
+    try:
+        mode = rules.box_slots(parsed, index).mode
+    except ValueError:
+        mode = ''
+    return {'video': {'mode': mode, 'parts': parts, 'reason': parts['reason'] if parts else ''}, 'stills': {}}
 
 
 def _sections(prompt):

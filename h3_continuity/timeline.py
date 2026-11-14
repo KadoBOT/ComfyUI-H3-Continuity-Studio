@@ -412,6 +412,7 @@ def parse(text):
     if any(box.memory == "cast" for box in parsed.boxes):
         from . import cast_memory
         cast_memory.check(parsed)
+    scene_maps.attach(parsed)
     return parsed
 
 
@@ -1285,6 +1286,8 @@ def layout_key(timeline, index, context=39):
                 value["previous"] = timeline.boxes[before].id if before is not None else None
     if box.flf_refmods:
         value["flf_refmods"] = True
+    if scene_maps.digest(timeline, index):
+        value["scene_map"] = scene_maps.digest(timeline, index)
     if not fresh and not timeline.continuation_guide:
         value["continuation_guide"] = False
     if not fresh and timeline.context_noise:

@@ -207,5 +207,108 @@ class VideoPartsTest(unittest.TestCase):
         self.assertEqual(scene_maps.names(plain, 0, scene_maps.resolve(plain, 0), SIX), {'m2': 'OUTCAST'})
 
 
+class PictureTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        from tests.continuity_support import enable_comfy_cpu
+        enable_comfy_cpu()
+
+    def test_ref2va_clip_with_switch_gets_next_slot_and_both_lines(self):
+        prompt = SIX.replace('in @image17.', 'in @image17 beside @image18.')
+        parsed = rules.parse(clip_story(prompt=prompt, pictures=('image17', 'image18'), scene_map=shot_map(video_picture=True)))
+        self.assertEqual(parsed.scene_map_slots, {0: 'image19'})
+        picture = parsed.pictures[-1]
+        self.assertEqual((picture['slot'], picture['title'], picture['file']['subfolder']),
+                         ('image19', 'Scene map', 'h3c_scene_maps'))
+        self.assertEqual(picture['scene_map']['picture']['filename'], 'yard.png')
+        text = rules.assemble_prompt(parsed, 0)
+        self.assertIn('\n@image19 is a storyboard reference for [Shot 1]: a top-down plan of this place defining the camera '
+                      'viewpoint and where each subject starts.\n\nsummary:', text)
+        self.assertIn('\n@image19 ([Shot 1] storyboard): weak_reference - only the camera viewpoint and where each subject '
+                      "starts are followed; the plan's view, symbols, arrow, labels and legend are not reproduced.\n\n"
+                      'detailed_description:', text)
+        slots = rules.box_slots(parsed, 0)
+        self.assertEqual((slots.mode, slots.tags['image19']), ('ref2va', '<Picture 3>'))
+        self.assertEqual(slots.tags['image17'], '<Picture 1>')
+
+    def test_slot_skips_every_image_slot_already_named(self):
+        prompt = SIX.replace('in @image17.', 'in @image17 and @image30.')
+        parsed = rules.parse(clip_story(prompt=prompt, scene_map=shot_map(video_picture=True)))
+        self.assertEqual(parsed.scene_map_slots, {0: 'image31'})
+
+    def test_t2va_clip_never_gets_the_picture(self):
+        parsed = rules.parse(clip_story(prompt=T2VA, pictures=(), scene_map=shot_map(video_picture=True)))
+        self.assertEqual(parsed.scene_map_slots, {})
+        self.assertEqual(rules.box_slots(parsed, 0).mode, 't2va')
+        self.assertNotIn('storyboard', rules.assemble_prompt(parsed, 0))
+
+    def test_nine_pictures_blocks_picture_keeps_text(self):
+        slots = [f'image{n}' for n in range(17, 26)]
+        prompt = SIX.replace('in @image17.', 'in ' + ' '.join('@' + slot for slot in slots) + '.')
+        parsed = rules.parse(clip_story(prompt=prompt, pictures=slots, scene_map=shot_map(video_picture=True)))
+        self.assertEqual(parsed.scene_map_slots, {})
+        got = scene_maps.video_parts(parsed, 0)
+        self.assertEqual(got['reason'], 'This clip already sends 9 pictures, so the map goes in as text only.')
+        self.assertTrue(got['blocking'])
+        self.assertEqual((got['definition'], got['slot']), ('', ''))
+
+    def test_switch_off_sends_no_picture(self):
+        parsed = rules.parse(clip_story())
+        self.assertEqual(parsed.scene_map_slots, {})
+        self.assertEqual(len(parsed.pictures), 1)
+
+    def test_layout_key_changes_when_only_the_picture_changes(self):
+        recoloured = shot_map(video_picture=True)
+        recoloured['markers'][0]['color'] = '#3a86ff'
+        stories = [rules.parse(clip_story(scene_map=value)) for value in (shot_map(video_picture=True), recoloured)]
+        self.assertEqual(*[rules.assemble_prompt(parsed, 0) for parsed in stories])
+        self.assertNotEqual(*[rules.layout_key(parsed, 0) for parsed in stories])
+
+    def test_ensure_renders_once_and_rerenders_when_base_is_newer(self):
+        import os, tempfile
+        from unittest import mock
+        import folder_paths
+        from PIL import Image
+        with tempfile.TemporaryDirectory() as root, \
+                mock.patch.object(folder_paths, 'get_directory_by_type', lambda kind: root):
+            os.makedirs(os.path.join(root, 'maps'))
+            base = os.path.join(root, 'maps', 'yard.png')
+            Image.new('RGB', (W, H), (200, 180, 120)).save(base)
+            parsed = rules.parse(clip_story(scene_map=shot_map(video_picture=True)))
+            picture = parsed.pictures[-1]
+            path = scene_maps.ensure(picture)
+            self.assertTrue(path.endswith(os.path.join('h3c_scene_maps', picture['file']['filename'])))
+            with Image.open(path) as made:
+                self.assertAlmostEqual(made.width * made.height / 1e6, 1.0, delta=0.01)
+            stamp = os.path.getmtime(path)
+            self.assertEqual(scene_maps.ensure(picture), path)
+            self.assertEqual(os.path.getmtime(path), stamp)
+            os.utime(base, (stamp + 10, stamp + 10))
+            scene_maps.ensure(picture)
+            self.assertGreater(os.path.getmtime(path), stamp)
+
+    def test_ensure_missing_base_names_clip_and_file(self):
+        import tempfile
+        from unittest import mock
+        import folder_paths
+        with tempfile.TemporaryDirectory() as root, \
+                mock.patch.object(folder_paths, 'get_directory_by_type', lambda kind: root):
+            parsed = rules.parse(clip_story(scene_map=shot_map(video_picture=True)))
+            with self.assertRaisesRegex(ValueError, r"box 1 uses a scene map picture \(yard\.png\), but the file is missing "
+                                                    r"from ComfyUI's input folder"):
+                scene_maps.ensure(parsed.pictures[-1])
+
+    def test_preview_returns_mode_parts_and_reason(self):
+        got = scene_maps.preview(clip_story(scene_map=shot_map(video_picture=True)), 'a')
+        self.assertEqual(got['video']['mode'], 'ref2va')
+        self.assertEqual(got['video']['parts']['slot'], 'image18')
+        self.assertEqual(got['video']['reason'], '')
+        first = scene_maps.preview(clip_story(pictures=('image17', 'image18'), first='image18'), 'a')
+        self.assertEqual(first['video']['reason'], 'This clip has a start frame, which already shows the opening.')
+        self.assertIsNone(scene_maps.preview(clip_story(scene_map={'on': False}), 'a')['video']['parts'])
+        with self.assertRaisesRegex(ValueError, 'no clip'):
+            scene_maps.preview(clip_story(), 'zzz')
+
+
 if __name__ == '__main__':
     unittest.main()
