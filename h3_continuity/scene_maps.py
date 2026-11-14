@@ -5,9 +5,14 @@ positions as its opening; web/h3c_scene_maps.mjs makes the same decisions and ke
 when the link breaks. Pure Python: scene_map.py (wording, drawing) is loaded only where it is needed.
 """
 
+import copy
 import math
+import re
 
 FEATURE = 'scene-map-1'
+HEADER = re.compile(r'^(\w+):[ \t]*$', re.M)
+SHOT_ONE = re.compile(r'^\[Shot 1\][^\n]*', re.M)
+DESCRIPTIONS = ('detailed_description', 'integrated_multimodal_description')
 LEGEND_POSITIONS = ('bottom-left', 'bottom-right', 'top-left', 'top-right')
 CAMERA_LOOK = {'fov': 55, 'height': 1.5, 'label': 'CAMERA', 'color': '#ffffff'}
 
@@ -175,3 +180,111 @@ def resolve(timeline, index, _memo=None):
               'end': _layout(resolved, end_camera if base['camera'] else None, base['look'], closing)}
     memo[index] = result
     return result
+
+
+# --- video prompt ------------------------------------------------------------------------------------------------------
+
+def names(timeline, index, resolved, prompt):
+    """{marker id: name} for markers linked to a Cast entity: the clip's <Subject N> label when the prompt uses it,
+    else the entity's name. Other markers keep their own label."""
+    cast = timeline.story[index].get('cast', {}) if index < len(timeline.story) else {}
+    known = {item.get('id'): item for item in (timeline.bible or {}).get('entities', []) if isinstance(item, dict)}
+    found = {}
+    for marker in resolved['opening']['markers']:
+        entity = marker.get('entity')
+        if not entity:
+            continue
+        label = next((label for label, target in cast.items() if target == entity and label in prompt), None)
+        name = label or (known.get(entity) or {}).get('name')
+        if name:
+            found[marker['id']] = name
+    return found
+
+
+def _without(timeline, index):
+    """A shallow copy of the Timeline in which box `index` has no map."""
+    probe = copy.copy(timeline)
+    probe.scene_maps = list(timeline.scene_maps)
+    probe.scene_maps[index] = None
+    return probe
+
+
+def base_slots(timeline, index, context=39):
+    """box_slots for box `index` as if its map were off."""
+    from . import timeline as rules
+    return rules.box_slots(_without(timeline, index), index, context)
+
+
+def _quiet(reason, slot=''):
+    return {'blocking': '', 'definition': '', 'retention': '', 'slot': slot, 'reason': reason}
+
+
+def video_parts(timeline, index):
+    """What box `index`'s map adds to its video prompt: {"blocking", "definition", "retention", "slot", "reason"}, or
+    None when its map is off. "reason" says why a box with a map gets no text."""
+    from . import timeline as rules
+    resolved = resolve(timeline, index)
+    if resolved is None:
+        return None
+    if not rules.is_fresh(timeline, index):
+        return _quiet('This clip continues the previous one.')
+    try:
+        slots = base_slots(timeline, index)
+    except ValueError as error:
+        return _quiet(f'This clip cannot be checked yet: {error}')
+    if slots.first:
+        return _quiet('This clip has a start frame, which already shows the opening.')
+    if slots.mode not in ('t2va', 'ref2va'):
+        return _quiet('This clip renders as FLF2VA.')
+    if not resolved['picture'] or not resolved['width'] or not resolved['height']:
+        return _quiet('The map has no picture.')
+    if not resolved['opening']['camera']:
+        return _quiet('The map has no camera, so the video gets no map text.')
+    from . import scene_map
+    labels = names(timeline, index, resolved, rules.assemble_prompt(_without(timeline, index), index))
+    width, height = resolved['width'], resolved['height']
+    blocking = ' '.join(part for part in (scene_map.frame_text(resolved['opening'], width, height, labels),
+                                          scene_map.motion_text(resolved['opening'], resolved['end'], width, height,
+                                                                labels)) if part)
+    return {'blocking': blocking, 'definition': '', 'retention': '', 'slot': '', 'reason': ''}
+
+
+def _sections(prompt):
+    """{name: (body start, body end)} of each `name:` section, the end before trailing blank lines."""
+    headers = list(HEADER.finditer(prompt))
+    found = {}
+    for number, header in enumerate(headers):
+        start = header.end()
+        end = headers[number + 1].start() if number + 1 < len(headers) else len(prompt)
+        while end > start and prompt[end - 1] in ' \t\r\n':
+            end -= 1
+        found.setdefault(header.group(1), (start, end))
+    return found
+
+
+def _close(prompt, section, text):
+    """`text` as a new last line of the section, or as a final paragraph without it."""
+    span = _sections(prompt).get(section)
+    if span is None:
+        return prompt.rstrip() + '\n\n' + text if prompt.strip() else text
+    return prompt[:span[1]] + '\n' + text + prompt[span[1]:]
+
+
+def insert(prompt, parts):
+    """The prompt with the map's lines in place: the definition closes subject_definitions, the retention line closes
+    retention_analysis, and the blocking text ends the description's [Shot 1] line."""
+    if not parts:
+        return prompt
+    if parts.get('definition'):
+        prompt = _close(prompt, 'subject_definitions', parts['definition'])
+    if parts.get('retention'):
+        prompt = _close(prompt, 'retention_analysis', parts['retention'])
+    if parts.get('blocking'):
+        sections = _sections(prompt)
+        name = next((name for name in DESCRIPTIONS if name in sections), None)
+        shot = SHOT_ONE.search(prompt, *sections[name]) if name else None
+        if shot:
+            prompt = prompt[:shot.end()] + ' ' + parts['blocking'] + prompt[shot.end():]
+        else:
+            prompt = _close(prompt, name or '', parts['blocking'])
+    return prompt

@@ -1011,7 +1011,8 @@ def assemble_prompt(timeline, index):
     from . import reference_assets
     prompt = join_prompts(*(without_disabled_refs(part.strip(), timeline.disabled_refs + inactive)
                             for part in (timeline.prompt, timeline.boxes[index].prompt)))
-    return join_prompts(prompt,reference_assets.native_prompt(timeline,index))
+    prompt = join_prompts(prompt,reference_assets.native_prompt(timeline,index))
+    return scene_maps.insert(prompt, scene_maps.video_parts(timeline, index))
 
 
 def join_prompts(shared, prompt):
