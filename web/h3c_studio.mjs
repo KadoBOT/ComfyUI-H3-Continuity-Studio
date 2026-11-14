@@ -9,7 +9,7 @@ import { ideaImagesRow } from './h3c_idea_images.mjs?v=3e6280e44a1b';
 import { partialBadge, partialTitle, previewBadge, previewLabel, previewTitle, timelineFrame, videoSeconds } from './h3c_partial_video.mjs?v=201bf0f48645';
 import {historyShortcut} from './h3c_history.mjs?v=d639ee9ffd57';
 import {setText} from './h3c_dom.mjs?v=584a9bf55653';
-import {ScriptView} from './h3c_script.mjs?v=7d4aa120d161';
+import {ScriptView} from './h3c_script.mjs?v=e28eed0578c7';
 
 const LIBRARY = ['references', 'cast', 'story', 'pictures', 'refmods'];
 const CENTER = ['viewer', 'story', 'cast', 'pictures', 'refmods'];
