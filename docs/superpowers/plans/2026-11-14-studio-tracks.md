@@ -110,9 +110,9 @@ New modules own layout, clock mapping and overlap resolution only. Existing time
 
 **Files:** `h3c_studio.mjs`, `h3c_timeline_editor.mjs`, `h3c_audio_lanes.mjs`, new `tests/web/track_inspector.test.mjs`; extend browser smoke.
 
-- [ ] Test stable selected clip header and visible icon actions; Prompt/Shots/Takes/Settings tabs preserve form values and selection. Selecting audio/text/overlap swaps context without displaying stale clip controls.
-- [ ] Expose the overlap pair, switch frame, fade and sound controls using Task4 validation; show bounds/reasons before commits. Property disclosures use full-width headings and aligned label/value controls; preserve all existing mode/reference/endpoints/length/memory controls.
-- [ ] Test narrow inspector, long labels, disabled fields and invalid transition edits. Observe red, implement, visually check desktop/mobile with populated content; commit after required suite.
+- [x] Test stable selected clip header and visible icon actions; Prompt/Shots/Takes/Settings tabs preserve form values and selection. Selecting audio/text/overlap swaps context without displaying stale clip controls.
+- [x] Expose the overlap pair, switch frame, fade and sound controls using Task4 validation; show bounds/reasons before commits. Property disclosures use full-width headings and aligned label/value controls; preserve all existing mode/reference/endpoints/length/memory controls.
+- [x] Test narrow inspector, long labels, disabled fields and invalid transition edits. Observe red, implement, visually check desktop/mobile with populated content; commit after required suite.
 
 ## Task 8: Cast preparation master/detail (STU2d)
 

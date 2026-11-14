@@ -230,7 +230,7 @@ export class AudioLanes {
   selectText() {
     if (!this.text) return;
     this.textSettings.open = true;
-    this.editor.inspect({kind: 'text'});
+    this.editor.inspect({kind:'text',track:this.selectedTextTrack});
   }
 
   async importText(file) {

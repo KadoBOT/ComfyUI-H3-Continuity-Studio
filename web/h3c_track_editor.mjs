@@ -1,3 +1,4 @@
+import {OverlapInspector} from './h3c_overlap_inspector.mjs';
 import * as tracks from './h3c_tracks.mjs';
 import * as model from './h3c_timeline_model.mjs';
 import {iconButton} from './h3c_icons.mjs';
@@ -60,7 +61,7 @@ export class TrackEditor {
   this.root=el('div','h3ct-track-editor');this.rows=el('div');this.add=el('div','h3ct-track-add');this.message=el('p','h3ct-track-message');this.message.setAttribute('role','status');
   this.add.append(el('span',null,'Add lane'));
   for(const type of tracks.TYPES){const button=iconButton(type,`Add ${type} lane`,()=>this.addLane(type));button.dataset.laneType=type;this.add.append(button);}
-  this.root.append(this.rows,this.add,this.message);
+  this.overlap=new OverlapInspector(editor);this.root.append(this.rows,this.add,this.message,this.overlap.root);
   if(!document.getElementById('h3ct-track-editor-style')){const style=el('style');style.id='h3ct-track-editor-style';style.textContent=CSS;document.head.append(style);}
  }
  mutate(operation) {
@@ -144,6 +145,17 @@ export class TrackEditor {
   const toggle=iconButton(this.expanded?'collapse':'expand',this.expanded?'Collapse video lanes':'Expand video lanes',()=>{this.expanded=!this.expanded;this.render(this.span);});toggle.setAttribute('aria-expanded',String(this.expanded));master.head.prepend(toggle);
   for(const p of visibleSpans(state))if(p.id)this.clip(master.body,state.boxes.findIndex(b=>b.id===p.id),p.start,p.end,false);
   rows.push(master.root);
+  const placements=tracks.placements(state),pairs=[];
+  for(let i=0;i<placements.length;i++)for(let j=i+1;j<placements.length;j++){
+   const a=placements[i],b=placements[j],start=Math.max(a.start,b.start),end=Math.min(a.end,b.end);
+   if(a.track!==b.track&&end>start)pairs.push({a,b,start,end});
+  }
+  if(pairs.length){
+   const row=this.row({id:'overlaps',name:'Overlaps'},false);row.root.classList.add('h3ct-overlap-row');
+   for(const pair of pairs){const ai=state.boxes.findIndex(b=>b.id===pair.a.id)+1,bi=state.boxes.findIndex(b=>b.id===pair.b.id)+1;
+    const button=iconButton('video',`Edit overlap between clips ${ai} and ${bi}`,()=>this.overlap.show(pair.a.id,pair.b.id));button.classList.add('h3ct-overlap-mark');button.append(el('span',null,`${ai} / ${bi}`));button.style.left=`${100*pair.start/this.span}%`;button.style.maxWidth=`${Math.max(28,100*(pair.end-pair.start)/this.span)}%`;row.body.append(button);
+   }rows.push(row.root);
+  }
   if(this.expanded)for(const track of [...videoTracks].reverse()){
    const row=this.row(track);
    row.root.classList.toggle('selected',this.selectedTrack===track.id);

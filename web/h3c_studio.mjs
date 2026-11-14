@@ -27,6 +27,26 @@ const TRACK_MIN = 250;
 const ZOOM_MAX = 16;
 const MOBILE_QUERY = '(max-width:600px), (max-width:1100px) and (max-height:500px)';
 const CSS = `
+.h3cx-inspector .h3ct-panelhead{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:8px}
+.h3cx-inspector .h3ct-panelhead>.h3ct-title{flex-basis:100%;font-size:12px;line-height:1.5;color:#c3cad4}
+.h3cx-inspector .h3ct-panelhead>.h3ct-grow{display:none}.h3cx-inspector .h3ct-clip-actions{flex:1}.h3cx-inspector .h3ct-clip-actions>.h3ct-row{gap:3px}
+.h3cx-studio .h3ct-panel-tabs{flex-wrap:nowrap;overflow-x:auto;gap:0;border-bottom:1px solid #434b58;margin-bottom:10px}
+.h3cx-studio .h3ct-panel-tabs [role=tab]{white-space:nowrap;border:0;border-bottom:2px solid transparent;border-radius:0;background:transparent;font-size:12px;min-height:38px;padding:6px!important}
+.h3cx-studio .h3ct-panel-tabs [aria-selected=true]{border-bottom-color:#9dbef1;color:#d6e5ff;background:#293342}
+.h3cx-library-nav{gap:0!important;margin:0!important;padding:0 10px;background:#1d2027;border-bottom:1px solid #343a46;flex-wrap:nowrap!important;overflow-x:auto}
+.h3cx-library-nav [role=tab]{border:0;border-bottom:2px solid transparent;border-radius:0;background:transparent;white-space:nowrap;padding:8px 10px!important;min-height:40px}
+.h3cx-library-nav [aria-selected=true]{background:#283342;border-bottom-color:#9dbef1;color:#d6e5ff}
+.h3cx-inspector .h3ct-panel{border:0;background:transparent;padding:0}
+.h3cx-inspector .h3ct-tabpanel>details,.h3cx-inspector .h3ct-audio-settings{border:0;border-top:1px solid #343a46;border-radius:0;padding:8px 0;margin:0}
+.h3cx-inspector summary{font-size:13px;font-weight:500;padding:4px 0;cursor:pointer}.h3cx-inspector details[open]>summary{margin-bottom:6px}
+.h3cx-inspector .h3ct-field{display:grid;grid-template-columns:minmax(88px,1fr) minmax(0,1.5fr);gap:8px;align-items:center;margin:6px 0;font-size:12px}
+.h3cx-inspector .h3ct-field:has(textarea),.h3cx-inspector .h3ct-field:has(.h3ct-picture-picker){display:flex;flex-direction:column;align-items:stretch}
+.h3cx-inspector input:not([type=checkbox]),.h3cx-inspector select{min-width:0;width:100%;font-size:13px}
+.h3cx-inspector textarea{font-size:13px;line-height:1.5}.h3ct-overlap-toggle,.h3ct-overlap-sources{display:flex;align-items:center;gap:8px;margin:12px 0}
+.h3ct-overlap-row,.h3ct-overlap-row .h3ct-track-body{min-height:34px}.h3ct-overlap-mark{position:absolute;top:2px;min-height:28px;z-index:2;white-space:nowrap}
+.h3cx-project-actions{gap:3px}.h3cx-track-toolbar{gap:8px}.h3cx-studio ::selection{background:#45648d;color:#fff}.h3cx-studio input,.h3cx-studio textarea{caret-color:#c5dcff}
+@media(pointer:coarse){.h3cx-library-nav [role=tab],.h3cx-studio .h3ct-panel-tabs [role=tab]{min-height:44px}}
+
 .h3cx-studio { position: fixed; inset: 0; z-index: 1500; display: flex; flex-direction: column; outline: none;
   overflow: hidden; background: #15171c; color: var(--input-text, #ddd); font: 14px/1.45 system-ui, sans-serif; }
 .h3cx-studio * { box-sizing: border-box; }
@@ -417,7 +437,7 @@ export class Studio {
     nav.setAttribute('role', 'tablist'); nav.setAttribute('aria-label', 'Workspace views');
     this.pageButtons = {};
     this.pages = {};
-    for (const name of ['box', 'audio', 'text', 'timeline', 'pictures', 'refmods', ...FOCUS]) {
+    for (const name of ['box', 'audio', 'text', 'overlap', 'timeline', 'pictures', 'refmods', ...FOCUS]) {
       this.pages[name] = el('div', 'h3cx-page');
       this.pages[name].dataset.page = name;
     }
@@ -457,7 +477,7 @@ export class Studio {
     this.clipPromptButton.setAttribute('aria-label', 'Inspect selected clip prompt');
     this.emptyInspector = el('p', 'h3cx-note h3cx-empty-inspector',
       'Start with + Clip in the Timeline, or open Story to write prompts.');
-    this.inspector.append(this.inspectorTitle, this.clipPromptButton, this.emptyInspector, this.pages.box, this.pages.audio, this.pages.text);
+    this.inspector.append(this.inspectorTitle, this.clipPromptButton, this.emptyInspector, this.pages.box, this.pages.audio, this.pages.text, this.pages.overlap);
     this.focus = el('section', 'h3cx-focus');
     this.focus.setAttribute('aria-label', 'Project focus');
     this.focusTitle = el('h2', 'h3cx-title');
@@ -807,7 +827,10 @@ export class Studio {
     if (target?.kind === 'audio' && editor.audioLanes.clips.some(clip => clip.slot === target.slot)) {
       editor.audioLanes.selectAudio(target.slot);
       this.inspectorTarget = {...target};
-    } else if (target?.kind === 'text' && editor.state.timed_text) {
+    } else if(target?.kind==='overlap'&&boxes.some(b=>b.id===target.from)&&boxes.some(b=>b.id===target.to)){
+      editor.trackEditor.overlap.show(target.from,target.to);this.inspectorTarget={...target};
+    } else if (target?.kind === 'text' && (editor.state.timed_text||editor.state.text_lanes?.some(l=>l.track===target.track))) {
+      editor.audioLanes.selectedTextTrack=target.track;editor.audioLanes.renderText();
       editor.audioLanes.selectText();
       this.inspectorTarget = {kind:'text'};
     } else this.inspectorTarget = fallback;
@@ -1019,7 +1042,7 @@ export class Studio {
   }
 
   inspect(target) {
-    if (!target || !['clip', 'audio', 'text'].includes(target.kind)) return;
+    if (!target || !['clip', 'audio', 'text', 'overlap'].includes(target.kind)) return;
     this.inspectorTarget = target;
     if (this.trimmingPointer == null) this.setInspectorVisible(true);
     this.refresh();
@@ -1049,11 +1072,12 @@ export class Studio {
     this.pages.box.hidden = target !== 'clip';
     this.pages.audio.hidden = target !== 'audio';
     this.pages.text.hidden = target !== 'text';
+    this.pages.overlap.hidden=target!=='overlap';
     const editor = this.host?.editor;
     this.clipPromptButton.hidden = target === 'clip' || !editor?.box();
     this.emptyInspector.hidden = target !== 'clip' || !!editor?.box();
     setText(this.inspectorTitle, target === 'audio' ? `Audio @${this.inspectorTarget.slot}`
-      : target === 'text' ? 'Timed text' : editor?.box() ? `Clip ${editor.selected + 1}` : 'No clip selected');
+      : target==='overlap'?'Overlap':target === 'text' ? 'Timed text' : editor?.box() ? `Clip ${editor.selected + 1}` : 'No clip selected');
     setText(this.focusContext, editor?.box() ? `Selected clip ${editor.selected + 1}` : 'No clip selected');
     this.renderMobile();
   }
@@ -1157,6 +1181,7 @@ export class Studio {
     this.place(regions.audioSettings, this.pages.audio);
     this.place(regions.dialogueSettings, this.pages.audio);
     this.place(regions.timedTextSettings, this.pages.text);
+    if(regions.overlapSettings)this.place(regions.overlapSettings,this.pages.overlap);
     regions.references.open = true;
     regions.refmods.open = true;
     regions.chainSettings.open = true;

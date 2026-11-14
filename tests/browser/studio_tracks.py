@@ -46,6 +46,23 @@ with sync_playwright() as p:
  assert page.evaluate('editor.box().start')==48,page.evaluate('editor.box().start')
  page.get_by_role('button',name='Collapse video lanes',exact=True).click()
  assert page.get_by_role('button',name='Expand video lanes',exact=True).is_visible()
+ # Overlap inspector changes the selected pair and rejects out-of-range fades.
+ page.get_by_role('button',name='Edit overlap between clips 2 and 4',exact=True).click()
+ assert page.locator('.h3cx-inspector-title').inner_text()=='Overlap'
+ page.get_by_role('checkbox',name='Use overlap switch',exact=True).check()
+ switch=page.get_by_role('spinbutton',name='Overlap switch at frame',exact=True)
+ switch.fill('99');switch.dispatch_event('change')
+ page.get_by_role('combobox',name='Overlap sound',exact=True).select_option('b2')
+ assert page.evaluate("stored().overlap_switches[0].at===99 && stored().overlap_switches[0].sound==='b2'")
+ switch=page.get_by_role('spinbutton',name='Overlap switch at frame',exact=True)
+ switch.fill('49');switch.dispatch_event('change')
+ assert page.evaluate('stored().overlap_switches[0].at')==99
+ assert page.locator('.h3ct-overlap-inspector [role=status]').inner_text()
+ page.get_by_role('checkbox',name='Use overlap switch',exact=True).uncheck()
+ assert page.evaluate('stored().overlap_switches.length')==0
+ page.evaluate('editor.inspectClip()')
+ page.get_by_role('tab',name='Prompt',exact=True).press('End')
+ assert page.get_by_role('tab',name='Settings',exact=True).get_attribute('aria-selected')=='true'
  # A populated lane needs confirmation; Undo restores its clips and placement.
  before_delete=page.evaluate('JSON.stringify(stored())')
  page.get_by_role('button',name='Expand video lanes',exact=True).click()

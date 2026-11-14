@@ -8,7 +8,7 @@ import { promptSections, promptShots, writePromptSections } from './h3c_prompt_s
 import * as model from './h3c_timeline_model.mjs?v=5a547aaebfc2';
 import * as videoLayers from './h3c_layers.mjs?v=5a547aaebfc2';
 import {audioSourceLocked} from './h3c_audio_windows.mjs?v=cdefbd77b246';
-import { AudioLanes } from './h3c_audio_lanes.mjs?v=6b9c5b5ceaea';
+import { AudioLanes } from './h3c_audio_lanes.mjs?v=6b55581d0c76';
 import { shotFrames, frameTargets, syncTargets, acceptedGuideFrames, endpointGuide, endpointReference, adoptEndpointGuides } from './h3c_shot_preview.mjs?v=5a547aaebfc2';
 import {FrameImages, targetLabel, imageDrop} from './h3c_frame_images.mjs?v=12d72ed4f7a6';
 import { splitBox, splitTiming } from './h3c_shot_split.mjs?v=09f5cc7e18b1';
@@ -917,7 +917,7 @@ export class TimelineEditor {
       pictures: this.pictures.root, refmods: this.refmodsEl, lane: this.laneEl, hint: this.hintEl, readOnly: this.readOnlyEl, panel: this.panelEl,
       cast: this.castEl, sharedPrompt: this.sharedRoot, clipTakes: this.takes.root, videoPicker: this.videoPickerEl,
       bridgeTakes: this.takes.bridgeRoot, continuity: this.checks.root, bridgeSettings: this.bridges.root,
-      audioSettings: this.audioLanes.settings, dialogueSettings: this.dialogue.root, timedTextSettings: this.audioLanes.textSettings,
+      overlapSettings:this.trackEditor.overlap.root, audioSettings: this.audioLanes.settings, dialogueSettings: this.dialogue.root, timedTextSettings: this.audioLanes.textSettings,
       audioHeader: this.audioLanes.header, timedTextHeader: this.audioLanes.textHeader,
       stillPrompts: this.frameImages.preparation.root, stillInstructions:this.frameImages.preparation.instructionsRoot, chainSettings: this.chain.root};
   }
