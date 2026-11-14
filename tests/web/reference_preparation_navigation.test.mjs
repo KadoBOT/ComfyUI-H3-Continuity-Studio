@@ -11,6 +11,16 @@ test('reference preparation edits one selected asset instead of rendering every 
  panel.choose('b');inputs=findAll(panel.body,n=>n.tagName==='TEXTAREA');assert.equal(inputs.length,1);assert.equal(inputs[0].getAttribute('aria-label'),'The field image prompt');
  panel.setFilter('cast');assert.equal(panel.selectedKey,'a');assert.equal(panel.editor.state.reference_preparation.generate.locations,true);
 });
+test('category tabs replace batch checkboxes: each category tab owns its preparation switch',async()=>{
+ const panel=await open(),edits=[];panel.editor.commit=()=>edits.push(structuredClone(panel.editor.state.reference_preparation.generate));
+ const prepare=()=>findAll(panel.body,n=>n.getAttribute?.('role')==='switch')[0];
+ assert.equal(findAll(panel.body,n=>n.classList?.contains('h3cr-batch-options')).length,0);
+ assert.equal(prepare(),undefined);
+ panel.setFilter('props');assert.equal(prepare().getAttribute('aria-label'),'Prepare objects references');assert.equal(prepare().getAttribute('aria-checked'),'false');
+ prepare().fire('click');assert.deepEqual(edits.at(-1),{cast:true,locations:true,props:true});
+ panel.setFilter('cast');const generate=findAll(panel.body,n=>n.tagName==='BUTTON'&&n.textContent.startsWith('Generate missing'))[0];
+ assert.equal(generate.textContent,'Generate missing characters (1)');
+});
 test('late catalog replies cannot replace a newer selection or catalog',async()=>{
  const panel=await open();panel.choose('b');const pending=[];panel.host.referenceCatalog=()=>new Promise(resolve=>pending.push(resolve));
  const first=panel.refresh(),second=panel.refresh();pending[1]([{...rows[0]},{...rows[1],name:'Updated field'}]);await second;

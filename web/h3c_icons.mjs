@@ -10,7 +10,9 @@ const paths={
  stills:'M3 5h18v15H3z M3 16l6-7 5 5 3-3 4 5 M16 8h1',viewer:'M3 4h18v14H3z M8 22h8 M12 18v4',
  story:'M4 3h16v18H4z M8 7h8 M8 11h8 M8 15h5',cast:'M8 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8 M2 21v-3a6 6 0 0 1 12 0v3 M16 4a4 4 0 0 1 0 8 M17 15a5 5 0 0 1 5 5v1',
  refs:'M8 3h13v13H8z M3 8v13h13 M10 13l4-4 5 5',prompt:'M4 4h16v13H9l-5 4z M8 8h8 M8 12h6',shots:'M3 5h18v15H3z M3 10h18 M8 5v5 M16 5v5 M10 13l5 3-5 3z',
- takes:'M3 5h14v12H3z M7 21h14V9 M6 9h8 M6 13h5',upload:'M12 16V3 M7 8l5-5 5 5 M4 16v5h16v-5',search:'M10 3a7 7 0 1 0 0 14 7 7 0 0 0 0-14 M15 15l7 7',stop:'M5 5h14v14H5z',more:'M4 12h2 M11 12h2 M18 12h2',snap:'M5 3v11a7 7 0 0 0 14 0V3 M5 7h5 M14 7h5 M10 3v11a2 2 0 0 0 4 0V3',
+ takes:'M3 5h14v12H3z M7 21h14V9 M6 9h8 M6 13h5',write:'M4 20h4L19 9l-4-4L4 16z M13.5 6.5l4 4',rewrite:'M20 11a8 8 0 0 0-14.3-4.9 M4 13a8 8 0 0 0 14.3 4.9 M5 3v4h4 M19 21v-4h-4',
+ check:'M4 12.5l5 5L20 6.5',shuffle:'M3 7h3.5c2.5 0 3.5 1.2 5 5s2.5 5 5 5H21 M3 17h3.5c1.4 0 2.3-.4 3-1.3 M14.5 8.3c.7-.9 1.6-1.3 3-1.3H21 M18 4l3 3-3 3 M18 14l3 3-3 3',
+ save:'M5 3h11l3 3v15H5z M8 3v5h7V3 M8 21v-7h8v7',image:'M3 5h18v14H3z M3 15l5-5 4 4 3-3 6 6 M15.5 9.5h.01',upload:'M12 16V3 M7 8l5-5 5 5 M4 16v5h16v-5',search:'M10 3a7 7 0 1 0 0 14 7 7 0 0 0 0-14 M15 15l7 7',stop:'M5 5h14v14H5z',more:'M4 12h2 M11 12h2 M18 12h2',snap:'M5 3v11a7 7 0 0 0 14 0V3 M5 7h5 M14 7h5 M10 3v11a2 2 0 0 0 4 0V3',
 };
 export function icon(name) {
  const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');

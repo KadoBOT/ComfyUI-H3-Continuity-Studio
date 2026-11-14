@@ -1,4 +1,4 @@
-import {decorateIcon,setIconLabel} from './h3c_icons.mjs';
+import {decorateIcon,icon,setIconLabel} from './h3c_icons.mjs';
 import {TrackEditor} from './h3c_track_editor.mjs';
 import {Pins, SwitchSection} from './h3c_switch_section.mjs?v=c253500f4908';
 import * as tracks from './h3c_tracks.mjs';
@@ -11,15 +11,15 @@ import * as videoLayers from './h3c_layers.mjs?v=448aca934518';
 import {audioSourceLocked} from './h3c_audio_windows.mjs?v=cdefbd77b246';
 import { AudioLanes } from './h3c_audio_lanes.mjs?v=afba3ccda1aa';
 import { shotFrames, frameTargets, syncTargets, acceptedGuideFrames, endpointGuide, endpointReference, adoptEndpointGuides } from './h3c_shot_preview.mjs?v=448aca934518';
-import {FrameImages, targetLabel, imageDrop} from './h3c_frame_images.mjs?v=0c5a1a0afcb4';
+import {FrameImages, targetLabel, imageDrop} from './h3c_frame_images.mjs?v=63d6b7e1bfd2';
 import { splitBox, splitTiming } from './h3c_shot_split.mjs?v=b431e6b9a29c';
 import { fillReferenceSwitches } from './h3c_reference_switches.mjs?v=e94b5b02e02b';
 import { ReferenceReplacements } from './h3c_reference_replacements.mjs?v=1cebdefbcad2';
 import { fillPicturePicker, mentionedReferences, referenceChip } from './h3c_reference_pictures.mjs?v=8198307be3fa';
-import { CastPage } from './h3c_cast.mjs?v=88a7f46dc855';
-import { PicturesPanel, highestSlot } from './h3c_pictures.mjs?v=c32212570492';
+import { CastPage } from './h3c_cast.mjs?v=2a49f312dd43';
+import { PicturesPanel, highestSlot } from './h3c_pictures.mjs?v=460ff883e76e';
 import { CheckPanel } from './h3c_check.mjs?v=0ba848400498';
-import { BridgePanel, bridgeLine } from './h3c_bridges.mjs?v=0d58b5a373ce';
+import { BridgePanel, bridgeLine } from './h3c_bridges.mjs?v=8af3e67c92e7';
 import { DialoguePanel } from './h3c_dialogue.mjs?v=45b8c5f4bb7c';
 import { ChainSettings } from './h3c_chain_settings.mjs?v=9f2d4061a6d6';
 import { exportedVideo } from './h3c_partial_video.mjs?v=201bf0f48645';
@@ -196,10 +196,15 @@ const CSS = `
 .h3ct-prompt-tabs { display: flex; align-items: center; gap: 4px; }
 .h3ct-prompt-tabs .h3ct-label { margin-right: auto; }
 .h3ct-prompt-tabs [aria-pressed="true"] { background: #293e60; border-color: #729cdd; }
-.h3ct-structure { display: flex; flex-direction: column; gap: 0; max-height: 460px; overflow: auto;
-  scrollbar-gutter: stable; scrollbar-color: #485161 #1a1d23; padding-right: 4px; }
+.h3ct-structure { display: flex; flex-direction: column; gap: 6px; }
 .h3ct-structure[hidden], .h3ct-panel .h3cm-wrap[hidden] { display: none; }
+.h3ct-structure > .h3sw-section { border-top: 0; }
+.h3ct-structure > .h3sw-section > .h3sw-head { min-height: 30px; padding: 2px 0; font-size: 12px; color: #aab1bd; }
 .h3ct-structure > .h3sw-section > .h3sw-body { padding-left: 0; }
+.h3ct-section-tabs { display: flex; flex-wrap: wrap; gap: 4px; }
+.h3ct-section-tab.empty > span:first-child { opacity: .6; }
+.h3ct-tab-count { min-width: 16px; padding: 0 4px; border-radius: 8px; background: #ffffff14; font-size: 11px; line-height: 16px; text-align: center; }
+.h3ct-tab-count:empty { display: none; }
 .h3ct-count { margin-left: 8px; font-size: 11px; font-weight: 400; color: #aab1bd; }
 .h3ct-section-fields { display: grid; gap: 8px; }
 .h3ct-section.subject_definitions .h3ct-section-fields { grid-template-columns: repeat(auto-fit, minmax(min(230px, 100%), 1fr)); }
@@ -216,22 +221,47 @@ const CSS = `
 .h3ct-target .h3ct-still-empty { display: grid; place-items: center; color: #aab1bd; font-size: 20px; }
 .h3ct-target[aria-pressed="true"] { border-color: #7aa2f7; outline: 1px solid #7aa2f7; }
 .h3ct-target.accepted { border-bottom: 3px solid #66bc90; }
-.h3ct-targets.interior { display: flex; overflow-x: auto; padding: 2px; }
-.h3ct-targets.interior .h3ct-target { flex: 0 0 92px; }
-.h3ct-targets.interior .h3ct-target img, .h3ct-targets.interior .h3ct-still-empty { height: 42px; }
+.h3ct-targets.h3ct-filmstrip { display: flex; gap: 6px; overflow-x: auto; padding: 2px 2px 4px; scrollbar-width: thin; }
+.h3ct-filmstrip .h3ct-target { flex: 0 0 96px; border-radius: 5px; }
+.h3ct-filmstrip .h3ct-target img, .h3ct-filmstrip .h3ct-target .h3ct-still-empty { height: 54px; }
+.h3ct-filmstrip .h3ct-target .h3ct-still-caption { padding: 2px 6px; }
+.h3ct-filmstrip .h3ct-target.accepted { border-bottom-width: 1px; box-shadow: inset 0 -2px 0 #66bc90; }
 .h3cx-studio .h3ct-target, .h3cx-studio .h3ct-image-thumbnail, .h3cx-studio .h3ct-still { padding: 0; }
-.h3ct-frame-images { display: grid; gap: 10px; min-width: 0; }
+.h3ct-frame-images { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; min-width: 0; }
+.h3ct-image-hero { grid-template-columns: minmax(0, 1fr); }
 .h3ct-frame-images .h3ct-label { text-transform: none; letter-spacing: normal; font-size: 12px; }
 .h3ct-frame-images .h3ct-note { width: 100%; }
 .h3ct-image-thumbnail { display: block; padding: 0; line-height: 0; overflow: hidden; }
 .h3ct-image-thumbnail img { display: block; width: 96px; height: 54px; object-fit: contain; background: #101218; }
 .h3ct-image-hero { display: grid; gap: 6px; }
 .h3ct-image-hero .h3ct-image-thumbnail, .h3ct-candidate .h3ct-image-thumbnail { width: 100%; }
-.h3ct-image-hero .h3ct-image-thumbnail img { width: 100%; height: auto; max-height: 200px; min-height: 100px; }
+.h3ct-image-hero .h3ct-image-thumbnail { border-radius: 6px; }
+.h3ct-image-hero .h3ct-image-thumbnail img { width: 100%; height: auto; aspect-ratio: 16 / 9; max-height: 240px; }
+.h3ct-image-head { justify-content: space-between; }
+.h3ct-image-head > strong { font-size: 13px; font-weight: 600; }
 .h3ct-image-hero .h3ct-row { justify-content: space-between; }
 .h3ct-guide-status { color: #66bc90; font-size: 12px; }
-.h3ct-image-empty { display: grid; place-items: center; min-height: 100px; margin: 0; padding: 16px; background: #181c25; color: #aab1bd; border: 1px dashed #465066; border-radius: 4px; text-align: center; }
-.h3ct-image-actions .h3ct-button { flex: 1 1 auto; padding: 6px 8px; }
+.h3ct-image-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; aspect-ratio: 16 / 9; max-height: 240px; margin: 0; padding: 16px;
+  background: #14171d; color: #c9d1dd; border: 1px dashed #3a414d; border-radius: 6px; text-align: center; font-size: 13px; }
+.h3ct-image-empty small { color: #8b93a1; font-size: 12px; max-width: 28ch; }
+.h3ct-image-empty-icon { color: #6b7381; line-height: 0; }
+.h3ct-image-empty-icon svg { width: 28px; height: 28px; }
+.h3ct-drop-over.h3ct-image-hero .h3ct-image-empty, .h3ct-guide-add.h3ct-drop-over { border-color: #8fbcff; background: #8fbcff14; }
+.h3ct-image-actions { gap: 6px; }
+.h3ct-image-actions { flex-wrap: nowrap; }
+.h3ct-image-actions > .h3ci-button:has(> .h3ci-sr) { flex: none; }
+.h3ct-image-actions > .h3ci-button:has(> .h3ci-sr):not([hidden]) { margin-left: auto; }
+.h3ct-image-actions > .h3ci-button:has(> .h3ci-sr):not([hidden]) ~ .h3ci-button { margin-left: 0; }
+.h3cx-inspector .h3ct-saved-controls .h3ct-number { width: 80px; flex: 0 0 80px; }
+.h3ct-prompt-summary { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border-radius: 6px; background: #ffffff06; border: 1px solid #2c313c; }
+.h3ct-prompt-summary-head { justify-content: space-between; }
+.h3ct-prompt-excerpt.empty { color: #8b93a1; font-style: italic; }
+.h3ct-candidate-title { font-size: 12px; font-weight: 600; }
+.h3ct-empty-state { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 24px 12px; margin-bottom: 8px; color: #8b93a1; font-size: 12px; text-align: center; }
+.h3ct-empty-state[hidden] { display: none; }
+.h3ct-empty-state svg { width: 28px; height: 28px; color: #6b7381; }
+.h3ct-empty-state strong { color: #c9d1dd; font-size: 13px; font-weight: 600; }
+.h3ct-empty-state span { max-width: 32ch; }
 .h3ct-prompt-excerpt { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; margin: 0; color: #c6ccd7; font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .h3ct-image-details { min-width: 0; border-top: 1px solid #343a46; }
 .h3ct-image-details > summary { cursor: pointer; padding: 7px 0; font-size: 12px; }
@@ -256,7 +286,8 @@ const CSS = `
 .h3ct-saved-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .h3ct-saved-controls .h3ct-number { width: 72px; }
 .h3ct-saved-still .h3ct-saved-controls > .h3ct-button:last-child { margin-left: auto; }
-.h3ct-guide-add { display: flex; flex-direction: column; gap: 4px; padding: 8px; border: 1px dashed #465066; border-radius: 5px; }
+.h3ct-guide-add { display: flex; flex-direction: column; gap: 6px; padding: 10px; border: 1px dashed #3a414d; border-radius: 6px; }
+.h3ct-guide-add .h3ct-saved-controls > .h3ct-hint { margin: 0; }
 .h3ct-guide-add > strong { font-size: 12px; font-weight: 600; }
 .h3ct-subject-grid, .h3ct-linked-images { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 6px; }
 .h3ct-subject-card, .h3ct-linked-card { min-width: 0; padding: 5px; border: 1px solid #465066; border-radius: 5px; background: rgba(0,0,0,.12); }
@@ -620,10 +651,10 @@ export class TimelineEditor {
       else delete this.box().seed_mode;
       this.commit();
     });
-    const roll = this.rollSeedButton = button('🎲', 'Choose a new seed for the next render', () => {
+    const roll = this.rollSeedButton = decorateIcon(button('', '', () => {
       this.video().seed = model.newSeed();
       this.commit();
-    });
+    }), 'shuffle', 'Choose a new seed for the next render');
     const upload = (end) => button('Upload…', `Upload a picture into the Timeline and make it this clip’s ${end} frame`,
       () => this.uploadFrame(end));
     this.uploadNote = el('p', 'h3ct-hint h3cq-note');
@@ -714,6 +745,7 @@ export class TimelineEditor {
     this.sharedEl = el('textarea', 'h3ct-text');
     this.sharedEl.rows = 2;
     this.sharedEl.placeholder = 'Added before every clip’s prompt: style, place, who @image1 is…';
+    this.sharedEl.setAttribute('aria-label', 'Shared prompt');
     this.sharedEl.addEventListener('input', () => {
       this.state.prompt = this.sharedEl.value;
       this.typed();
@@ -756,7 +788,11 @@ export class TimelineEditor {
       title: available ? 'Available: this clip has a rendered take' : 'Turns on when this clip has a rendered take',
       state: available ? '' : 'Render first'});
     this.clipTakesEl = el('div');
-    this.clipTakesEl.append(this.continuityDetails.root, this.takes.root, this.takes.bridgeRoot);
+    this.takesEmpty = el('div', 'h3ct-empty-state');
+    this.takesEmpty.append(icon('takes'), el('strong', null, 'No takes yet'),
+      el('span', null, 'Generate this clip to make its first take. Every render is kept here so you can compare and switch.'));
+    this.clipTakesEl.append(this.takesEmpty, this.takes.root, this.takes.bridgeRoot, this.continuityDetails.root);
+    this.clipTakesEl.addEventListener('h3c-takes-listed', () => this.syncTakesEmpty());
     this.tabPanels.takes.append(this.layerTakesNote, this.clipTakesEl);
     for(const [control,name,label] of [[this.addButton,'plus','Add clip'],[this.renderNextButton,'next','Render next'],[this.renderButton,'all','Render remaining'],[this.boxRenderButton,'play','Generate clip'],[this.leftButton,'left','Move clip earlier'],[this.rightButton,'right','Move clip later'],[this.duplicateButton,'duplicate','Duplicate'],[this.deleteButton,'trash','Delete']])decorateIcon(control,name,label);
     this.panelEl.append(panelHead, this.videoPickerEl, this.panelTabsEl, this.tabButtons.references,
@@ -784,6 +820,11 @@ export class TimelineEditor {
       this.tabPanels[name].hidden = !selected;
     }
     this.takes?.render();
+    this.syncTakesEmpty();
+  }
+
+  syncTakesEmpty() {
+    if (this.takesEmpty) this.takesEmpty.hidden = !this.takes || !this.takes.root.hidden || !this.takes.bridgeRoot.hidden;
   }
 
   focusClipPrompt() {
@@ -791,7 +832,7 @@ export class TimelineEditor {
     this.setTab('prompt');
     const usable = (area) => area?.isConnected && !area.closest('[hidden], .h3sw-section:not(.on)');
     const area = usable(this.activePromptEl) ? this.activePromptEl
-      : this.structureEl.querySelector('.h3sw-section.on textarea') ?? this.structureEl.querySelector('textarea') ?? this.promptEl;
+      : this.structureEl.querySelector('.h3sw-section:not([hidden]) textarea') ?? this.structureEl.querySelector('textarea') ?? this.promptEl;
     const section = area.closest('.h3sw-section')?.h3swSection;
     if (section && !section.open) { this.pins.set(section.pin, true); section.set(true); }
     this.activePromptEl = area;
@@ -1447,10 +1488,13 @@ export class TimelineEditor {
       changed();
     });
     add.disabled = !choices.some(item => freeSlot(item.kind));
-    actions.append(add, button('Refresh library', 'Read saved RefMods and descriptions', async () => {
+    decorateIcon(add, 'plus', 'Add RefMod', {text: true}).title = 'Assign a saved RefMod to an unused reference slot';
+    const refresh = decorateIcon(button('', '', async () => {
       try { await this.host.refreshRefmods?.(); }
       catch (error) { this.refmodMessage.textContent = error.message; }
-    }));
+    }), 'history', 'Refresh library', {text: true});
+    refresh.title = 'Read saved RefMods and descriptions';
+    actions.append(add, refresh);
     this.refmodMessage = el('p', 'h3ct-hint', 'Assign RefMods to unconnected slots. Story reads their saved descriptions automatically.');
     root.append(actions, this.refmodMessage);
     for (const ref of refs) {
@@ -2245,10 +2289,11 @@ export class TimelineEditor {
     this.selectedShot = selected.shot;
     this.frameImages.open(this.box().id, this.frameImages.boxId === this.box().id
       ? this.frameImages.target : {kind:'shot',shot:selected.shot});
-    const endpoints=el('div','h3ct-targets'),interior=el('div','h3ct-targets interior');
+    const strip=el('div','h3ct-targets h3ct-filmstrip');
     const images=this.host.connected().images;
-    endpoints.setAttribute('aria-label','First and last frames');interior.setAttribute('aria-label','Interior shots');
-    for(const {target,frame} of frameTargets(this.state,this.selected,this.host.context())) {
+    strip.setAttribute('aria-label','Frames in this clip');
+    const order=({target,frame})=>target.kind==='first'?-1:target.kind==='last'?Infinity:frame;
+    for(const {target,frame} of frameTargets(this.state,this.selected,this.host.context()).sort((a,b)=>order(a)-order(b))) {
       const pick=button('',`${targetLabel(target)}, frame ${frame}`,()=>{
         this.selectedShot=target.shot??1;this.frameImages.open(this.box().id,target);this.renderTrack();this.renderPanel();
       },'h3ct-target');
@@ -2258,9 +2303,9 @@ export class TimelineEditor {
       this.fillStill(pick,this.box(),target,targetLabel(target),images);
       showImages(pick);
       imageDrop(pick,file=>{pick.click();this.dropGuide(file,target);});
-      (target.kind==='shot'?interior:endpoints).append(pick);
+      strip.append(pick);
     }
-    this.previewsEl.prepend(endpoints,...(interior.children.length?[interior]:[]));
+    this.previewsEl.prepend(strip);
     if(this.frameImages.root.parentNode!==this.previewsEl) this.previewsEl.append(this.frameImages.root);
     this.previewsEl.append(this.shotSplit(selected),this.savedStills(shots));
     const box = this.video();
@@ -2278,6 +2323,32 @@ export class TimelineEditor {
     this.activePromptEl = this.promptEl;
     this.promptMarks.render();
     if (!structured) return;
+
+    const tabs = el('div', 'h3ct-section-tabs');
+    tabs.setAttribute('role', 'tablist');
+    tabs.setAttribute('aria-label', 'Prompt sections');
+    this.structureEl.append(tabs);
+    const views = [];
+    if (!sections.some((section) => section.key === this.promptSection)) this.promptSection = sections[0].key;
+    const show = (key) => {
+      this.promptSection = key;
+      for (const {tab, block, section} of views) {
+        const selected = section.key === key;
+        tab.setAttribute('aria-selected', String(selected));
+        tab.tabIndex = selected ? 0 : -1;
+        block.root.hidden = !selected;
+      }
+      for (const marks of this.sectionMarks) marks.render();
+    };
+    tabs.addEventListener('keydown', (event) => {
+      if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+      event.preventDefault();
+      const index = views.findIndex((view) => view.section.key === this.promptSection);
+      const next = event.key === 'Home' ? 0 : event.key === 'End' ? views.length - 1
+        : (index + (event.key === 'ArrowRight' ? 1 : -1) + views.length) % views.length;
+      show(views[next].section.key);
+      views[next].tab.focus();
+    });
 
     for (const section of sections) {
       // On while any of its fields has words; off empties them, kept here until it comes back on.
@@ -2324,11 +2395,22 @@ export class TimelineEditor {
         if (this.activePromptEl === this.promptEl || part.label === '[Shot 1]') this.activePromptEl = area;
       }
       block.body.append(fields);
-      block.set(section.fields.some((part) => part.value.trim()) || this.pins.has(key), {disabled: this.readOnly.length > 0,
-        state: numbered.length ? String(numbered.length) : ''});
+      const filled = section.fields.some((part) => part.value.trim());
+      block.titleEl.textContent = 'Include in prompt';
+      block.set(filled || this.pins.has(key), {disabled: this.readOnly.length > 0,
+        title: filled ? `Turn off to clear ${section.title}; turning it on again brings the text back`
+          : `${section.title} is empty`});
+      const tab = button('', `${section.title}${filled ? '' : ' · empty'}`, () => show(section.key), 'h3ct-section-tab');
+      tab.setAttribute('role', 'tab');
+      tab.classList.toggle('empty', !filled);
+      tab.append(el('span', null, section.title), el('span', 'h3ct-tab-count', numbered.length ? String(numbered.length) : ''));
+      block.root.setAttribute('role', 'tabpanel');
+      block.root.setAttribute('aria-label', section.title);
+      tabs.append(tab);
+      views.push({tab, block, section});
       this.structureEl.append(block.root);
     }
-    for (const marks of this.sectionMarks) marks.render();
+    show(this.promptSection);
   }
 
   async editStory(edit) {
@@ -2592,18 +2674,16 @@ export class TimelineEditor {
       }));
       list.append(row);
     }
-    if (!list.children.length) {
-      list.append(el('p', 'h3ct-hint', 'Choose a First, Last or Shot marker to copy its prompt, upload a guide or generate candidates.'));
-    }
     const add = el('div', 'h3ct-guide-add'), controls = el('div', 'h3ct-saved-controls');
     const frame = this.guideFrameInput(Math.floor(this.lastGuideFrame() / 2), 'The clip frame the new guide steers');
+    frame.setAttribute('aria-label', 'Frame to guide');
     const upload = (file) => this.placeGuide(add, Number(frame.value), {file});
-    controls.append(field('Frame', frame), button('Upload guide…',
-      'Upload a picture that guides this frame without adding a shot', () => {
+    controls.append(el('span', 'h3ct-hint', 'Frame'), frame, decorateIcon(button('', '', () => {
         const input = el('input'); input.type = 'file'; input.accept = 'image/*';
         input.addEventListener('change', () => { if (input.files[0]) upload(input.files[0]); });
         input.click();
-      }));
+      }), 'upload', 'Upload guide…', {text: true}));
+    controls.lastChild.title = 'Upload a picture that guides this frame without adding a shot';
     add.append(el('strong', null, 'Guide another frame'), controls,
       el('span', 'h3ct-hint', `Or drop an image here. Frames 0–${this.lastGuideFrame()}; the prompt doesn't change.`));
     imageDrop(add, upload);
@@ -2709,6 +2789,7 @@ export class TimelineEditor {
     this.bridges.render();
     this.renderBridgeSwitch();
     this.takes.render();
+    this.syncTakesEmpty();
   }
 
   renderChips(connected) {

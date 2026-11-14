@@ -178,7 +178,16 @@ export class ReferencePreparationPanel {
 
       .h3cr-preparation{padding:12px;border-radius:3px}.h3cr-toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.h3cr-toolbar .h3cr-count{margin-right:auto;color:#c3cad4;font-size:12px}
       .h3cr-filters{display:flex;gap:4px;flex-wrap:wrap;align-items:center;padding:6px 0}.h3cr-filters input{margin-left:auto;min-width:140px;flex:1 1 160px;max-width:260px!important}
-      .h3cr-filters button[aria-pressed=true]{background:#2d405c;border-color:#8eb5ef;color:#e0edff}
+      .h3cr-tabs{display:flex;flex-wrap:wrap;gap:2px;padding:2px;border-radius:7px;background:#ffffff08}
+      .h3cr-tabs [role=tab]{display:inline-flex;align-items:center;gap:6px;min-height:28px;padding:3px 10px;border:0;border-radius:5px;background:transparent;color:#aab1bd;font-size:12px;font-weight:500;cursor:pointer}
+      .h3cr-tabs [role=tab]:hover{color:#e8ecf2;background:#ffffff0d}.h3cr-tabs [role=tab][aria-selected=true]{background:#2a3a55;color:#e3edff}
+      .h3cr-tabs [role=tab]:focus-visible{outline:2px solid #8fbcff;outline-offset:-2px}
+      .h3cr-tab-count{min-width:18px;padding:0 5px;border-radius:9px;background:#ffffff14;color:#c9d1dd;font-size:11px;line-height:16px;text-align:center;font-variant-numeric:tabular-nums}
+      .h3cr-prepare{display:inline-flex;align-items:center;gap:8px;min-height:28px;padding:2px 4px;border:0;background:transparent;color:#d6dae2;font:inherit;font-size:13px;cursor:pointer}
+      .h3cr-prepare:disabled{cursor:default;opacity:.6}.h3cr-prepare:focus-visible{outline:2px solid #8fbcff;outline-offset:2px;border-radius:4px}
+      .h3cr-track{flex:0 0 26px;height:14px;border-radius:7px;background:#3a404c;box-shadow:inset 0 0 0 1px #4a5160;position:relative;transition:background .15s}
+      .h3cr-track::after{content:'';position:absolute;top:2px;left:2px;width:10px;height:10px;border-radius:50%;background:#8b93a1;transition:transform .15s,background .15s}
+      .h3cr-prepare[aria-checked=true] .h3cr-track{background:#3f6fbf;box-shadow:none}.h3cr-prepare[aria-checked=true] .h3cr-track::after{transform:translateX(12px);background:#fff}
       .h3cr-workspace{display:grid;grid-template-columns:minmax(170px,240px) minmax(0,1fr);gap:16px;align-items:start;min-width:0}
       .h3cr-master{max-height:55vh;overflow-y:auto;border-top:1px solid #343a46;min-width:0}.h3cr-item{display:flex;align-items:center;gap:10px;width:100%;text-align:left;padding:8px;border:0;border-bottom:1px solid #343a46;background:transparent;color:inherit;cursor:pointer;font:inherit;min-height:68px}
       .h3cr-item:hover{background:#262c37}.h3cr-item[aria-pressed=true]{background:#2a3c55}.h3cr-item:focus-visible{outline:2px solid #9dbef1;outline-offset:-2px}
@@ -254,23 +263,47 @@ export class ReferencePreparationPanel {
     const filtered=this.rows.filter(row=>(this.filter==='all'||row.category===this.filter)&&row.name.toLowerCase().includes(this.search.toLowerCase()));
     if(!filtered.some(r=>r.key===this.selectedKey))this.selectedKey=filtered[0]?.key??null;
     const selected=filtered.find(r=>r.key===this.selectedKey);
-    const toolbar=element('div','h3cr-toolbar'),needed=this.rows.filter(r=>flags[r.category]&&r.included!==false&&['missing','outdated'].includes(r.status));
-    const generate=action(`Generate missing (${needed.length})`,()=>this.run(()=>this.host.generateSelectedReferences(needed.map(r=>r.key))));
+    const toolbar=element('div','h3cr-toolbar'),names=Object.fromEntries(categories);
+    const needed=this.rows.filter(r=>(this.filter==='all'||r.category===this.filter)&&flags[r.category]&&r.included!==false&&['missing','outdated'].includes(r.status));
+    const scope=this.filter==='all'?'':` ${names[this.filter].toLowerCase()}`;
+    const generate=action(`Generate missing${scope} (${needed.length})`,()=>this.run(()=>this.host.generateSelectedReferences(needed.map(r=>r.key))));
     generate.classList.add('h3ct-primary');generate.disabled=!!busy||readonly||this.capability!==true||!needed.length;
-    generate.title=this.capability!==true?'Connect a pixel image recipe to generate references.':!Object.values(flags).some(Boolean)?'Choose categories under Batch options.':!needed.length?'Selected references are ready.':'Generate included missing or outdated references.';
+    generate.title=this.capability!==true?'Connect a pixel image recipe to generate references.'
+      :this.filter!=='all'&&!flags[this.filter]?`Turn on Prepare ${names[this.filter].toLowerCase()} to generate them.`
+      :!Object.values(flags).some(Boolean)?'Open a category and turn on its preparation.':!needed.length?'Included references are ready.':'Generate included missing or outdated references.';
     const settings=iconButton('settings','Generator settings',()=>this.run(()=>this.host.openStillGenerator()));settings.dataset.action='generator-settings';settings.disabled=!this.host.openStillGenerator;
     const stop=action('Stop after current image',()=>this.host.stopReferencePreparation());stop.hidden=!this.host.referenceBatch?.();
     const addObject=action(this.showObject?'Close object form':'Add object',()=>{this.showObject=!this.showObject;this.render();});addObject.disabled=readonly;
-    toolbar.append(element('span','h3cr-count',`${this.rows.length} references`),generate,settings,stop,addObject);
-    const filters=element('div','h3cr-filters');filters.setAttribute('role','group');filters.setAttribute('aria-label','Filter references');
-    for(const [category,label] of categories){const button=action(label,()=>this.setFilter(category));button.setAttribute('aria-label',`Show ${label.toLowerCase()}`);button.setAttribute('aria-pressed',String(category===this.filter));filters.append(button);}
-    const search=element('input','h3ct-text');search.type='search';search.placeholder='Find a reference';search.value=this.search;search.setAttribute('aria-label','Search references');search.dataset.focus='reference-search';search.addEventListener('input',()=>{this.search=search.value;this.render();});filters.append(search);
-    const options=element('details','h3cr-batch-options');options.open=this.batchOptionsOpen??!Object.values(flags).some(Boolean);options.append(element('summary',null,'Batch options'));
-    options.addEventListener('toggle',()=>{this.batchOptionsOpen=options.open;});
-    const switches=element('div','h3cr-switches');
-    for(const [category,title] of categories.filter(([key])=>key!=='all')){const label=element('label'),control=element('input');control.type='checkbox';control.checked=!!flags[category];control.disabled=readonly;control.setAttribute('aria-label',`Prepare ${title.toLowerCase()} references`);control.addEventListener('change',()=>this.commit(state=>setPreparationCategory(state,category,control.checked)));label.append(control,element('span',null,title));switches.append(label);}
-    options.append(switches,element('p','h3cr-note','Checked categories are generated. Inclusion in this batch does not change which approved references H3 uses.'));
-    const parts=[toolbar,filters,options];
+    const filters=element('div','h3cr-filters');
+    const tabs=element('div','h3cr-tabs');tabs.setAttribute('role','tablist');tabs.setAttribute('aria-label','Reference categories');
+    for(const [category,label] of categories){
+      const count=category==='all'?this.rows.length:this.rows.filter(row=>row.category===category).length;
+      const tab=action('',()=>this.setFilter(category));tab.setAttribute('role','tab');tab.setAttribute('aria-label',label);
+      tab.setAttribute('aria-selected',String(category===this.filter));tab.tabIndex=category===this.filter?0:-1;
+      tab.append(element('span',null,label),element('span','h3cr-tab-count',String(count)));
+      tab.addEventListener('keydown',event=>{
+        if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;event.preventDefault();
+        const index=categories.findIndex(([key])=>key===category),next=event.key==='Home'?0:event.key==='End'?categories.length-1:(index+(event.key==='ArrowRight'?1:-1)+categories.length)%categories.length;
+        this.setFilter(categories[next][0]);this.body.querySelector(`[role=tab][aria-label="${categories[next][1]}"]`)?.focus();
+      });
+      tabs.append(tab);
+    }
+    const search=element('input','h3ct-text');search.type='search';search.placeholder='Find a reference';search.value=this.search;search.setAttribute('aria-label','Search references');search.dataset.focus='reference-search';search.addEventListener('input',()=>{this.search=search.value;this.render();});
+    filters.append(tabs,search);
+    if(this.filter==='all') {
+      const on=categories.filter(([key])=>key!=='all'&&flags[key]).map(([,label])=>label);
+      toolbar.append(element('span','h3cr-count',on.length?`Preparing ${on.join(', ').toLowerCase()}`:'No category is prepared yet. Open one to turn it on.'));
+    } else {
+      const category=this.filter,on=!!flags[category];
+      const prepare=element('button','h3cr-prepare');prepare.type='button';prepare.setAttribute('role','switch');prepare.setAttribute('aria-checked',String(on));
+      prepare.setAttribute('aria-label',`Prepare ${names[category].toLowerCase()} references`);prepare.disabled=readonly;
+      prepare.title=`When on, clips that use ${names[category].toLowerCase()} need their approved references before stills generate. Off keeps their images as they are.`;
+      prepare.append(element('span','h3cr-track'),element('span',null,`Prepare ${names[category].toLowerCase()}`));
+      prepare.addEventListener('click',()=>this.commit(state=>setPreparationCategory(state,category,!on)));
+      toolbar.append(prepare,element('span','h3cr-count'));
+    }
+    toolbar.append(generate,settings,stop,addObject);
+    const parts=[filters,toolbar];
     if(this.capability===false)parts.push(element('p','h3cr-note','Connect a pixel image recipe to generate references. You can still upload images.'));
     const batch=this.host.referenceBatch?.();if(batch){const progress=element('progress');progress.max=batch.keys.length;progress.value=batch.completed;progress.setAttribute('aria-label','Reference preparation progress');parts.push(progress,element('p','h3cr-note',`Preparing ${batch.current??'references'}: ${batch.completed} of ${batch.keys.length}${batch.stop?' (stopping after this image)':''}`));}
     if(this.message){const note=element('p','h3cr-note',this.message);note.setAttribute('role','status');parts.push(note);}
