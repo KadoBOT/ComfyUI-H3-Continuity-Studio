@@ -46,3 +46,16 @@ class TracksTest(unittest.TestCase):
   self.assertEqual(tracks.timeline_frame(data,53),dict(frame=48,bridgeId='B'))
   self.assertEqual(tracks.timeline_frame(data,84),dict(frame=72,bridgeId=None))
   self.assertEqual(tracks.output_spans(data)[-1]['outputEnd'],132)
+
+
+class LegacyConversionTest(unittest.TestCase):
+ def test_converting_to_tracks_keeps_every_layout_key(self):
+  legacy=dict(version=1,boxes=[dict(id='A',frames=39,exact=True,cut=True,prompt='One.'),dict(id='B',frames=39,exact=True,cut=False,prompt='Two.'),
+                               dict(id='C',frames=39,exact=True,cut=True,prompt='Three.')])
+  converted=copy.deepcopy(legacy);converted['requires']=[tracks.FEATURE];converted['tracks']=[dict(id='v1',type='video',name='Video 1')]
+  for box,start in zip(converted['boxes'],[0,39,78]):box.update(track='v1',start=start)
+  before,after=rules.parse(json.dumps(legacy)),rules.parse(json.dumps(converted))
+  self.assertEqual([rules.layout_key(before,i) for i in range(3)],[rules.layout_key(after,i) for i in range(3)])
+  converted['boxes'][2]['start']=120
+  moved=rules.parse(json.dumps(converted))
+  self.assertNotEqual(rules.layout_key(before,2),rules.layout_key(moved,2))

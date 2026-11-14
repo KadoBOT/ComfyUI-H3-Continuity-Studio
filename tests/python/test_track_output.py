@@ -112,3 +112,9 @@ class TrackOutputTest(unittest.TestCase):
   self.assertEqual((bridge['outputStart'],bridge['outputEnd']),(39,51))
   resumed=next(s for s in spans if s['outputStart']==51)
   self.assertEqual(resumed['sources'][0]['first'],0)
+
+ def test_superseded_outputs_are_removed_and_recorded_ones_kept(self):
+  with tempfile.TemporaryDirectory() as folder:
+   for name in ['tracks@old.mp4','tracks@full.mp4','tracks@so.mp4','other.mp4']:Path(folder,name).write_bytes(b'x')
+   track_output.discard_superseded(folder,dict(track_full=dict(file='tracks@full.mp4'),track_so_far=dict(file='tracks@so.mp4'),segments=[]))
+   self.assertEqual(sorted(os.listdir(folder)),['other.mp4','tracks@full.mp4','tracks@so.mp4'])

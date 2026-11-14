@@ -225,6 +225,7 @@ def ensure(folder, name, parsed, manifest, crf, mode='full', make=True):
                         latest = store.load_manifest(folder)
                         if fingerprint(folder,parsed,latest,mode,crf)==key:
                             latest[record_key]=record;store.write_manifest(folder,latest)
+                            discard_superseded(folder,latest)
             except Exception as failure:
                 error = f'Track output could not be built: {failure}'
             with _LOCK: _JOBS[job_key] = dict(key=key,error=error)
@@ -235,6 +236,17 @@ def ensure(folder, name, parsed, manifest, crf, mode='full', make=True):
         _JOBS[job_key] = dict(key=key,thread=thread)
         thread.start()
         return None,True,''
+
+
+def discard_superseded(folder, manifest):
+    """Outputs are named by content, so every edit writes a new file; only the recorded ones are kept. A file a
+    player still holds (Windows) stays until a later edit."""
+    kept = {record['file'] for key,record in manifest.items()
+            if key.startswith('track_') and isinstance(record,dict) and record.get('file')}
+    for file in os.listdir(folder):
+        if file.startswith('tracks@') and file.endswith('.mp4') and file not in kept:
+            try: os.remove(os.path.join(folder,file))
+            except OSError: pass
 
 
 def restacker(parsed):

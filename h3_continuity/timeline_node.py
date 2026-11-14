@@ -283,7 +283,7 @@ def _status(name, folder, parsed, manifest, is_done, reasons=None, materialize=F
                 if mode=='full':
                     status['full_video']=_view(name,record['file'],record['sources']);status['full_video_clock']=record['clock']
                 elif mode=='partial':
-                    status['partial_video']=dict(file=_view(name,record['file'],record['sources']),rendered=len(done|kept),boxes=count,note=note)
+                    status['partial_video']=dict(file=_view(name,record['file'],record['sources']),rendered=len(done|kept),boxes=count,note=note,clock=record['clock'])
                 else:
                     status['preview_video']=dict(file=_view(name,record['file'],record['sources']),boxes=len(done|kept),total=count,clock=record['clock'])
             if building: status['full_video_building' if mode=='full' else 'preview_video_building']=True

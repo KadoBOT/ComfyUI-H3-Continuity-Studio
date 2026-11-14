@@ -20,6 +20,8 @@ export function placeClip(state,id,track,start) {
  if(!box)throw Error('This clip no longer exists.');Object.assign(box,{track,start:Math.max(0,Math.round(start))});tracks.validate(trial);
  Object.assign(state.boxes.find(b=>b.id===id),{track:box.track,start:box.start});
 }
+// Each kept bridge as the clip it leaves and the clip it leads into, to notice an edit that pulls them apart.
+function bridgeEnds(state){return model.keptBridges(state).map(b=>{const index=state.boxes.findIndex(x=>x.id===b.before);return {after:b.before,before:state.boxes[tracks.previousIndex(state,index)]?.id};});}
 export function visibleSpans(state) {
  const spans=tracks.placements(state),priority=new Map((state.tracks??[{id:'legacy'}]).map((t,i)=>[t.id,i])),result=[];
  const boundaries=[...new Set([0,...spans.flatMap(p=>[p.start,p.end]),...(state.overlap_switches??[]).map(s=>s.at)])].sort((a,b)=>a-b);
@@ -67,8 +69,10 @@ export class TrackEditor {
  }
  mutate(operation) {
   if(this.editor.readOnly.length)return false;
-  const state=structuredClone(this.editor.state),id=this.editor.box()?.id;
-  try{const selected=operation(state);tracks.validate(state);this.editor.host.undoStep?.();this.editor.state=state;this.editor.selected=Math.max(0,state.boxes.findIndex(b=>b.id===(selected??id)));this.editor.commit();this.editor.host.undoStep?.();this.message.textContent='';return true;}
+  const state=structuredClone(this.editor.state),id=this.editor.box()?.id,bridged=bridgeEnds(state);
+  try{const selected=operation(state);tracks.validate(state);
+   const kept=new Set(model.keptBridges(state).map(b=>b.before));
+   if(bridged.some(({before,after})=>[before,after].every(x=>state.boxes.some(b=>b.id===x))&&!kept.has(after)))throw Error('That would separate a clip from its insertion bridge. Remove the bridge first.');this.editor.host.undoStep?.();this.editor.state=state;this.editor.selected=Math.max(0,state.boxes.findIndex(b=>b.id===(selected??id)));this.editor.commit();this.editor.host.undoStep?.();this.message.textContent='';return true;}
   catch(error){this.message.textContent=error.message;return false;}
  }
  addLane(type) {
@@ -82,7 +86,7 @@ export class TrackEditor {
   if(this.editor.readOnly.length)return;
   const state=this.editor.state,track=state.tracks.find(t=>t.id===id),contents=tracks.trackContents(state,id);
   if(Object.values(contents).some(Boolean)&&!globalThis.confirm?.(`Delete ${track.name} and its contents? ${contents.clips} video clips, ${contents.audio} audio sources, ${contents.text} text attachments. Media files will be kept.`))return;
-  this.mutate(state=>tracks.removeTrack(state,id));
+  this.mutate(state=>{const gone=state.boxes.filter(b=>b.track===id).map(b=>b.id);tracks.removeTrack(state,id);model.forgetBoxes(state,gone);});
  }
  addClip() {
   this.mutate(state=>{

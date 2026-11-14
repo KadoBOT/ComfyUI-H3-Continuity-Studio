@@ -1,7 +1,7 @@
 // The Box page's takes: the take in use and the saved takes of the selected box, then of the bridge before it, with
 // Play, Use and Delete, Delete other takes and Delete unusable takes in this sequence. Plain DOM without ComfyUI
 // imports; the editor's host sends the requests, and Play asks the Studio to show the take.
-import * as model from './h3c_timeline_model.mjs?v=5a547aaebfc2';
+import * as model from './h3c_timeline_model.mjs?v=448aca934518';
 import {parseJSON, stringifyJSON, seedValue} from './h3c_project.mjs?v=0882b8a6265a';
 import {drawsSame, setText} from './h3c_dom.mjs?v=584a9bf55653';
 

@@ -4,9 +4,9 @@ import {reconcileSceneAnchors} from './h3c_still_scene.mjs?v=1ca16919a3f9';
 // decide how a box runs. Mirrors h3_continuity/timeline.py.
 import {parseJSON, stringifyJSON, seedValue} from './h3c_project.mjs?v=0882b8a6265a';
 import {imageDescriptionPrompt, imageDescriptionSource} from './h3c_image_descriptions.mjs?v=5f858b2b6a5a';
-import {acceptedGuideFrames} from './h3c_shot_preview.mjs?v=5a547aaebfc2';
+import {acceptedGuideFrames} from './h3c_shot_preview.mjs?v=448aca934518';
 import {AUDIO_WINDOWS_FEATURE, pruneWindows, resolveWindows, audioSourceLocked} from './h3c_audio_windows.mjs?v=cdefbd77b246';
-import {LAYER_FIELDS, SWAPS_DONT_FIT, clampSwitch, hasLayers, layerIds, switchFits} from './h3c_layers.mjs?v=5a547aaebfc2';
+import {LAYER_FIELDS, SWAPS_DONT_FIT, clampSwitch, hasLayers, layerIds, switchFits} from './h3c_layers.mjs?v=448aca934518';
 export const FPS = 24;
 export const MAX_FRAMES = 362;
 export const GRID = 17;
@@ -321,8 +321,10 @@ export function keptBridges(state) {
   const seen = new Set();
   return (state.bridges ?? []).filter((bridge) => {
     const index = state.boxes.findIndex((box) => box.id === bridge.before);
-    if (index < 1 || !state.boxes[index].cut || seen.has(bridge.before)) return false;
-    if (state.boxes[index].layers?.length || state.boxes[index - 1].layers?.length) return false;
+    // On tracks a bridge leads out of the clip right before this one on its own track, not the previous catalog entry.
+    const before = index < 0 ? null : tracks.enabled(state) ? tracks.previousIndex(state, index) : index > 0 ? index - 1 : null;
+    if (before === null || !state.boxes[index].cut || seen.has(bridge.before)) return false;
+    if (state.boxes[index].layers?.length || state.boxes[before].layers?.length) return false;
     seen.add(bridge.before);
     return true;
   });
@@ -521,6 +523,16 @@ export function removeBox(state, index, context) {
   }
   normalize(state, context);
   return Math.min(index, state.boxes.length - 1);
+}
+
+// What a deleted clip leaves behind elsewhere in the Timeline: timed windows, Cast pins and looks that name it.
+export function forgetBoxes(state, ids) {
+  const gone = new Set(ids);
+  pruneWindows(state);
+  for (const entity of Array.isArray(state.bible?.entities) ? state.bible.entities : []) {
+    if (Array.isArray(entity?.pins)) entity.pins = entity.pins.filter((pin) => !gone.has(pin?.box));
+    if (Array.isArray(entity?.looks)) entity.looks = entity.looks.filter((look) => !gone.has(look?.from));
+  }
 }
 
 export function moveBox(state, index, delta, context) {

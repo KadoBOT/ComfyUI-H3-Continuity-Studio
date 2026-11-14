@@ -1266,10 +1266,14 @@ def layout_key(timeline, index, context=39):
     value = {"prompt": assemble_prompt(timeline, index), "frames": played_frames(timeline, index),
              "seed": box.seed, "fresh": fresh, "first": slots.first, "last": slots.last}
     if timeline.tracks is not None:
-        value["start"] = box_start(timeline,index)
+        # Only what differs from the sequential layout joins the key, so converting a project to tracks
+        # does not make saved media read as outdated.
+        if box_start(timeline,index)!=sum(played_frames(timeline,i) for i in range(index))/FPS:
+            value["start"] = box_start(timeline,index)
         if not fresh:
             before=previous_index(timeline,index)
-            value["previous"] = timeline.boxes[before].id if before is not None else None
+            if before!=(index-1 if index else None):
+                value["previous"] = timeline.boxes[before].id if before is not None else None
     if box.flf_refmods:
         value["flf_refmods"] = True
     if not fresh and not timeline.continuation_guide:
