@@ -63,6 +63,12 @@ def document(parsed):
                 for b in parsed.boxes], bridges=parsed.all_bridges, overlap_switches=parsed.overlap_switches)
 
 
+def previous_entry(parsed, index, entries):
+    from . import timeline as rules
+    previous = rules.previous_index(parsed, index)
+    return entries.get(previous + 1) if previous is not None else None
+
+
 def predecessor(data, box_id, duration=None):
     spans = placements(data, duration)
     at = next((p for p in spans if p["id"] == box_id), None)
@@ -141,9 +147,11 @@ def validate_data(data, duration=None):
         windows.append((start, end, pair))
 
 
-def validate(parsed, data):
-    validate_data(data)
+def validate(parsed, data, duration=None):
     parsed.tracks = copy.deepcopy(data.get("tracks"))
-    parsed.placements = {p["id"]: p for p in placements(data)} if "tracks" in data else {}
+    parsed.placements = {b.id: dict(id=b.id, track=raw.get('track'), start=raw.get('start',0), end=raw.get('start',0)+b.frames)
+                         for b,raw in zip(parsed.boxes,data.get('boxes',[])) if type(raw.get('start',0)) is int} if "tracks" in data else {}
+    validate_data(data, duration)
+    parsed.placements = {p["id"]: p for p in placements(data, duration)} if "tracks" in data else {}
     parsed.overlap_switches = copy.deepcopy(data.get("overlap_switches", []))
     parsed.text_lanes = copy.deepcopy(data.get("text_lanes", []))

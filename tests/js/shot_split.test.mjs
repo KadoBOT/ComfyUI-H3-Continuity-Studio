@@ -1,8 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseState, serialize } from '../../web/h3c_timeline_model.mjs?v=2697dd13c9c5';
-import { splitBox } from '../../web/h3c_shot_split.mjs?v=f56085a55f89';
-import { syncTargets, acceptedGuideFrames } from '../../web/h3c_shot_preview.mjs?v=2697dd13c9c5';
+import { parseState, serialize } from '../../web/h3c_timeline_model.mjs?v=40182e45e769';
+import { splitBox } from '../../web/h3c_shot_split.mjs?v=b5f1145939d9';
+import { syncTargets, acceptedGuideFrames } from '../../web/h3c_shot_preview.mjs?v=40182e45e769';
 import { CONTEXT, guideFile, shotGuideTimeline, savedGuideSplitTimeline, unstructuredGuideTimeline } from './shot_split_fixtures.mjs';
 
 test('Split before Shot N keeps a targeted Shot guide with its shot', () => {

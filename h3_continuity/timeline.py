@@ -201,7 +201,7 @@ def parse(text):
         if raw.get("dialogue", "cues") not in ("cues", "manual"):
             raise _error(f"box {n} dialogue must be cues or manual")
     parsed.manual_dialogue = [raw.get("dialogue") == "manual" for raw in boxes]
-    tracks.validate(parsed, data)
+    tracks.validate(parsed, data, lambda box,index: played_frames(parsed,index))
     layers.validate(parsed, boxes, requires)
     from . import still_scene, reference_assets
     parsed.reference_preparation = reference_assets.validate(data["reference_preparation"]) if "reference_preparation" in data else None
@@ -527,11 +527,12 @@ def _bridges(raw, parsed):
         if before not in positions:
             raise BridgeError(index, f"bridge {n} leads into box {before!r}, which this Timeline doesn't have")
         position = positions[before]
-        if position == 0:
+        previous=previous_index(parsed,position)
+        if previous is None:
             raise BridgeError(index, f"bridge {n} leads into box 1, which has no box before it")
         if layers.stacked(parsed, position):
             raise BridgeError(index, f"bridge {n} leads into box {position + 1}, which has several videos")
-        if layers.stacked(parsed, position - 1):
+        if layers.stacked(parsed, previous):
             raise BridgeError(index, f"bridge {n} leads out of box {position}, which has several videos")
         if not is_fresh(parsed, position):
             raise BridgeError(index, f"bridge {n} leads into box {position + 1}, which continues box {position}: "
@@ -600,7 +601,8 @@ def memory_sources(timeline, index):
         result = []
         for item in box.memories:
             candidates = [i for i, source in enumerate(timeline.boxes) if source.id == item.get("box")]
-            if len(candidates) != 1 or candidates[0] >= index:
+            if len(candidates) != 1 or (candidates[0] >= index if timeline.tracks is None else
+                    box_start(timeline,candidates[0])*FPS + item["frame"] >= box_start(timeline,index)*FPS):
                 raise _error(f"box {index + 1} memory must refer to a unique earlier box; choose its source again")
             source = candidates[0]
             played = played_frames(timeline, source)
@@ -609,12 +611,13 @@ def memory_sources(timeline, index):
                 raise _error(f"box {index + 1} remembers frame {item['frame']} of box {source + 1}, which plays "
                              f"{played} frames: choose a moment before frame {played}")
             result.append((source, item["frame"], item.get("label") or "visual continuity"))
+    previous = previous_index(timeline,index,False)
     if replays_previous(timeline, index):
         # The full preceding video covers its individual moments, independently of Cast's picture/budget filters.
-        return [(index - 1, 0, "the previous shot before this cut"),
-                *(item for item in result if box.memory == "selected" or item[0] != index - 1)]
-    if index and box.cut:
-        before = (index - 1, max(0, played_frames(timeline, index - 1) - 5), "the moment before this cut")
+        return [(previous, 0, "the previous shot before this cut"),
+                *(item for item in result if box.memory == "selected" or item[0] != previous)]
+    if previous is not None and box.cut:
+        before = (previous, max(0, played_frames(timeline, previous) - 5), "the moment before this cut")
         return result + [before] if not any(item[:2] == before[:2] for item in result) else result
     return result
 
@@ -623,23 +626,23 @@ def replays_previous(timeline, index):
     """Whether cut box `index`'s memory starts with the whole preceding video. H3 replays that video's lip movement
     onto the new shot, so not when either side of the cut speaks."""
     from . import dialogue
-    return (bool(index) and timeline.boxes[index].cut
-            and not (dialogue.speaks(timeline, index) or dialogue.speaks(timeline, index - 1)))
+    previous = previous_index(timeline,index,False)
+    return (previous is not None and timeline.boxes[index].cut
+            and not (dialogue.speaks(timeline, index) or dialogue.speaks(timeline, previous)))
 
 
 def scene_sources(timeline, index):
     """Same scene's windows for box `index`: the scene's first frame, then the moment before a cut or an earlier view
     of the current scene."""
     box = timeline.boxes[index]
-    start = max(i for i, item in enumerate(timeline.boxes[:index + 1])
-                if i == 0 or (item.cut and item.new_scene) or item.plate_changes)
-    if start == index:
-        return []
-    previous = played_frames(timeline, index - 1)
+    indices=track_indices(timeline,index); indices=indices[:indices.index(index)+1]
+    position=max(p for p,i in enumerate(indices) if p==0 or (timeline.boxes[i].cut and timeline.boxes[i].new_scene) or timeline.boxes[i].plate_changes)
+    start=indices[position]
+    if start==index: return []
+    before=indices[-2]; previous=played_frames(timeline,before)
     if box.cut:
-        return [(start, 0, "scene establishing view"), (index - 1, max(0, previous - 5), "the moment before this cut")]
-    return [(start, 0, "scene establishing view"),
-            (index - 1, max(0, (previous - 5) // 2), "earlier view of the current scene")]
+        return [(start,0,"scene establishing view"),(before,max(0,previous-5),"the moment before this cut")]
+    return [(start,0,"scene establishing view"),(before,max(0,(previous-5)//2),"earlier view of the current scene")]
 
 
 def _changes(value, n):
@@ -651,7 +654,8 @@ def _changes(value, n):
 def effective_plates(timeline, index, frame=0):
     revisions = {p["id"]: p for p in timeline.plates}
     active = {}
-    for i, box in enumerate(timeline.boxes[:index + 1]):
+    for i in track_indices(timeline,index)[:track_indices(timeline,index).index(index)+1]:
+        box=timeline.boxes[i]
         for change in sorted(box.plate_changes, key=lambda c: c["frame"]):
             if change['slot'] in timeline.reference_replacements:
                 continue
@@ -665,11 +669,8 @@ def effective_plates(timeline, index, frame=0):
 
 
 def plate_chain(timeline, index):
-    start = index
-    while start and not is_fresh(timeline, start):
-        start -= 1
     values = []
-    for i in range(start, index + 1):
+    for i in continuation_chain(timeline,index):
         slots = box_slots(timeline, i)
         used = set(slots.references) - {slots.first, slots.last}
         plates = [[slot, p["id"], p["image"]] for slot, p in sorted(effective_plates(timeline, i).items()) if slot in used]
@@ -837,10 +838,11 @@ def frame_guides(timeline, index, context):
         if frame in guides and guides[frame] != item["guide"]:
             raise _error(f"box {index + 1} has two different preview guides at frame {item['frame']}")
         guides[frame] = item["guide"]
-    if index + 1 < len(timeline.boxes) and not is_fresh(timeline, index + 1):
-        for item in resolved_previews(timeline, index + 1, context):
+    after=following_index(timeline,index)
+    if after is not None and not is_fresh(timeline,after):
+        for item in resolved_previews(timeline, after, context):
             if item["frame"] == 0 and item.get("guide"):
-                timed_text.check_anchor(item["guide"], frame_text(timeline, index + 1, 0, context),
+                timed_text.check_anchor(item["guide"], frame_text(timeline, after, 0, context),
                                         f"box {index + 2} guide")
                 end = frames + carried - 1
                 if end in guides and guides[end] != item["guide"]:
@@ -851,26 +853,61 @@ def frame_guides(timeline, index, context):
 
 def guide_chain(timeline, index, context=39):
     """Guide edits invalidate dependent continuations, stopping at a cut. Empty preserves old manifests."""
-    start = index
-    while start and not is_fresh(timeline, start):
-        start -= 1
     values = []
-    for i in range(start, index + 1):
+    for i in continuation_chain(timeline,index):
         own = []
         if any(p.get("guide") for p in timeline.boxes[i].previews):
             own = [[p["frame"], p["guide"]] for p in resolved_previews(timeline, i, context) if p.get("guide")]
-        if (i + 1 < len(timeline.boxes) and not is_fresh(timeline, i + 1)
-                and any(p.get("guide") for p in timeline.boxes[i + 1].previews)):
-            own += [["end", p["guide"]] for p in resolved_previews(timeline, i + 1, context)
+        after=following_index(timeline,i)
+        if (after is not None and not is_fresh(timeline,after)
+                and any(p.get("guide") for p in timeline.boxes[after].previews)):
+            own += [["end", p["guide"]] for p in resolved_previews(timeline, after, context)
                     if p["frame"] == 0 and p.get("guide")]
         if own:
             values.append([timeline.boxes[i].id, own])
     return _digest(values) if values else ""
 
 
+def track_indices(timeline, index):
+    if timeline.tracks is None:
+        return list(range(len(timeline.boxes)))
+    track = timeline.placements[timeline.boxes[index].id]['track']
+    return sorted((i for i,b in enumerate(timeline.boxes) if timeline.placements[b.id]['track']==track),
+                  key=lambda i: timeline.placements[timeline.boxes[i].id]['start'])
+
+
+def previous_index(timeline, index, adjacent=True):
+    if timeline.tracks is None:
+        return index-1 if index else None
+    indices=track_indices(timeline,index); position=indices.index(index)
+    if not position:
+        return None
+    previous=indices[position-1]
+    return previous if not adjacent or timeline.placements[timeline.boxes[previous].id]["end"]==timeline.placements[timeline.boxes[index].id]["start"] else None
+
+
+def following_index(timeline, index):
+    if timeline.tracks is None:
+        return index+1 if index+1<len(timeline.boxes) else None
+    indices=track_indices(timeline,index); position=indices.index(index)
+    if position+1==len(indices):
+        return None
+    after=indices[position+1]
+    return after if timeline.placements[timeline.boxes[index].id]["end"]==timeline.placements[timeline.boxes[after].id]["start"] else None
+
+
+def continuation_chain(timeline,index):
+    chain=[index]
+    while not is_fresh(timeline,chain[0]):
+        previous=previous_index(timeline,chain[0])
+        if previous is None: break
+        chain.insert(0,previous)
+    return chain
+
+
 def is_fresh(timeline, index):
     """Box 1 and cut boxes carry no frames from the box before them."""
-    return index == 0 or timeline.boxes[index].cut
+    return timeline.boxes[index].cut or (index == 0 if timeline.tracks is None else previous_index(timeline,index,False) is None)
 
 
 def frame_limits(fresh, context, limit=MAX_FRAMES):
@@ -923,8 +960,11 @@ def _drop_conflict(timeline, index, context):
 def box_length(timeline, index, context):
     """(frames box `index` adds to the movie, frames it carries); raises when the box is too long, or when it or the
     box before it drops frames that the next one would continue from."""
-    for source in (index - 1, index):
-        if 0 <= source < len(timeline.boxes) - 1 and not is_fresh(timeline, source + 1) and dropped_frames(timeline, source):
+    if timeline.tracks is not None and not timeline.boxes[index].cut and previous_index(timeline,index) is None:
+        raise _error(f"box {index+1} must be adjacent to a preceding clip on its track to Continue; choose Cut or New scene")
+    for source in (previous_index(timeline,index), index):
+        after=following_index(timeline,source) if source is not None else None
+        if source is not None and after is not None and not is_fresh(timeline, after) and dropped_frames(timeline, source):
             raise _drop_conflict(timeline, source, context)
     fresh = is_fresh(timeline, index)
     frames = played_frames(timeline, index)
@@ -943,9 +983,10 @@ def box_length(timeline, index, context):
 def carry_conflict(timeline, index, context):
     """The problem when box `index` continues a box that plays fewer frames than it carries, or "". Only rendering
     refuses it; the Studio shows it on the box."""
-    if is_fresh(timeline, index) or not is_fresh(timeline, index - 1):
+    previous=previous_index(timeline,index)
+    if is_fresh(timeline,index) or previous is None or not is_fresh(timeline,previous):
         return ""
-    before = played_frames(timeline, index - 1)
+    before = played_frames(timeline, previous)
     if before >= context:
         return ""
     return (f"box {index + 1} continues box {index}, which plays {before} frames, fewer than the {context} it carries: "
@@ -1194,11 +1235,8 @@ def text_chain(timeline, index, context):
     """Text edits invalidate carried lettering up to the next cut, without hashing unrelated cues."""
     if timeline.timed_text is None or not timeline.timed_text["enabled"]:
         return ""
-    start = index
-    while start and not is_fresh(timeline, start):
-        start -= 1
     values = []
-    for i in range(start, index + 1):
+    for i in continuation_chain(timeline,index):
         contract = timed_text.render_contract(text_window(timeline, i, context))
         if contract:
             values.append([timeline.boxes[i].id, contract])
@@ -1212,6 +1250,11 @@ def layout_key(timeline, index, context=39):
     slots = box_slots(timeline, index, context)
     value = {"prompt": assemble_prompt(timeline, index), "frames": played_frames(timeline, index),
              "seed": box.seed, "fresh": fresh, "first": slots.first, "last": slots.last}
+    if timeline.tracks is not None:
+        value["start"] = box_start(timeline,index)
+        if not fresh:
+            before=previous_index(timeline,index)
+            value["previous"] = timeline.boxes[before].id if before is not None else None
     if box.flf_refmods:
         value["flf_refmods"] = True
     if not fresh and not timeline.continuation_guide:
@@ -1315,10 +1358,15 @@ def segment_matches(entry, layout, settings, media=None):
             and (media is None or record.get("media") == media))
 
 
-def next_box(count, segments_by_index, is_done):
+def render_order(timeline):
+    if timeline.tracks is None: return list(range(len(timeline.boxes)))
+    return sorted(range(len(timeline.boxes)),key=lambda i:(box_start(timeline,i),i))
+
+
+def next_box(count, segments_by_index, is_done, order=None):
     """Index of the first of `count` boxes that is not done, or None. `is_done(index, entry)` judges
     box `index` against the segment saved at position index + 1."""
-    for index in range(count):
+    for index in (range(count) if order is None else order):
         entry = segments_by_index.get(index + 1)
         if entry is None or not is_done(index, entry):
             return index

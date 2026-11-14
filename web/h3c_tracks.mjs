@@ -16,6 +16,20 @@ export function placements(state, duration = length) {
 }
 export const durationFrames = (state, duration) => Math.max(0, ...placements(state, duration).map(p => p.end));
 export const startFrame = (state, id) => placements(state).find(p=>p.id===id)?.start ?? 0;
+export function trackIndices(state,index) {
+  if (!enabled(state)) return state.boxes.map((_,i)=>i);
+  return state.boxes.map((_,i)=>i).filter(i=>state.boxes[i].track===state.boxes[index].track).sort((a,b)=>state.boxes[a].start-state.boxes[b].start);
+}
+export function previousIndex(state,index,adjacent=true) {
+  if (!enabled(state)) return index ? index-1 : null;
+  const indices=trackIndices(state,index), position=indices.indexOf(index), before=indices[position-1];
+  return position>0 && (!adjacent || state.boxes[before].start+state.boxes[before].frames===state.boxes[index].start) ? before : null;
+}
+export function followingIndex(state,index) {
+  if (!enabled(state)) return index+1<state.boxes.length ? index+1 : null;
+  const indices=trackIndices(state,index), after=indices[indices.indexOf(index)+1];
+  return after!==undefined && state.boxes[index].start+state.boxes[index].frames===state.boxes[after].start ? after : null;
+}
 export function outputSpans(state) {
   const events=(state.bridges??[]).filter(b=>b.mode!=='replace').map(b=>({at:startFrame(state,b.before),frames:b.frames,id:b.before})).sort((a,b)=>a.at-b.at);
   const result=[]; let frame=0, output=0;

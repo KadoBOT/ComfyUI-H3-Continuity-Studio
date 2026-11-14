@@ -60,8 +60,9 @@ def validate(parsed, raw_boxes, requires):
             raise _error(f"box {n} has several videos, so it needs a switch")
         parsed.switches[box.id] = _switch(raw["switch"], n, [box.id, *(item["id"] for item in found)],
                                           rules.played_frames(parsed, index))
-    for index in range(len(parsed.boxes) - 1):
-        if stacked(parsed, index) and not rules.is_fresh(parsed, index + 1):
+    for index in range(len(parsed.boxes)):
+        following=rules.following_index(parsed,index)
+        if following is not None and stacked(parsed, index) and not rules.is_fresh(parsed, following):
             raise _error(continue_after(index))
 
 

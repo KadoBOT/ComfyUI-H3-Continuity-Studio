@@ -67,10 +67,10 @@ New modules own layout, clock mapping and overlap resolution only. Existing time
 
 **Interfaces:** `tracks.generation_view(parsed, box_id) -> (Timeline, local_index, original_ids)`: a same-track chronological view retaining absolute placements and project reference context. Explicit memory IDs resolve in the project catalog; automatic scene/previous memory follows the track. Public clip numbers remain catalog numbers. Add one centralized dependency lookup for all native latent/audio carry; never use a view's local number to look up another catalog segment.
 
-- [ ] Test catalog order A(V1),C(V2),B(V1): B continues A, uses A's saved latent and carry; C is fresh. A gap or first-on-track Continue raises a named error. Dropped-frame conflicts and legacy stack Cut restriction apply to the actual same-track predecessor.
-- [ ] Test moving C changes its conditioning window and invalidates affected generation, but changing only track priority invalidates assembly rather than unrelated native latents. Explicit memory rejects future Timeline moments even when their catalog indices are earlier.
-- [ ] Test dependency ordering in render-next/remaining/API plans; no hidden lower take substitutes for an unrendered dependency. Keep managed-job restrictions explicit for any unsupported unit, with a reason before queue submission.
-- [ ] Observe red, implement generation view and dependency plumbing, audit all inventory entries, run targeted generation/regeneration/continuity tests and full suite; commit.
+- [x] Test catalog order A(V1),C(V2),B(V1): B continues A, uses A's saved latent and carry; C is fresh. A gap or first-on-track Continue raises a named error. Dropped-frame conflicts and legacy stack Cut restriction apply to the actual same-track predecessor.
+- [x] Test moving C changes its conditioning window and invalidates affected generation, but changing only track priority invalidates assembly rather than unrelated native latents. Explicit memory rejects future Timeline moments even when their catalog indices are earlier.
+- [x] Test dependency ordering in render-next/remaining/API plans; no hidden lower take substitutes for an unrendered dependency. Keep managed-job restrictions explicit for any unsupported unit, with a reason before queue submission.
+- [x] Observe red, implement generation view and dependency plumbing, audit all inventory entries, run targeted generation/regeneration/continuity tests and full suite; commit.
 
 ## Task 4: Composed output, overlaps and independent text (STU1d)
 

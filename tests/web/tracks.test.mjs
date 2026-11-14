@@ -51,3 +51,10 @@ test('tracks share authoring time while insertion bridges pause the movie clock'
  assert.equal(model.totalFrames(s),120);assert.equal(model.audioBoxSpans(s)[1].start,1);
  s.audio_clips=[{slot:'audio1',start:1,source_start:0,duration:1}];assert.equal(model.activeAudioClips(s,1).length,1);
 });
+
+test('generation validation and scene memory use the selected track',()=>{
+ const s=sample();s.boxes[1].memory='scene';assert.deepEqual(model.memorySources(s,1),[]);
+ s.boxes[0].frames=56;s.boxes[2].start=56;s.boxes[2].frames=34;s.boxes[2].cut=false;delete s.boxes[0].exact;delete s.boxes[2].exact;
+ assert.equal(model.carryConflict(s,2,39),'');s.boxes[2].start=60;
+ assert.match(model.carryConflict(s,2,39),/adjacent/);
+});

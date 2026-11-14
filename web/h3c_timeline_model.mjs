@@ -4,9 +4,9 @@ import {reconcileSceneAnchors} from './h3c_still_scene.mjs?v=1ca16919a3f9';
 // decide how a box runs. Mirrors h3_continuity/timeline.py.
 import {parseJSON, stringifyJSON, seedValue} from './h3c_project.mjs?v=0882b8a6265a';
 import {imageDescriptionPrompt, imageDescriptionSource} from './h3c_image_descriptions.mjs?v=5f858b2b6a5a';
-import {acceptedGuideFrames} from './h3c_shot_preview.mjs?v=2697dd13c9c5';
+import {acceptedGuideFrames} from './h3c_shot_preview.mjs?v=40182e45e769';
 import {AUDIO_WINDOWS_FEATURE, pruneWindows, resolveWindows, audioSourceLocked} from './h3c_audio_windows.mjs?v=cdefbd77b246';
-import {LAYER_FIELDS, SWAPS_DONT_FIT, clampSwitch, hasLayers, layerIds, switchFits} from './h3c_layers.mjs?v=2697dd13c9c5';
+import {LAYER_FIELDS, SWAPS_DONT_FIT, clampSwitch, hasLayers, layerIds, switchFits} from './h3c_layers.mjs?v=40182e45e769';
 export const FPS = 24;
 export const MAX_FRAMES = 362;
 export const GRID = 17;
@@ -20,7 +20,7 @@ const FILE_WIDGETS = { LoadImage: 'image', LoadImageOutput: 'image', LoadAudio: 
 const FILE_ANNOTATION = /(?:^|\s)\[(input|output|temp)\]$/;
 
 export function isFresh(state, index) {
-  return index === 0 || !!state.boxes[index]?.cut;
+  return !!state.boxes[index]?.cut || (tracks.enabled(state) ? tracks.previousIndex(state,index,false)===null : index===0);
 }
 
 // The Timeline's most generated frames: its own max_frames (a long Timeline), else the default 362.
@@ -83,8 +83,9 @@ export function setFrames(state, index, frames, context) {
 // The problem when box `index` drops generated frames and the next box continues it, or box `index` continues
 // a box that does; the same sentence on both boxes, as timeline.box_length raises it.
 export function dropConflict(state, index, context) {
-  for (const source of [index - 1, index]) {
-    if (source < 0 || source >= state.boxes.length - 1 || isFresh(state, source + 1)) continue;
+  for (const source of [tracks.previousIndex(state,index),index]) {
+    const after=source===null?null:tracks.followingIndex(state,source);
+    if (source===null || after===null || isFresh(state,after)) continue;
     const dropped = droppedFrames(state, source);
     if (!dropped) continue;
     const fresh = isFresh(state, source);
@@ -100,8 +101,10 @@ export function dropConflict(state, index, context) {
 
 // The problem when box `index` continues a box that plays fewer frames than it carries, as timeline.carry_conflict words it.
 export function carryConflict(state, index, context) {
-  if (isFresh(state, index) || !isFresh(state, index - 1)) return '';
-  const box = state.boxes[index - 1];
+  const previous=tracks.previousIndex(state,index);
+  if (tracks.enabled(state) && !state.boxes[index].cut && previous===null) return 'Continue requires an adjacent preceding clip on this track; choose Cut or New scene.';
+  if (isFresh(state,index) || previous===null || !isFresh(state,previous)) return '';
+  const box=state.boxes[previous];
   const played = box.exact ? box.frames : snapFrames(box.frames, true, context);
   if (!(played < context)) return '';
   return `Box ${index + 1} continues box ${index}, which plays ${played} frames, fewer than the ${context} it carries: `
@@ -649,9 +652,10 @@ export function memorySources(state, index) {
   if (!box || !box.memory || box.memory === 'off') return [];
   const sources = box.memory === 'scene' ? sceneSources(state, index)
     : box.memory === 'cast' ? castSources(state, index) : box.memories ?? [];
-  if (!index || !box.cut) return sources;
-  const previous = state.boxes[index - 1];
-  if (speaks(state, index) || speaks(state, index - 1)) {
+  const beforeIndex=tracks.previousIndex(state,index,false);
+  if (beforeIndex===null || !box.cut) return sources;
+  const previous=state.boxes[beforeIndex];
+  if (speaks(state,index) || speaks(state,beforeIndex)) {
     const before = {box: previous.id, frame: Math.max(0, previous.frames - 5), label: 'the moment before this cut'};
     return sources.some((item) => item.box === before.box && item.frame === before.frame) ? sources : [...sources, before];
   }
@@ -661,10 +665,11 @@ export function memorySources(state, index) {
 
 function sceneSources(state, index) {
   const box = state.boxes[index];
-  let start = 0;
-  for (let i = 0; i <= index; i++) if ((state.boxes[i].cut && state.boxes[i].new_scene) || state.boxes[i].plate_changes?.length) start = i;
-  if (start === index) return [];
-  const previous = state.boxes[index - 1];
+  const indices=tracks.trackIndices(state,index), prior=indices.slice(0,indices.indexOf(index)+1);
+  let start=prior[0];
+  for(const i of prior) if ((state.boxes[i].cut&&state.boxes[i].new_scene)||state.boxes[i].plate_changes?.length) start=i;
+  if(start===index) return [];
+  const previous=state.boxes[prior.at(-2)];
   return [{box: state.boxes[start].id, frame: 0, label: 'scene establishing view'}, box.cut
     ? {box: previous.id, frame: Math.max(0, previous.frames - 5), label: 'the moment before this cut'}
     : {box: previous.id, frame: Math.max(0, Math.floor((previous.frames - 5) / 2)), label: 'earlier view of the current scene'}];
@@ -1083,7 +1088,7 @@ export function describeBox(state, index, connected, context) {
   const problems = [];
   for (const memory of memorySources(state, index)) {
     const source = state.boxes.findIndex(item => item.id === memory.box);
-    if (source < 0 || source >= index) problems.push('Visual memory needs an earlier source box; choose it again.');
+    if (source < 0 || (tracks.enabled(state) ? tracks.startFrame(state,memory.box)+memory.frame>=tracks.startFrame(state,box.id) : source>=index)) problems.push('Visual memory needs an earlier source box; choose it again.');
     else if (!Number.isInteger(memory.frame) || memory.frame < 0 || memory.frame >= state.boxes[source].frames)
       problems.push(`Visual memory is past the end of box ${source + 1}, which plays ${state.boxes[source].frames} `
         + 'frames; choose an earlier moment.');
