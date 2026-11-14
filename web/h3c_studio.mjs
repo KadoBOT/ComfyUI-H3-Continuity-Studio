@@ -192,7 +192,7 @@ const CSS = `
  .h3cx-focus-body { padding:12px; scroll-padding:12px; }
  .h3cx-track { display:none; }
  .h3cx-studio[data-mobile-page="timeline"] .h3cx-main { display:none; }
- .h3cx-studio[data-mobile-page="timeline"] .h3cx-track { display:block; flex:1; max-height:none; padding:12px; }
+ .h3cx-studio[data-mobile-page="timeline"] .h3cx-track { display:flex; flex:1; min-height:0; max-height:none; padding:12px; }
  .h3cx-track .h3ct-lane { overscroll-behavior-x:contain; touch-action:pan-x pan-y; }
  .h3cx-track .h3ct-lane > .h3ct-stills, .h3cx-track .h3ct-lane > .h3ct-ruler,
  .h3cx-track .h3ct-lane > .h3ct-track, .h3cx-track .h3ct-lane > .h3ct-audio { min-width:var(--h3cx-track-width,480px); }
@@ -1177,6 +1177,7 @@ export class Studio {
     this.place(regions.stillPrompts, this.actionsSlot);
     if(regions.stillInstructions)this.place(regions.stillInstructions,this.pages.project);
     this.place(regions.lane, this.track);
+    this.place(regions.laneFooter, this.track);
     this.place(regions.hint, this.track);
     this.place(regions.audioSettings, this.pages.audio);
     this.place(regions.dialogueSettings, this.pages.audio);

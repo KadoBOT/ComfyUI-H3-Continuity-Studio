@@ -76,6 +76,10 @@ with sync_playwright() as p:
   chosen.value.set_files(dict(name='words.json',mimeType='application/json',buffer=json.dumps(dict(segments=[dict(start=0,end=1,text=text)])).encode()))
   page.wait_for_function('(n)=>stored().text_lanes?.length===n',arg=1 if text=='First title' else 2)
  assert page.evaluate('stored().text_lanes.map(l=>l.attachment.cues[0].text)')==['First title','Second title']
+ # Lane creation stays outside the scrolling time area even with many rows.
+ assert page.evaluate('!editor.laneEl.contains(editor.trackEditor.add)')
+ lane_button=page.get_by_role('button',name='Add video lane',exact=True).bounding_box()
+ assert lane_button and 0<=lane_button['y']<page.viewport_size['height']-28
  page.evaluate("editor.host.uploadAudio=async()=>({duration:5,title:'Test recording',peaks:[],file:{type:'input',filename:'test.wav',subfolder:''}})")
  with page.expect_file_chooser() as chosen:page.get_by_role('button',name='Add audio lane',exact=True).click()
  chosen.value.set_files(dict(name='test.wav',mimeType='audio/wav',buffer=b'fixture'))

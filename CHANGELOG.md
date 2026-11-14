@@ -4,6 +4,12 @@ All notable changes to H3 Continuity Studio are recorded here. Versions follow [
 
 ## [Unreleased]
 
+### Added
+
+- Independent video lanes with cross-lane snapping, upper-lane visibility through gaps, a compact combined output row and expandable lane editing. Overlap inspectors reuse switch, fade and sound controls. Typed video/audio/text lane controls stay beneath the timeline; nonempty lane deletion asks for confirmation and Undo restores it.
+- Studio icon action toolbars, icon-and-label navigation, grouped Pictures/RefMods under References, and a contextual clip/audio/text/overlap inspector. Generate requests one take. Reusable still conversion instructions now live in Project settings.
+- Cast reference preparation uses a searchable thumbnail list and one focused editor, with explicit candidate approval, batch options and a phone list/detail flow.
+
 ## [0.25.3] - 2026-11-13
 
 ### Fixed

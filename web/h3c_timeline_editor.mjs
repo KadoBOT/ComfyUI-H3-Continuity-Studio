@@ -728,7 +728,7 @@ export class TimelineEditor {
     this.pictures = new PicturesPanel(this);
     this.cast = new CastPage(this);
     this.castEl = this.cast.root;
-    this.root.append(head, this.readOnlyEl, this.feedbackEl, this.referencesEl, this.pictures.root, this.refmodsEl, this.chain.root, this.castEl, this.frameImages.preparation.root, lane, this.hintEl,
+    this.root.append(head, this.readOnlyEl, this.feedbackEl, this.referencesEl, this.pictures.root, this.refmodsEl, this.chain.root, this.castEl, this.frameImages.preparation.root, lane, this.trackEditor.footer, this.hintEl,
       this.panelEl);
     this.renderRefmods();
   }
@@ -914,7 +914,7 @@ export class TimelineEditor {
   regions() {
     return {summary: this.summaryEl, add: this.addButton, next: this.renderNextButton, all: this.renderButton,
       open: this.fullLink, download: this.fullDownloadLink, feedback: this.feedbackEl, references: this.referencesEl,
-      pictures: this.pictures.root, refmods: this.refmodsEl, lane: this.laneEl, hint: this.hintEl, readOnly: this.readOnlyEl, panel: this.panelEl,
+      pictures: this.pictures.root, refmods: this.refmodsEl, lane: this.laneEl, laneFooter:this.trackEditor.footer, hint: this.hintEl, readOnly: this.readOnlyEl, panel: this.panelEl,
       cast: this.castEl, sharedPrompt: this.sharedRoot, clipTakes: this.takes.root, videoPicker: this.videoPickerEl,
       bridgeTakes: this.takes.bridgeRoot, continuity: this.checks.root, bridgeSettings: this.bridges.root,
       overlapSettings:this.trackEditor.overlap.root, audioSettings: this.audioLanes.settings, dialogueSettings: this.dialogue.root, timedTextSettings: this.audioLanes.textSettings,
