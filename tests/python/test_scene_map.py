@@ -1,4 +1,5 @@
 import json
+import math
 import os
 import tempfile
 import unittest
@@ -91,6 +92,81 @@ class DescriptionTest(unittest.TestCase):
         plain = scene_map.reference_text('The map', scene_map.normalize(None), 100, 100)
         self.assertNotIn('arrow', plain)
         self.assertNotIn('camera', plain)
+
+
+def moved(layout, **places):
+    """SHOT_22-style layout with the markers named by label moved to (x, y) fractions."""
+    return {**layout, 'markers': [{**marker, **dict(zip(('x', 'y'), places[marker['label']]))}
+                                  if marker['label'] in places else marker for marker in layout['markers']]}
+
+
+def aimed(layout, degrees):
+    """The layout with its camera turned `degrees` to the right (clockwise on the map) about its position."""
+    camera = layout['camera']
+    px, py = camera['x'] * W, camera['y'] * H
+    dx, dy = camera['tx'] * W - px, camera['ty'] * H - py
+    turn = math.radians(degrees)
+    tx, ty = px + dx * math.cos(turn) - dy * math.sin(turn), py + dx * math.sin(turn) + dy * math.cos(turn)
+    return {**layout, 'camera': {**camera, 'tx': tx / W, 'ty': ty / H}}
+
+
+class FrameWordingTest(unittest.TestCase):
+    def test_frame_text_names_what_is_in_frame_and_never_mentions_the_map(self):
+        text = scene_map.frame_text(scene_map.normalize(SHOT_22), W, H, {})
+        self.assertEqual(text, 'A camera about 0.5 m above the ground with a 55 degree horizontal field of view. In frame, '
+                               'from left to right: STRAY on the far left, in the distance, farthest from the camera; '
+                               'OUTCAST just left of centre, in the middle distance, nearest to the camera; '
+                               'WOUNDED GRAZER in the centre, in the distance.')
+        self.assertNotIn('map', text)
+
+    def test_frame_text_uses_given_names_and_needs_a_camera(self):
+        layout = scene_map.normalize(SHOT_22)
+        text = scene_map.frame_text(layout, W, H, {layout['markers'][1]['id']: '<Subject 1>'})
+        self.assertIn('<Subject 1> on the far left', text)
+        self.assertEqual(scene_map.frame_text(scene_map.normalize({'markers': SHOT_22['markers']}), W, H, {}), '')
+
+    def test_motion_text_for_the_shot_22_end_positions(self):
+        end = moved(SHOT_22, STRAY=(800 / W, 470 / H), OUTCAST=(1030 / W, 500 / H))
+        text = scene_map.motion_text(scene_map.normalize(SHOT_22), scene_map.normalize(end), W, H, {})
+        self.assertIn('STRAY moves from the far left in the distance to ', text)
+        self.assertIn('OUTCAST moves from just left of centre in the middle distance to ', text)
+        self.assertNotIn('GRAZER', text)
+        self.assertNotIn('camera', text)
+        self.assertNotIn('from on', text)
+
+    def test_motion_text_camera_pan(self):
+        text = scene_map.motion_text(scene_map.normalize(SHOT_22), scene_map.normalize(aimed(SHOT_22, 30)), W, H, {})
+        self.assertEqual(text, 'The camera pans right about 30 degrees.')
+
+    def test_motion_text_camera_push_and_truck(self):
+        camera = SHOT_22['camera']
+        heading = math.atan2((camera['ty'] - camera['y']) * H, (camera['tx'] - camera['x']) * W)
+        step = 150
+        end = {**SHOT_22, 'camera': {**camera, 'x': camera['x'] + step * math.cos(heading) / W,
+                                     'y': camera['y'] + step * math.sin(heading) / H,
+                                     'tx': camera['tx'] + step * math.cos(heading) / W,
+                                     'ty': camera['ty'] + step * math.sin(heading) / H}}
+        start = {**SHOT_22, 'markers': []}
+        self.assertEqual(scene_map.motion_text(scene_map.normalize(start), scene_map.normalize({**end, 'markers': []}),
+                                               W, H, {}), 'The camera pushes in.')
+        left = heading - math.pi / 2
+        truck = {**SHOT_22, 'markers': [], 'camera': {**camera, 'x': camera['x'] + step * math.cos(left) / W,
+                                                      'y': camera['y'] + step * math.sin(left) / H,
+                                                      'tx': camera['tx'] + step * math.cos(left) / W,
+                                                      'ty': camera['ty'] + step * math.sin(left) / H}}
+        self.assertEqual(scene_map.motion_text(scene_map.normalize(start), scene_map.normalize(truck), W, H, {}),
+                         'The camera trucks left.')
+
+    def test_motion_text_leaving_and_entering_frame(self):
+        gone = moved(SHOT_22, STRAY=(1800 / W, 500 / H))
+        self.assertIn('STRAY leaves frame to the right.',
+                      scene_map.motion_text(scene_map.normalize(SHOT_22), scene_map.normalize(gone), W, H, {}))
+        self.assertIn('STRAY enters from the right.',
+                      scene_map.motion_text(scene_map.normalize(gone), scene_map.normalize(SHOT_22), W, H, {}))
+
+    def test_nothing_moves_is_empty(self):
+        layout = scene_map.normalize(SHOT_22)
+        self.assertEqual(scene_map.motion_text(layout, layout, W, H, {}), '')
 
 
 class RenderTest(unittest.TestCase):

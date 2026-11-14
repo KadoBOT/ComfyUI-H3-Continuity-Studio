@@ -161,37 +161,129 @@ def view(layout, width, height):
     return sorted(seen, key=lambda item: item[1])
 
 
+def _spot(offset, distance, far):
+    """(side, depth) of a marker in frame: `offset` from -1 to 1 across the frame, `distance` against the farthest."""
+    side = ('in the centre' if abs(offset) < 0.2 else
+            ('just left of centre' if offset < 0 else 'just right of centre') if abs(offset) < 0.55 else
+            'on the far left' if offset < 0 else 'on the far right')
+    depth = ('close to the camera' if distance < far * 0.45 else
+             'in the middle distance' if distance < far * 0.8 else 'in the distance')
+    return side, depth
+
+
+def _bare(spot):
+    """A spot after "from" or "to": "on the far left" reads "the far left"."""
+    return spot[3:] if spot.startswith(('on the ', 'in the ')) else spot
+
+
+def _frame(layout, width, height, names):
+    """The in-frame and out-of-frame sentences describe and frame_text share."""
+    name = lambda marker: names.get(marker['id']) or _name(marker)
+    seen = view(layout, width, height)
+    text = ''
+    if seen:
+        far = max(distance for _, _, distance in seen)
+        near = min(distance for _, _, distance in seen)
+        parts = []
+        for marker, offset, distance in seen:
+            side, depth = _spot(offset, distance, far)
+            extra = ''
+            if len(seen) > 1 and distance == near:
+                extra = ', nearest to the camera'
+            elif len(seen) > 1 and distance == far:
+                extra = ', farthest from the camera'
+            parts.append(f'{name(marker)} {side}, {depth}{extra}')
+        text += ' In frame, from left to right: ' + '; '.join(parts) + '.'
+    hidden = [name(marker) for marker in layout['markers'] if marker not in [item[0] for item in seen or []]]
+    if hidden:
+        text += ' Out of frame: ' + ', '.join(hidden) + '.'
+    return text
+
+
 def describe(layout, width, height):
     """Where the camera stands and what it sees, in words, or '' without a camera."""
     camera = layout['camera']
     if not camera:
         return ''
     heading = math.atan2((camera['ty'] - camera['y']) * height, (camera['tx'] - camera['x']) * width)
-    text = (f"The camera stands {_place(camera['x'], camera['y'])} of the map, about {_metres(camera['height'])} above "
+    return (f"The camera stands {_place(camera['x'], camera['y'])} of the map, about {_metres(camera['height'])} above "
             f"the ground, and looks towards the {_direction(heading)} of the map with a {round(camera['fov'])} degree "
-            "horizontal field of view.")
-    seen = view(layout, width, height)
-    if seen:
-        far = max(distance for _, _, distance in seen)
-        near = min(distance for _, _, distance in seen)
+            "horizontal field of view." + _frame(layout, width, height, {}))
+
+
+def frame_text(layout, width, height, names):
+    """The camera and what it sees in frame terms only, for a video prompt without the map picture; `names` maps
+    marker ids to the names the prompt uses. '' without a camera."""
+    camera = layout['camera']
+    if not camera:
+        return ''
+    return (f"A camera about {_metres(camera['height'])} above the ground with a {round(camera['fov'])} degree "
+            "horizontal field of view." + _frame(layout, width, height, names))
+
+
+def _heading(camera, width, height):
+    return math.atan2((camera['ty'] - camera['y']) * height, (camera['tx'] - camera['x']) * width)
+
+
+def _bearing(camera, marker, width, height):
+    """The marker's angle from the camera's aim, positive to the camera's right, and its distance in pixels."""
+    dx, dy = (marker['x'] - camera['x']) * width, (marker['y'] - camera['y']) * height
+    turn = math.atan2(dy, dx) - _heading(camera, width, height)
+    return math.atan2(math.sin(turn), math.cos(turn)), math.hypot(dx, dy)
+
+
+def _join(parts):
+    return parts[0] if len(parts) == 1 else ', '.join(parts[:-1]) + ' and ' + parts[-1]
+
+
+def motion_text(opening, end, width, height, names):
+    """How the camera and the markers move from `opening` to `end`, in frame terms seen from the opening camera;
+    '' when nothing moves or there is no camera."""
+    camera, after = opening['camera'], end['camera']
+    if not camera:
+        return ''
+    step = 0.02 * math.hypot(width, height)
+    sentences = []
+    if after:
+        heading = _heading(camera, width, height)
+        dx, dy = (after['x'] - camera['x']) * width, (after['y'] - camera['y']) * height
+        forward = dx * math.cos(heading) + dy * math.sin(heading)
+        right = -dx * math.sin(heading) + dy * math.cos(heading)
+        turn = _heading(after, width, height) - heading
+        turn = math.degrees(math.atan2(math.sin(turn), math.cos(turn)))
         parts = []
-        for marker, offset, distance in seen:
-            side = ('in the centre' if abs(offset) < 0.2 else
-                    ('just left of centre' if offset < 0 else 'just right of centre') if abs(offset) < 0.55 else
-                    'on the far left' if offset < 0 else 'on the far right')
-            depth = ('close to the camera' if distance < far * 0.45 else
-                     'in the middle distance' if distance < far * 0.8 else 'in the distance')
-            extra = ''
-            if len(seen) > 1 and distance == near:
-                extra = ', nearest to the camera'
-            elif len(seen) > 1 and distance == far:
-                extra = ', farthest from the camera'
-            parts.append(f'{_name(marker)} {side}, {depth}{extra}')
-        text += ' In frame, from left to right: ' + '; '.join(parts) + '.'
-    hidden = [_name(marker) for marker in layout['markers'] if marker not in [item[0] for item in seen or []]]
-    if hidden:
-        text += ' Out of frame: ' + ', '.join(hidden) + '.'
-    return text
+        if abs(forward) > step:
+            parts.append('pushes in' if forward > 0 else 'pulls back')
+        if abs(right) > step:
+            parts.append('trucks right' if right > 0 else 'trucks left')
+        if abs(turn) >= 5:
+            parts.append(f"pans {'right' if turn > 0 else 'left'} about {max(5, round(abs(turn) / 5) * 5)} degrees")
+        if parts:
+            sentences.append('The camera ' + _join(parts) + '.')
+    half = math.radians(camera['fov']) / 2
+    finals = {marker['id']: marker for marker in end['markers']}
+    places = {}
+    for marker in opening['markers']:
+        last = finals.get(marker['id'])
+        if last is None or math.hypot((last['x'] - marker['x']) * width, (last['y'] - marker['y']) * height) <= step:
+            continue
+        places[marker['id']] = (marker, _bearing(camera, marker, width, height), _bearing(camera, last, width, height))
+    seen = [distance for angle, distance in (_bearing(camera, marker, width, height) for marker in opening['markers'])
+            if abs(angle) <= half]
+    far = max(seen) if seen else step
+    for marker, (angle, distance), (later, reach) in places.values():
+        name = names.get(marker['id']) or _name(marker)
+        before, now = abs(angle) <= half, abs(later) <= half
+        if before and now:
+            start = ' '.join(_spot(angle / half, distance, far))
+            stop = ' '.join(_spot(later / half, reach, far))
+            sentences.append(f'{name} moves from {_bare(start)} to {_bare(stop)}.' if start != stop
+                             else f'{name} moves a little, staying {_bare(start)}.')
+        elif before:
+            sentences.append(f"{name} leaves frame to the {'right' if later > 0 else 'left'}.")
+        elif now:
+            sentences.append(f"{name} enters from the {'right' if angle > 0 else 'left'}.")
+    return ' '.join(sentences)
 
 
 def reference_text(name, layout, width, height):
