@@ -16,7 +16,7 @@ import torch
 from PIL import Image, ImageOps, UnidentifiedImageError
 
 from . import timeline as rules
-from . import image_recipe, still_scene
+from . import image_recipe, scene_map, still_scene
 from .image_recipe import _link, _scalar, _ancestry
 from . import nodes as continuity, store, takes, visual_memory, media, reference_replacements, refmods, timeline_prepare, story_bible, image_descriptions
 
@@ -683,6 +683,10 @@ def _recipe_references(body):
         slot=f'still{number}'
         ref={'slot':slot,'kind':'image','roles':['additional identity: '+slot],'source_port':copy.deepcopy(loc)}
         _pixel_link(ref,link,graph)
+        producer=graph.get(link[0]) if _link(link) else None
+        if producer and producer.get('class_type')==scene_map.NODE_CLASS and link[1]==0:
+            ref.update(roles=['blocking map: '+slot],title='Blocking map',
+                       scene_map=scene_map.prompt_line('@'+slot,producer.get('inputs',{})))
         refs.append(ref)
     connected={ref['slot'] for ref in refs}
     for slot in re.findall(r'@still[1-9]\d*\b',body['prompt'],flags=re.I):
@@ -705,4 +709,12 @@ def _prepare_pixels(body, parsed, index, frame, name):
         if ref.get('slot') in identity and 'identity' not in ref['roles']:
             ref['roles'].append('identity')
     refs += _recipe_references(body)
+    # A blocking map the clip does not mention is introduced, as approved assets are; a mention leaves it to the clip.
+    lines = []
+    for ref in refs:
+        line = ref.pop('scene_map', None)
+        if line and not re.search(r'@' + ref['slot'] + r'\b', body['prompt'], flags=re.I):
+            lines.append(line)
+    if lines:
+        body = dict(body, prompt=body['prompt'].rstrip() + '\n\n' + '\n'.join(lines))
     return image_recipe.prepare(body['recipe'], body['workflow'], dict(body, frame=frame), refs)

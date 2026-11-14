@@ -19,6 +19,7 @@ REFERENCE_USE = {
     'scene_layout': 'Use this as the approved environment arrangement and prop placement.',
     'scene anchor': 'Use this for established scene composition; keep the approved location geometry and apply the requested camera and wardrobe.',
     'current action state': 'Use this for pose and action progression; do not override the approved location layout or requested wardrobe.',
+    'blocking map': 'Use this top-down plan only for where the camera and each character stand; nothing drawn on it appears in the picture.',
 }
 
 QWEN_REFERENCE_USE = {

@@ -48,6 +48,16 @@ test('unmaterialized autogrow sockets remain available for Timeline references',
   }
 });
 
+test('a wired H3 Scene Map is listed as a blocking map, not an identity reference', () => {
+  const output = {'1': {class_type: 'H3C_Timeline', inputs: {still_recipe: ['5', 1]}},
+    '5': {class_type: 'H3C_PH3ImageStill', inputs: {...inputs, 'images.image_1': ['8', 0], 'images.image_2': ['9', 0], 'images.image_3': ['9', 1]}},
+    '8': {class_type: 'LoadImage', inputs: {image: 'identity.png'}}, '9': {class_type: 'H3C_SceneMap', inputs: {image: 'map.png', layout: '{}'}}};
+  const recipe = captureRecipe({workflow: {nodes: [{id: 1, type: 'H3C_Timeline'}, generator(5)]}, output}, '1');
+  const controls = recipeControls({output}, recipe);
+  assert.deepEqual(controls.additionalReferences, ['@still1', '@still3']);
+  assert.deepEqual(controls.sceneMaps, ['@still2']);
+});
+
 test('Studio controls read the node\'s own seed, size and label', () => {
   const output = {'1': {class_type: 'H3C_Timeline', inputs: {still_recipe: ['5', 1]}}, '5': {class_type: 'H3C_PH3ImageStill', inputs}};
   const recipe = captureRecipe({workflow: {nodes: [{id: 1, type: 'H3C_Timeline'}, generator(5)]}, output}, '1');

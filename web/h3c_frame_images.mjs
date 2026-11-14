@@ -196,7 +196,7 @@ export class FrameImages {
     if(this.controlLoad!==load||generation!==this.host.referenceContext?.()||boxId!==this.boxId||stamp!==key(this.target)) return;
     this.recipeAvailable=!!controls;
     this.generatorLabel=controls?.label;this.adapter=controls?.adapter;this.referenceLabel=controls?.referenceLabel;this.seedScope=controls?.seedScope;
-    this.additionalReferences=controls?.additionalReferences??[];
+    this.additionalReferences=controls?.additionalReferences??[];this.sceneMaps=controls?.sceneMaps??[];
     if(controls) {
       if(!this.instructionEdited&&this.instructionEl.value===instructionBefore) this.instructionEl.value=controls.instruction;
       if(!this.promptEditing&&!preparedStillPrompt(this.editor?.state,boxId,this.target)&&saved?.still_prompt==null && (this.autoPrompt!=null?this.promptEl.value===this.autoPrompt:this.promptEl.value===before)) {this.promptEl.value=this.prompt();this.autoPrompt=this.promptEl.value;}
@@ -275,9 +275,12 @@ export class FrameImages {
     const stillName=this.target.kind!=='shot'&&this.editor.runsFlf?.(this.editor.state.boxes.indexOf(box))?`${targetLabel(this.target)} frame`:targetLabel(this.target);
     this.titleEl.textContent=`Clip ${this.editor.state.boxes.indexOf(box)+1} · ${stillName} image${this.generatorLabel?` · ${this.generatorLabel}`:''}`;
     this.uploadButton.disabled=typeof this.host.importGuide!=='function';
-    const additionalReferences=this.additionalReferences??[];
-    this.additionalReferencesEl.hidden=!additionalReferences.length;
-    this.additionalReferencesEl.textContent=additionalReferences.length?`Additional identity references included: ${additionalReferences.join(', ')}. Use an alias in the clip prompt to match it to a subject, e.g. “Use ${additionalReferences[0]} for the person's identity.” These names stay separate from Story references.`:'';
+    const additionalReferences=this.additionalReferences??[],sceneMaps=this.sceneMaps??[];
+    this.additionalReferencesEl.hidden=!additionalReferences.length&&!sceneMaps.length;
+    this.additionalReferencesEl.textContent=[
+      additionalReferences.length?`Additional identity references included: ${additionalReferences.join(', ')}. Use an alias in the clip prompt to match it to a subject, e.g. “Use ${additionalReferences[0]} for the person's identity.” These names stay separate from Story references.`:'',
+      sceneMaps.length?`Blocking map included as ${sceneMaps.join(', ')}: its camera and who stands where are described to the model automatically, unless the clip prompt names ${sceneMaps[0]} itself. Best for wide shots; each reference adds about 35 s.`:'',
+    ].filter(Boolean).join(' ');
     const saved=box.previews?.find(item=>key(itemTarget(item))===key(this.target));
     const prepared=preparedStillPrompt(this.editor.state,this.boxId,this.target);
     if(prepared&&!this.promptEditing) {this.promptEl.value=saved?.still_prompt??prepared.prompt;this.autoPrompt=undefined;}
