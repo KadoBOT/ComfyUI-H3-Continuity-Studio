@@ -19,7 +19,7 @@ import { exportStory, importStory, downloadStory } from './h3c_story_archive.mjs
 import { parseState, serialize, unknownFeatures, readOnlyNote } from './h3c_timeline_model.mjs?v=448aca934518';
 
 import {exportGeneration,importGeneration,downloadGeneration,generationControl,setGenerationControl} from './h3c_generation_archive.mjs?v=9f59c39e7888';
-import {captureRecipe,hasVideoOutput as compiledVideoOutput} from './h3c_stills.mjs?v=df999ecd2dcd';
+import {captureRecipe,hasVideoOutput as compiledVideoOutput} from './h3c_stills.mjs?v=1686910ae268';
 import {parseJSON,stringifyJSON} from './h3c_project.mjs?v=0882b8a6265a';
 
 const NODE_TYPE = 'H3C_Story';

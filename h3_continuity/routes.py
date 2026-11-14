@@ -416,6 +416,8 @@ def register():
     routes.post("/h3c/audio/info")(audio_info)
     routes.post("/h3c/images/description")(image_description)
     routes.post('/h3c/reference-assets/approve')(reference_approve)
+    from . import scene_map
+    scene_map.register(routes)
     routes.post('/h3c/reference-assets/catalog')(reference_catalog)
     routes.post('/h3c/reference-assets/prepare')(reference_prepare)
     routes.post('/h3c/reference-assets/result')(reference_result)
