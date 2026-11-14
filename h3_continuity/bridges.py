@@ -44,7 +44,7 @@ def prompt(timeline, bridge):
 def problem(timeline, bridge):
     """Why the bridge can't render whatever is saved, or ""."""
     index = position(timeline, bridge)
-    dropped = rules.dropped_frames(timeline, index - 1)
+    dropped = rules.dropped_frames(timeline, rules.previous_index(timeline,index))
     if dropped:
         return (f"box {index} drops {dropped} frames, so the bridge before box {index + 1} can't start from its "
                 f"last frame: use a replacement bridge, or give box {index} a length on the grid, which moves every "
@@ -126,7 +126,7 @@ def spliced(folder, manifest, keys):
     found = []
     for entry in manifest.get("bridges", []):
         after = boxes.get(entry["box"])
-        before = segments.get(after["index"] - 1) if after else None
+        before = boxes.get((entry.get("timeline") or {}).get("from", {}).get("box")) if after else None
         if entry["box"] in keys and before is not None and not reason(folder, entry, keys[entry["box"]], before, after):
             found.append((after["index"], entry))
     return [entry for _, entry in sorted(found, key=lambda item: item[0])]
@@ -160,13 +160,13 @@ def states(folder, timeline, manifest, done, known):
         index = position(timeline, bridge)
         entry = saved(manifest, bridge["before"])
         trouble = problem(timeline, bridge)
-        waiting = [n for n in (index, index + 1) if n - 1 not in done]
+        waiting = [n for n in (rules.previous_index(timeline,index)+1, index+1) if n-1 not in done]
         if trouble:
             found.append(State(bridge, index, "problem", trouble, entry))
         elif waiting:
             found.append(State(bridge, index, "waiting", f"render {' and '.join(f'box {n}' for n in waiting)} first", entry))
         else:
-            why = reason(folder, entry, key(timeline, bridge, known), segments[index], segments[index + 1]) if entry else ""
+            why = reason(folder, entry, key(timeline, bridge, known), segments[rules.previous_index(timeline,index)+1], segments[index+1]) if entry else ""
             found.append(State(bridge, index, "done" if entry and not why else "pending", why, entry))
     if len(done) == len(timeline.boxes):
         upcoming = next((state for state in found if state.status == "pending"), None)

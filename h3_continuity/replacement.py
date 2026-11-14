@@ -50,7 +50,7 @@ def position(timeline, bridge):
 
 
 def sequence_start(timeline, index):
-    return sum(rules.played_frames(timeline, i) for i in range(index))
+    return round(rules.box_start(timeline, index) * 24)
 
 
 def _coverage(timeline):
@@ -66,14 +66,14 @@ def geometry(timeline, bridge, context):
     shape = Geometry(index, join, left, right, left + right, join - left, join + right)
     name = f"the replacement before box {index + 1}"
     try:
-        played_a, carried_a = rules.box_length(timeline, index - 1, context)
+        played_a, carried_a = rules.box_length(timeline, rules.previous_index(timeline,index), context)
         played_b, _ = rules.box_length(timeline, index, context)
     except ValueError as error:
         shape.problem = str(error).removeprefix("H3 Timeline: ")
         return shape
     coverage = _coverage(timeline)
-    taken_a = coverage.get(index - 1, (0, 0))[1]
-    taken_b = coverage.get(index + 1, (0, 0))[0]
+    taken_a = coverage.get(rules.previous_index(timeline,index), (0, 0))[1]
+    taken_b = coverage.get(rules.following_index(timeline,index), (0, 0))[0]
     kept_a, kept_b = played_a - taken_a - left, played_b - right - taken_b
     carried = canon_floor(min(context, carried_a + kept_a))
     frozen = canon_floor(min(context, kept_b))
@@ -90,7 +90,7 @@ def geometry(timeline, bridge, context):
         if shape.problem:
             return shape
     shape.context_frames, shape.ending_frames = carried, frozen
-    shape.left_window = (index - 1, carried_a + played_a - left - carried, carried)
+    shape.left_window = (rules.previous_index(timeline,index), carried_a + played_a - left - carried, carried)
     shape.right_window = (index, right, frozen)
     shape.generated = carried + shape.frames + frozen
     return shape
@@ -109,7 +109,7 @@ def protections(timeline, index, takes=None, projected=None):
     order `check` reads them: cue speech by portrayal ("on_screen", "voiceover", "unknown"), recordings that
     "changed" under their cues, and "observed" marks, `current` while they were marked on the take in place."""
     join = sequence_start(timeline, index)
-    near = (join - rules.played_frames(timeline, index - 1), join + rules.played_frames(timeline, index))
+    near = (join - rules.played_frames(timeline, rules.previous_index(timeline,index)), join + rules.played_frames(timeline, index))
     found = []
     for item in dialogue.projected(timeline) if projected is None else projected:
         cue = item["cue"]
@@ -211,7 +211,7 @@ def static_key(timeline, bridge, context):
     for clip in clips:
         if clip['slot'] in bound:
             clip['windows'] = [w for w in rules.resolved_audio(timeline) if w['slot']==clip['slot']]
-    return rules._digest({"boxes": [timeline.boxes[shape.index - 1].id, timeline.boxes[shape.index].id],
+    return rules._digest({"boxes": [timeline.boxes[rules.previous_index(timeline,shape.index)].id, timeline.boxes[shape.index].id],
                           "join": shape.join, "left": shape.left, "right": shape.right,
                           "windows": [shape.left_window, shape.right_window], "problem": shape.problem,
                           "cues": cues, "observed": marks, "clips": clips})
@@ -235,6 +235,6 @@ def trims(timeline, active):
         if item["before"] not in active:
             continue
         index = position(timeline, item)
-        result[index - 1] = (result.get(index - 1, (0, 0))[0], item["left"])
+        result[rules.previous_index(timeline,index)] = (result.get(rules.previous_index(timeline,index), (0, 0))[0], item["left"])
         result[index] = (item["right"], result.get(index, (0, 0))[1])
     return result

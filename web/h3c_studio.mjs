@@ -1,18 +1,20 @@
+import {decorateIcon} from './h3c_icons.mjs';
+import {SwitchSection, rememberDisclosures} from './h3c_switch_section.mjs?v=c253500f4908';
 // The Studio: the page's one full-window view of a Timeline. While open it holds the editor's regions, and the linked
 // Story's actions, story and files, in its own layout, and it gives each one back to the place it came from when it
 // closes, opens another Timeline or the Timeline's Story changes. Its Story page edits the Story node's inputs.
 import { liveBadge, progressText } from './h3c_render_watch.mjs?v=7c8222569836';
 import { templateRow } from './h3c_templates.mjs?v=ff7103cdcba7';
-import { soundtrackLine, soundtrackSlots } from './h3c_timeline_model.mjs?v=3e1fe9285010';
+import { soundtrackLine, soundtrackSlots } from './h3c_timeline_model.mjs?v=448aca934518';
 
 import { ideaImagesRow } from './h3c_idea_images.mjs?v=3e6280e44a1b';
 import { partialBadge, partialTitle, previewBadge, previewLabel, previewTitle, timelineFrame, videoSeconds } from './h3c_partial_video.mjs?v=201bf0f48645';
-import {historyShortcut} from './h3c_history.mjs?v=d639ee9ffd57';
+import {historyShortcut} from './h3c_history.mjs?v=d09d25504288';
 import {setText} from './h3c_dom.mjs?v=584a9bf55653';
 
-const LIBRARY = ['references', 'cast', 'story', 'pictures', 'refmods'];
-const CENTER = ['viewer', 'story', 'cast', 'pictures', 'refmods'];
-const FOCUS = ['cast', 'story', 'pictures', 'refmods', 'project'];
+const LIBRARY = ['references', 'cast', 'story', 'pictures', 'refmods', 'assets'];
+const CENTER = ['viewer', 'story', 'cast', 'assets'];
+const FOCUS = ['cast', 'story', 'assets', 'project'];
 const CORE_HINT = 'For a moving preview, add KJNodes’ Model Preview Override before the sampler.';
 const OLDER_TAKE = 'Outdated take: this clip changed after it rendered. It still plays in the full video; regenerate the clip to update it.';
 const MOVING = 'Moving the take…';
@@ -26,6 +28,35 @@ const TRACK_MIN = 250;
 const ZOOM_MAX = 16;
 const MOBILE_QUERY = '(max-width:600px), (max-width:1100px) and (max-height:500px)';
 const CSS = `
+.h3cx-inspector .h3ct-panelhead{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:8px}
+.h3cx-inspector .h3ct-panelhead>.h3ct-title{flex-basis:100%;font-size:12px;line-height:1.5;color:#c3cad4}
+.h3cx-inspector .h3ct-panelhead>.h3ct-grow{display:none}.h3cx-inspector .h3ct-clip-actions{flex:1}.h3cx-inspector .h3ct-clip-actions>.h3ct-row{gap:3px}
+.h3cx-studio .h3ct-panel-tabs{flex-wrap:nowrap;overflow-x:auto;gap:0;border-bottom:1px solid #434b58;margin-bottom:10px}
+.h3cx-studio .h3ct-panel-tabs [role=tab]{white-space:nowrap;border:0;border-bottom:2px solid transparent;border-radius:0;background:transparent;font-size:12px;min-height:38px;padding:6px!important}
+.h3cx-studio .h3ct-panel-tabs [aria-selected=true]{border-bottom-color:#9dbef1;color:#d6e5ff;background:#293342}
+.h3cx-library-nav{gap:0!important;margin:0!important;padding:0 10px;background:#1d2027;border-bottom:1px solid #343a46;flex-wrap:nowrap!important;overflow-x:auto}
+.h3cx-library-nav [role=tab]{border:0;border-bottom:2px solid transparent;border-radius:0;background:transparent;white-space:nowrap;padding:8px 10px!important;min-height:40px}
+.h3cx-library-nav [aria-selected=true]{background:#283342;border-bottom-color:#9dbef1;color:#d6e5ff}
+.h3cx-inspector .h3ct-panel{border:0;background:transparent;padding:0}
+.h3cx-inspector .h3ct-tabpanel>details,.h3cx-inspector .h3ct-audio-settings{border:0;border-top:1px solid #343a46;border-radius:0;padding:8px 0;margin:0}
+.h3cx-inspector summary{font-size:13px;font-weight:500;padding:4px 0;cursor:pointer}.h3cx-inspector details[open]>summary{margin-bottom:6px}
+.h3cx-inspector .h3ct-field{display:grid;grid-template-columns:minmax(88px,1fr) minmax(0,1.5fr);gap:8px;align-items:center;margin:6px 0;font-size:12px}
+.h3cx-inspector .h3ct-field:has(textarea),.h3cx-inspector .h3ct-field:has(.h3ct-picture-picker){display:flex;flex-direction:column;align-items:stretch}
+.h3cx-inspector input:not([type=checkbox]),.h3cx-inspector select{min-width:0;width:100%;font-size:13px}
+.h3cx-inspector textarea{font-size:13px;line-height:1.5}.h3ct-overlap-toggle,.h3ct-overlap-sources{display:flex;align-items:center;gap:8px;margin:12px 0}
+.h3ct-overlap-row,.h3ct-overlap-row .h3ct-track-body{min-height:34px}.h3ct-overlap-mark{position:absolute;top:2px;min-height:28px;z-index:2;white-space:nowrap}
+.h3cx-project-actions{gap:3px}.h3cx-track-toolbar{gap:8px}.h3cx-studio ::selection{background:#45648d;color:#fff}.h3cx-studio input,.h3cx-studio textarea{caret-color:#c5dcff}
+@media(pointer:coarse){.h3cx-library-nav [role=tab],.h3cx-studio .h3ct-panel-tabs [role=tab]{min-height:44px}}
+.h3cx-center>.h3cx-library-nav,.h3cx-studio .h3ct-panel-tabs{flex:0 0 auto}
+.h3cx-activity.h3cx-empty{display:none}
+.h3cx-studio .h3ci-button:not([role=tab]){color:#aab1bd;background:transparent;border-color:transparent;border-radius:4px}
+.h3cx-studio .h3ci-button:not([role=tab]):hover:not(:disabled){filter:none;color:#e8ecf2;background:#ffffff12}
+.h3cx-studio .h3ci-button:disabled{opacity:.35}
+.h3cx-studio .h3ci-button:not([role=tab])[aria-pressed=true],.h3cx-studio .h3ci-button:not([role=tab])[aria-expanded=true]{color:#9dbef1;background:#9dbef11a}
+.h3cx-studio .h3ci-button.h3ct-primary{color:#8fbcff}
+.h3cx-studio .h3ci-button.h3ct-primary:hover:not(:disabled){color:#c5dcff;background:#3f6fbf33}
+.h3cx-studio [role=tab].h3ci-button:not([aria-selected=true]){color:#aab1bd}
+
 .h3cx-studio { position: fixed; inset: 0; z-index: 1500; display: flex; flex-direction: column; outline: none;
   overflow: hidden; background: #15171c; color: var(--input-text, #ddd); font: 14px/1.45 system-ui, sans-serif; }
 .h3cx-studio * { box-sizing: border-box; }
@@ -171,7 +202,7 @@ const CSS = `
  .h3cx-focus-body { padding:12px; scroll-padding:12px; }
  .h3cx-track { display:none; }
  .h3cx-studio[data-mobile-page="timeline"] .h3cx-main { display:none; }
- .h3cx-studio[data-mobile-page="timeline"] .h3cx-track { display:block; flex:1; max-height:none; padding:12px; }
+ .h3cx-studio[data-mobile-page="timeline"] .h3cx-track { display:flex; flex:1; min-height:0; max-height:none; padding:12px; }
  .h3cx-track .h3ct-lane { overscroll-behavior-x:contain; touch-action:pan-x pan-y; }
  .h3cx-track .h3ct-lane > .h3ct-stills, .h3cx-track .h3ct-lane > .h3ct-ruler,
  .h3cx-track .h3ct-lane > .h3ct-track, .h3cx-track .h3ct-lane > .h3ct-audio { min-width:var(--h3cx-track-width,480px); }
@@ -275,6 +306,7 @@ export class Studio {
     root.setAttribute('role', 'dialog');
     root.setAttribute('aria-modal', 'true');
     root.setAttribute('aria-label', 'H3 Studio');
+    rememberDisclosures(root);
     root.addEventListener('keydown', (event) => this.key(event));
     // A button that its own click replaces, such as a take's Use, takes the focus with it to the page, where neither the
     // Studio nor ComfyUI hears keys, so while the Studio is open the page's keys come to it.
@@ -337,7 +369,6 @@ export class Studio {
     this.storyEl = el('div', 'h3cx-story h3cx-slot');
     this.writeOff = button('Write story', NO_STORY, () => {});
     this.writeOff.disabled = true;
-    this.feedbackButton = button('Revise story', 'Ask the Story writer to change the written story', () => this.openFeedback(), 'h3cx-feedback');
     this.actionsSlot = el('span', 'h3cx-slot');
     this.newProjectButton = button('New project', 'Clear the current Timeline for a new project and keep its available sources', () => this.openNewProject());
     this.projectButton = button('Project settings', 'Shared prompt and graph settings', () => this.openFocus('project'));
@@ -356,6 +387,7 @@ export class Studio {
     this.inspectorToggle.setAttribute('aria-controls', 'h3cx-inspector');
     const bar = el('header', 'h3cx-bar');
     this.projectActions = el('div', 'h3cx-project-actions');
+    for(const [control,name,label] of [[close,'close','Close the Studio'],[this.undoButton,'undo','Undo'],[this.redoButton,'redo','Redo'],[this.historyButton,'history','History'],[this.newProjectButton,'new','New project'],[this.projectButton,'settings','Project settings'],[this.downloadVideo,'download','Download video'],[this.libraryToggle,'refs','Show references'],[this.inspectorToggle,'settings','Show inspector']])decorateIcon(control,name,label);
     this.projectActions.append(this.undoButton, this.redoButton, this.historyButton,
       this.newProjectButton, this.projectButton, this.downloadVideo);
     bar.append(close, this.libraryToggle, this.inspectorToggle, this.nameEl, this.summarySlot, this.savedSlot,
@@ -365,7 +397,7 @@ export class Studio {
     const activity = el('div', 'h3cx-activity');
     this.writerCancel = el('span', 'h3cx-slot');
     this.writerMessage = el('span', 'h3cx-writer-message');
-    activity.append(this.progressEl, this.stopButton, this.writerCancel, this.writerMessage, el('span', 'h3cx-grow'), this.feedbackButton);
+    activity.append(this.progressEl, this.stopButton, this.writerCancel, this.writerMessage);
     this.activity = activity;
     this.notice = el('div', 'h3cx-notice');
 
@@ -415,13 +447,14 @@ export class Studio {
     nav.setAttribute('role', 'tablist'); nav.setAttribute('aria-label', 'Workspace views');
     this.pageButtons = {};
     this.pages = {};
-    for (const name of ['box', 'audio', 'text', 'timeline', ...FOCUS]) {
+    for (const name of ['box', 'audio', 'text', 'overlap', 'timeline', 'pictures', 'refmods', ...FOCUS]) {
       this.pages[name] = el('div', 'h3cx-page');
       this.pages[name].dataset.page = name;
     }
     for (const name of CENTER) {
-      const label = name === 'refmods' ? 'RefMods' : name[0].toUpperCase() + name.slice(1);
+      const label=name==='assets'?'References':name[0].toUpperCase()+name.slice(1);
       this.pageButtons[name] = button(label, `Open ${label}`, () => name === 'viewer' ? this.backToViewer() : this.openFocus(name));
+      decorateIcon(this.pageButtons[name],{viewer:'viewer',story:'story',cast:'cast',assets:'refs'}[name],label,{text:true});
       this.pageButtons[name].setAttribute('role', 'tab');
       this.pageButtons[name].id = `h3cx-tab-${name}`;
       this.pageButtons[name].setAttribute('aria-controls', `h3cx-page-${name}`);
@@ -438,6 +471,7 @@ export class Studio {
       });
       nav.append(this.pageButtons[name]);
     }
+    this.pages.assets.append(el('h2','h3cx-title','Pictures'),this.pages.pictures,el('h2','h3cx-title','RefMods'),this.pages.refmods);
     this.library.append(el('h2', 'h3cx-title', 'References'), this.pages.timeline);
     this.storyPage = el('div', 'h3cx-story-page');
     this.pages.story.append(this.storyEl, this.storyPage);
@@ -453,7 +487,7 @@ export class Studio {
     this.clipPromptButton.setAttribute('aria-label', 'Inspect selected clip prompt');
     this.emptyInspector = el('p', 'h3cx-note h3cx-empty-inspector',
       'Start with + Clip in the Timeline, or open Story to write prompts.');
-    this.inspector.append(this.inspectorTitle, this.clipPromptButton, this.emptyInspector, this.pages.box, this.pages.audio, this.pages.text);
+    this.inspector.append(this.inspectorTitle, this.clipPromptButton, this.emptyInspector, this.pages.box, this.pages.audio, this.pages.text, this.pages.overlap);
     this.focus = el('section', 'h3cx-focus');
     this.focus.setAttribute('aria-label', 'Project focus');
     this.focusTitle = el('h2', 'h3cx-title');
@@ -488,7 +522,7 @@ export class Studio {
     this.mobileMore.setAttribute('aria-label', 'More Studio tools');
     this.mobileMore.append(el('h2', 'h3cx-title', 'Studio tools'));
     for (const page of FOCUS.filter(name => name !== 'project')) {
-      const label = page === 'refmods' ? 'RefMods' : page[0].toUpperCase() + page.slice(1);
+      const label=page==='assets'?'References':page[0].toUpperCase()+page.slice(1);
       this.mobileMore.append(button(label, `Open ${label}`, () => this.openFocus(page)));
     }
     main.append(this.mobileMore);
@@ -803,12 +837,16 @@ export class Studio {
     if (target?.kind === 'audio' && editor.audioLanes.clips.some(clip => clip.slot === target.slot)) {
       editor.audioLanes.selectAudio(target.slot);
       this.inspectorTarget = {...target};
-    } else if (target?.kind === 'text' && editor.state.timed_text) {
+    } else if(target?.kind==='overlap'&&boxes.some(b=>b.id===target.from)&&boxes.some(b=>b.id===target.to)){
+      editor.trackEditor.overlap.show(target.from,target.to);this.inspectorTarget={...target};
+    } else if (target?.kind === 'text' && (editor.state.timed_text||editor.state.text_lanes?.some(l=>l.track===target.track))) {
+      editor.audioLanes.selectedTextTrack=target.track;editor.audioLanes.renderText();
       editor.audioLanes.selectText();
       this.inspectorTarget = {kind:'text'};
     } else this.inspectorTarget = fallback;
     this.setLibrary(snapshot.libraryPage ?? 'references', {link});
-    const focus = snapshot.focusPage ?? (FOCUS.includes(snapshot.page) ? snapshot.page : null);
+    let focus = snapshot.focusPage ?? (FOCUS.includes(snapshot.page) ? snapshot.page : null);
+    if(focus==='pictures'||focus==='refmods')focus='assets';
     if (FOCUS.includes(focus)) this.openFocus(focus, {link});
     else this.backToViewer();
     this.setReferencesVisible(snapshot.referencesVisible ?? true);
@@ -962,9 +1000,7 @@ export class Studio {
     this.mobileMore.hidden = !mobile || this.mobilePage !== 'more';
     this.activity.classList.toggle('h3cx-empty', !this.progressEl.textContent && !this.writerMessage.textContent && this.stopButton.hidden && !this.writerCancel.textContent);
     const actionParent = mobile ? this.mobileMore : this.bar;
-    const feedbackParent = mobile ? this.mobileMore : this.activity;
     if (this.projectActions.parentNode !== actionParent) actionParent.append(this.projectActions);
-    if (this.feedbackButton.parentNode !== feedbackParent) feedbackParent.append(this.feedbackButton);
     for (const [page, control] of Object.entries(this.mobileButtons))
       control.setAttribute('aria-pressed', String(page === (this.mobilePage === 'focus' ? 'more' : this.mobilePage)));
     this.root.style.setProperty('--h3cx-track-width', `${Math.max(480, (this.host?.editor.state.boxes.length ?? 0) * 96)}px`);
@@ -986,16 +1022,18 @@ export class Studio {
   }
 
   openFocus(page, {link = true} = {}) {
+    const referenceSection=page==='pictures'||page==='refmods'?page:null;
+    if(referenceSection)page='assets';
     if (!FOCUS.includes(page)) return;
     if(page==='project')this.loadGenerations();
     this.focusPage = page;
     this.libraryPage = page === 'project' ? 'references' : page;
     this.page = page;
-    this.focusTitle.textContent = page === 'refmods' ? 'RefMods' : page === 'project' ? 'Project settings'
+    this.focusTitle.textContent = page === 'assets' ? 'References' : page === 'project' ? 'Project settings'
       : page[0].toUpperCase() + page.slice(1);
-    if (page === 'story' && this.host) this.host.editor.feedbackEl.open = true;
-    if (page === 'pictures' && this.host) this.host.editor.pictures.root.open = true;
-    if (page === 'cast') this.host?.editor.cast?.refresh({link});
+    if(page==='assets'&&this.host){this.host.editor.pictures.root.open=true;this.host.editor.refmodsEl.open=true;}
+    if(referenceSection)this.pages[referenceSection].scrollIntoView?.({block:'nearest'});
+    if(page==='cast'){const preparation=this.host?.editor.cast?.preparation;if(preparation){if(!preparation.root.open)preparation.root.open=true;else preparation.refresh();}this.host?.editor.cast?.refresh({link});}
     if (this.mobileMedia.matches) this.setMobilePage('focus');
     // Below 900 px the Inspector and References float over the centre, where this page opens.
     else if (this.narrowMedia.matches) { this.setInspectorVisible(false); this.setReferencesVisible(false); }
@@ -1011,14 +1049,14 @@ export class Studio {
   }
 
   inspect(target) {
-    if (!target || !['clip', 'audio', 'text'].includes(target.kind)) return;
+    if (!target || !['clip', 'audio', 'text', 'overlap'].includes(target.kind)) return;
     this.inspectorTarget = target;
     if (this.trimmingPointer == null) this.setInspectorVisible(true);
     this.refresh();
   }
 
   setPage(page, {link = true} = {}) {
-    if (FOCUS.includes(page)) return this.openFocus(page, {link});
+    if (FOCUS.includes(page)||page==='pictures'||page==='refmods') return this.openFocus(page, {link});
     if (page === 'timeline') { this.backToViewer(); this.setLibrary('references'); return; }
     this.backToViewer();
     this.inspect({kind: 'clip', box: this.host?.editor.box()?.id ?? null});
@@ -1041,11 +1079,12 @@ export class Studio {
     this.pages.box.hidden = target !== 'clip';
     this.pages.audio.hidden = target !== 'audio';
     this.pages.text.hidden = target !== 'text';
+    this.pages.overlap.hidden=target!=='overlap';
     const editor = this.host?.editor;
     this.clipPromptButton.hidden = target === 'clip' || !editor?.box();
     this.emptyInspector.hidden = target !== 'clip' || !!editor?.box();
     setText(this.inspectorTitle, target === 'audio' ? `Audio @${this.inspectorTarget.slot}`
-      : target === 'text' ? 'Timed text' : editor?.box() ? `Clip ${editor.selected + 1}` : 'No clip selected');
+      : target==='overlap'?'Overlap':target === 'text' ? 'Timed text' : editor?.box() ? `Clip ${editor.selected + 1}` : 'No clip selected');
     setText(this.focusContext, editor?.box() ? `Selected clip ${editor.selected + 1}` : 'No clip selected');
     this.renderMobile();
   }
@@ -1062,12 +1101,6 @@ export class Studio {
     this.refresh();
   }
 
-  openFeedback() {
-    if (!this.host) return;
-    this.setPage('story');
-    this.host.editor.feedbackInput.focus();
-  }
-
   refresh() {
     if (this.root.hidden || !this.host) return;
     const host = this.host;
@@ -1080,7 +1113,6 @@ export class Studio {
     this.nameEl.title = host.sequenceName?.() ?? '';
     setText(this.progressEl, host.progress?.() ?? progressText(watch, host.runningBox(), (id) => host.titleOf(id)));
     this.stopButton.hidden = host.editor.host.projectAttached === true || !(watch.running && !watch.turn);
-    this.feedbackButton.hidden = host.editor.feedbackEl.hidden;
     this.renderNavigation();
     const full = host.editor.fullLink.hidden ? null : host.editor.fullLink.getAttribute('href');
     const partial = full ? host.editor.partialVideo : null;
@@ -1142,12 +1174,15 @@ export class Studio {
     this.place(regions.sharedPrompt, this.projectPrompt);
     this.place(regions.chainSettings, this.projectChain);
     this.place(regions.readOnly, this.notice);
-    this.place(regions.stillPrompts, this.track);
+    this.place(regions.stillPrompts, this.actionsSlot);
+    if(regions.stillInstructions)this.place(regions.stillInstructions,this.pages.project);
     this.place(regions.lane, this.track);
+    this.place(regions.laneFooter, this.track);
     this.place(regions.hint, this.track);
     this.place(regions.audioSettings, this.pages.audio);
     this.place(regions.dialogueSettings, this.pages.audio);
     this.place(regions.timedTextSettings, this.pages.text);
+    if(regions.overlapSettings)this.place(regions.overlapSettings,this.pages.overlap);
     regions.references.open = true;
     regions.refmods.open = true;
     regions.chainSettings.open = true;
@@ -1211,9 +1246,25 @@ export class Studio {
 
   inputsOf(story) {
     const form = el('div', 'h3cx-inputs');
-    const advanced = el('details', 'h3cx-story-advanced');
-    const advancedInputs = el('div', 'h3cx-inputs');
-    advanced.append(el('summary', null, 'Advanced'), advancedInputs);
+    // On while any of its typed settings has a value; off empties them, kept until it comes back on.
+    const typed = () => story.inputs().filter(input => input.advanced && input.kind === 'string' && input.linked == null);
+    const advanced = new SwitchSection('Advanced', {className: 'h3cx-story-advanced', onToggle: (on) => {
+      this.advancedPinned = on;
+      if (on) {
+        for (const [name, value] of Object.entries(this.advancedKept ?? {})) story.setInput(name, value);
+        this.advancedKept = null;
+      } else {
+        const filled = typed().filter(input => String(input.value ?? '').trim());
+        if (filled.length && !globalThis.confirm?.(`Clear ${filled.map(input => input.label).join(', ')}? Turning Advanced on again brings them back.`)) return;
+        this.advancedKept = Object.fromEntries(filled.map(input => [input.name, input.value]));
+        for (const input of filled) story.setInput(input.name, '');
+      }
+      this.returnStory();
+      this.showStory(story);
+    }});
+    const advancedInputs = advanced.body;
+    advanced.set(typed().some(input => String(input.value ?? '').trim()) || !!this.advancedPinned);
+    advanced.root.addEventListener('input', () => { if (!typed().some(input => String(input.value ?? '').trim())) this.advancedPinned = true; });
     story.panel.refreshSettings?.();
     for (const input of story.inputs()) {
       const parent = input.advanced ? advancedInputs : form;
@@ -1235,7 +1286,7 @@ export class Studio {
       field.append(...(check ? [control, label] : [label, control]));
       parent.append(field);
     }
-    if (advancedInputs.childElementCount) form.append(advanced);
+    if (advancedInputs.childElementCount) form.append(advanced.root);
     return form;
   }
 

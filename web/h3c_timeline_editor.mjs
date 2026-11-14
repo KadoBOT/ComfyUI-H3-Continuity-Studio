@@ -1,25 +1,29 @@
+import {decorateIcon,setIconLabel} from './h3c_icons.mjs';
+import {TrackEditor} from './h3c_track_editor.mjs';
+import {Pins, SwitchSection} from './h3c_switch_section.mjs?v=c253500f4908';
+import * as tracks from './h3c_tracks.mjs';
 // The H3 Timeline editor: a track of boxes, the selected box and the shared prompt.
 // Plain DOM without ComfyUI imports; the host object connects it to the node.
-import { MentionCard, MentionLayer } from './h3c_mentions.mjs?v=079fb3f93192';
+import { MentionCard, MentionLayer } from './h3c_mentions.mjs?v=286999590c40';
 import { promptSections, promptShots, writePromptSections } from './h3c_prompt_sections.mjs?v=b58f04f78a75';
-import * as model from './h3c_timeline_model.mjs?v=3e1fe9285010';
-import * as videoLayers from './h3c_layers.mjs?v=3e1fe9285010';
+import * as model from './h3c_timeline_model.mjs?v=448aca934518';
+import * as videoLayers from './h3c_layers.mjs?v=448aca934518';
 import {audioSourceLocked} from './h3c_audio_windows.mjs?v=cdefbd77b246';
-import { AudioLanes } from './h3c_audio_lanes.mjs?v=35558be57366';
-import { shotFrames, frameTargets, syncTargets, acceptedGuideFrames, endpointGuide, endpointReference, adoptEndpointGuides } from './h3c_shot_preview.mjs?v=3e1fe9285010';
-import {FrameImages, targetLabel, imageDrop} from './h3c_frame_images.mjs?v=5cf5573359ec';
-import { splitBox, splitTiming } from './h3c_shot_split.mjs?v=5d70d2ce6bd5';
+import { AudioLanes } from './h3c_audio_lanes.mjs?v=afba3ccda1aa';
+import { shotFrames, frameTargets, syncTargets, acceptedGuideFrames, endpointGuide, endpointReference, adoptEndpointGuides } from './h3c_shot_preview.mjs?v=448aca934518';
+import {FrameImages, targetLabel, imageDrop} from './h3c_frame_images.mjs?v=0c5a1a0afcb4';
+import { splitBox, splitTiming } from './h3c_shot_split.mjs?v=b431e6b9a29c';
 import { fillReferenceSwitches } from './h3c_reference_switches.mjs?v=e94b5b02e02b';
-import { ReferenceReplacements } from './h3c_reference_replacements.mjs?v=afa3dfa85202';
+import { ReferenceReplacements } from './h3c_reference_replacements.mjs?v=1cebdefbcad2';
 import { fillPicturePicker, mentionedReferences, referenceChip } from './h3c_reference_pictures.mjs?v=8198307be3fa';
-import { CastPage } from './h3c_cast.mjs?v=740784d14209';
-import { PicturesPanel, highestSlot } from './h3c_pictures.mjs?v=3181bdd7b923';
-import { CheckPanel } from './h3c_check.mjs?v=c69786f95bd5';
-import { BridgePanel, bridgeLine } from './h3c_bridges.mjs?v=66223b2fb724';
-import { DialoguePanel } from './h3c_dialogue.mjs?v=e3810b66b54f';
+import { CastPage } from './h3c_cast.mjs?v=88a7f46dc855';
+import { PicturesPanel, highestSlot } from './h3c_pictures.mjs?v=c32212570492';
+import { CheckPanel } from './h3c_check.mjs?v=0ba848400498';
+import { BridgePanel, bridgeLine } from './h3c_bridges.mjs?v=0d58b5a373ce';
+import { DialoguePanel } from './h3c_dialogue.mjs?v=45b8c5f4bb7c';
 import { ChainSettings } from './h3c_chain_settings.mjs?v=9f2d4061a6d6';
 import { exportedVideo } from './h3c_partial_video.mjs?v=201bf0f48645';
-import { MAX_TAKES, TakesPanel, followNote, renderLabel } from './h3c_takes.mjs?v=3c2d23b2e5b8';
+import { MAX_TAKES, TakesPanel, followNote, renderLabel } from './h3c_takes.mjs?v=dac8103cf8fb';
 import { drawsSame, replaceChanged, setText, showImages } from './h3c_dom.mjs?v=584a9bf55653';
 
 const STYLE_ID = 'h3ct-style';
@@ -192,14 +196,12 @@ const CSS = `
 .h3ct-prompt-tabs { display: flex; align-items: center; gap: 4px; }
 .h3ct-prompt-tabs .h3ct-label { margin-right: auto; }
 .h3ct-prompt-tabs [aria-pressed="true"] { background: #293e60; border-color: #729cdd; }
-.h3ct-structure { display: flex; flex-direction: column; gap: 8px; max-height: 460px; overflow: auto;
+.h3ct-structure { display: flex; flex-direction: column; gap: 0; max-height: 460px; overflow: auto;
   scrollbar-gutter: stable; scrollbar-color: #485161 #1a1d23; padding-right: 4px; }
 .h3ct-structure[hidden], .h3ct-panel .h3cm-wrap[hidden] { display: none; }
-.h3ct-section { border: 1px solid var(--border-color, #3a414d); border-radius: 6px; background: rgba(0,0,0,.1); }
-.h3ct-section > summary { padding: 8px 10px; cursor: pointer; font-weight: 600; color: #bbcff0; }
-.h3ct-section > summary::marker { color: #8b9bb5; }
+.h3ct-structure > .h3sw-section > .h3sw-body { padding-left: 0; }
 .h3ct-count { margin-left: 8px; font-size: 11px; font-weight: 400; color: #aab1bd; }
-.h3ct-section-fields { display: grid; gap: 8px; padding: 0 8px 8px; }
+.h3ct-section-fields { display: grid; gap: 8px; }
 .h3ct-section.subject_definitions .h3ct-section-fields { grid-template-columns: repeat(auto-fit, minmax(min(230px, 100%), 1fr)); }
 .h3ct-prompt-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .h3ct-entry-label { font-size: 11px; font-weight: 600; color: #a9bcdb; }
@@ -385,16 +387,25 @@ export class TimelineEditor {
     this.renderButton = button('▶ Render', '', () => this.queue(), 'h3ct-primary');
     head.append(this.summaryEl, el('span', 'h3ct-grow'), this.fullLink, this.fullDownloadLink, this.addButton,
       this.renderNextButton, this.renderButton);
-    this.feedbackEl = el('details', 'h3ct-advanced');
+    this.pins = new Pins();
+    // What a switch turned off cleared, by pin key, so turning it back on brings it back.
+    this.stash = new Map();
+    this.feedbackSection = new SwitchSection('Story feedback', {onToggle: (on) => {
+      this.pins.set('feedback', on);
+      if (!on) this.feedbackInput.value = '';
+      this.renderFeedback();
+      if (on) this.feedbackInput.focus();
+    }});
+    this.feedbackEl = this.feedbackSection.root;
     this.feedbackInput = el('textarea', 'h3ct-text');
     this.feedbackInput.rows = 2;
     this.feedbackInput.placeholder = 'Make subject 1 kneel after stubbing his toe…';
     this.feedbackInput.setAttribute('aria-label', 'Story feedback');
+    this.feedbackInput.addEventListener('input', () => this.renderFeedback());
     this.editMessage = el('div', 'h3ct-hint');
     this.feedbackButton = button('Apply feedback', 'Keep the existing story while incorporating this suggestion',
       () => this.editStory({kind: 'feedback', text: this.feedbackInput.value, box: this.box()?.id}));
-    this.feedbackEl.append(el('summary', null, 'Story feedback'), this.feedbackInput,
-      this.feedbackButton, this.editMessage);
+    this.feedbackSection.body.append(this.feedbackInput, this.feedbackButton, this.editMessage);
 
     const lane = this.laneEl = el('div', 'h3ct-lane');
     this.rulerEl = el('div', 'h3ct-ruler');
@@ -415,9 +426,10 @@ export class TimelineEditor {
     this.stackEl = el('div', 'h3ct-stack');
     this.stackEl.hidden = true;
     this.audioLanes = new AudioLanes(this);
+    this.trackEditor = new TrackEditor(this);
     this.dialogue = new DialoguePanel(this);
     this.chain = new ChainSettings(this);
-    lane.append(this.stillsEl, this.rulerEl, this.trackEl, this.stackEl, this.audioLanes.root, this.audioLanes.settings,
+    lane.append(this.stillsEl, this.rulerEl, this.trackEl, this.trackEditor.root, this.stackEl, this.audioLanes.root, this.audioLanes.settings,
       this.dialogue.root);
     this.hintEl = el('p', 'h3ct-hint');
     this.readOnlyEl = el('p', 'h3ct-hint problem');
@@ -440,20 +452,20 @@ export class TimelineEditor {
     this.countInput.setAttribute('aria-label', 'Takes to render');
     this.countInput.title = 'How many takes to render using the clip’s seed mode';
     this.countInput.addEventListener('input', () => {
-      this.boxRenderButton.textContent = this.generateLabel();
+      setIconLabel(this.boxRenderButton,this.generateLabel());
     });
     this.boxRenderButton = button('Generate clip', '', async () => {
-      const outcome = await this.queueBox(this.takeCount());
+      const outcome = await this.queueBox(1);
       if (outcome.queued === outcome.requested) this.countInput.value = '1';
       else if (outcome.queued > 0 && outcome.retryable) this.countInput.value = String(outcome.remaining);
       this.renderPanelInfo();
     }, 'h3ct-primary');
     const render = el('span', 'h3ctk-render');
-    render.append(this.countInput, this.boxRenderButton);
-    this.clipActions = el('details', 'h3ct-clip-actions');
+    render.append(this.boxRenderButton);
+    this.clipActions = el('div', 'h3ct-clip-actions');
     const actions = el('div', 'h3ct-row');
     actions.append(this.leftButton, this.rightButton, this.duplicateButton, this.deleteButton);
-    this.clipActions.append(el('summary', null, 'Clip actions'), actions);
+    this.clipActions.append(actions);
     panelHead.append(this.titleEl, el('span', 'h3ct-grow'), this.clipActions, render);
     this.panelTabsEl = el('div', 'h3ct-panel-tabs');
     this.panelTabsEl.setAttribute('role', 'tablist');
@@ -468,6 +480,13 @@ export class TimelineEditor {
       tab.setAttribute('role', 'tab');
       tab.id = `h3ct-tab-${key}-${this.instanceId}`;
       this.tabButtons[key] = tab;
+      decorateIcon(tab,{prompt:'prompt',still:'shots',takes:'takes',box:'settings'}[key],label,{text:true});
+      tab.addEventListener('keydown',event=>{
+        if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;
+        event.preventDefault();const keys=['prompt','still','takes','box'],at=keys.indexOf(key);
+        const next=event.key==='Home'?0:event.key==='End'?keys.length-1:(at+(event.key==='ArrowRight'?1:-1)+keys.length)%keys.length;
+        this.tabButtons[keys[next]].click();this.tabButtons[keys[next]].focus();
+      });
       this.panelTabsEl.append(tab);
       const panel = el('div', 'h3ct-tabpanel');
       panel.setAttribute('role', 'tabpanel');
@@ -601,7 +620,7 @@ export class TimelineEditor {
       else delete this.box().seed_mode;
       this.commit();
     });
-    const roll = button('🎲', 'Choose a new seed for the next render', () => {
+    const roll = this.rollSeedButton = button('🎲', 'Choose a new seed for the next render', () => {
       this.video().seed = model.newSeed();
       this.commit();
     });
@@ -620,6 +639,8 @@ export class TimelineEditor {
     this.joinSelect = el('select', 'h3ct-select');
     this.joinSelect.setAttribute('aria-label', 'How this clip joins the clip before');
     this.joinSelect.append(...model.JOINS.map((kind) => option(kind, JOIN_LABELS[kind])));
+    // The Join switch is the Continue choice: on, the select offers only the joins that change something.
+    this.joinSelect.options[0].hidden = true;
     this.joinNote = el('input', 'h3ct-note');
     this.joinNote.type = 'text';
     this.joinNote.placeholder = 'Note (optional)';
@@ -646,28 +667,45 @@ export class TimelineEditor {
       details.append(el('summary', null, title), ...roots);
       return details;
     };
+    const section = (title, onToggle, ...roots) => {
+      const block = new SwitchSection(title, {onToggle: (on) => { if (!this.readOnly.length) onToggle(on); }});
+      block.body.append(...roots);
+      return block;
+    };
     const frames = el('div', 'h3ct-row');
     const lastField = group('Last frame', this.lastPicker, this.lastNote, upload('last'));
     imageDrop(this.firstField, file => this.dropGuide(file, 'first'));
     imageDrop(lastField, file => this.dropGuide(file, 'last'));
     frames.append(this.firstField, lastField);
-    const joins = el('div', 'h3ct-row'); joins.append(this.cutField, this.sceneField, this.joinField);
-    const length = el('div', 'h3ct-row'); length.append(this.exactField, this.framesField);
-    this.frameSettings = disclosure('First & last frame', frames);
-    this.joinSettings = disclosure('Join with previous clip', joins);
-    this.lengthSettings = disclosure('Length', length); this.lengthSettings.open = true;
-    this.seedSettings = disclosure('Seed', field('Seed', this.seedInput, roll), field('Seed mode', this.seedMode));
-    this.bridgeDetails = disclosure('Bridge · new frames across the cut', this.bridges.field, this.bridges.root);
+    const joins = el('div', 'h3ct-row'); joins.append(this.sceneField, this.joinField);
+    this.frameSettings = section('First & last frame', (on) => this.toggleFrames(on), frames);
+    this.joinSettings = section('Cut', (on) => {
+      if (this.state.bible) model.setJoin(this.state, this.selected, on ? 'cut' : 'continue', '', this.host.context());
+      else model.setCut(this.state, this.selected, on, this.host.context());
+      this.commit();
+    }, joins);
+    this.lengthSettings = section('Exact length', (on) => {
+      model.setExact(this.state, this.selected, on, this.host.context());
+      this.commit();
+    }, this.framesField);
+    this.seedSettings = section('Fixed seed', (on) => {
+      if (on) { delete this.box().seed_mode; this.video().seed = 42; }
+      else this.box().seed_mode = 'randomize';
+      this.commit();
+    }, field('Seed', this.seedInput, roll));
+    this.bridgeDetails = section('Bridge', (on) => this.toggleBridge(on), this.bridges.root);
+    this.bridgeDetails.titleEl.title = 'New frames across the cut';
     this.videoPickerEl = el('div', 'h3ct-video-picker');
     this.videoPickerEl.setAttribute('role', 'group');
     this.videoPickerEl.setAttribute('aria-label', 'Video to edit');
     this.videoPickerEl.hidden = true;
     this.videosBody = el('div', 'h3ct-videos');
     this.switchBody = el('div', 'h3ct-switch');
-    this.videosGroup = disclosure('Videos in this clip', this.videosBody); this.videosGroup.open = true;
-    this.switchGroup = disclosure('Switch', this.switchBody); this.switchGroup.open = true;
+    this.switchGroup = el('div');
+    this.switchGroup.append(el('p', 'h3sw-subhead', 'Switch'), this.switchBody);
+    this.videosGroup = section('Multiple videos', (on) => this.toggleVideos(on), this.videosBody, this.switchGroup);
     this.videoSettings = el('div', 'h3ct-video-settings');
-    this.videoSettings.append(this.videosGroup, this.switchGroup);
+    this.videoSettings.append(this.videosGroup.root);
     this.layerShotsNote = el('p', 'h3ct-hint');
     this.layerTakesNote = el('p', 'h3ct-hint');
     this.promptMarks = new MentionLayer(this.promptEl, this.mentionHooks());
@@ -692,21 +730,35 @@ export class TimelineEditor {
     this.tabPanels.references.append(this.referenceOverviewEl, this.chipsEl,
       button('Accepted appearance plates', 'Open Shots to inspect accepted plates', () => this.setTab('still')));
     this.tabPanels.prompt.append(this.promptReferencesDetails, this.effectivePromptEl);
-    this.tabPanels.box.append(this.modeEl, this.convertRow, this.videoSettings, this.frameSettings, this.uploadNote, this.joinSettings,
-      this.lengthSettings, this.seedSettings, this.bridgeDetails);
+    this.tabPanels.box.append(this.modeEl, this.convertRow, this.videoSettings, this.frameSettings.root, this.uploadNote,
+      this.joinSettings.root, this.lengthSettings.root, this.seedSettings.root, this.bridgeDetails.root);
     this.memoryEl = el('div');
-    this.memoryDetails = disclosure('Visual memory', this.memoryEl);
-    this.tabPanels.box.append(this.refmodFramesField, this.memoryDetails);
+    this.memoryDetails = section('Visual memory', (on) => {
+      this.video().memory = on ? (this.state.bible ? 'cast' : 'scene') : 'off';
+      this.commit();
+    }, this.memoryEl);
+    this.refmodSection = section('FLF2VA + cached RefMods', (on) => {
+      if (on) this.box().flf_refmods = true;
+      else delete this.box().flf_refmods;
+      this.commit();
+    }, el('p', 'h3ct-hint', 'Experimental. Needs FLF2VA video model weights.'));
+    this.refmodSection.titleEl.title = this.refmodFramesField.title;
+    this.tabPanels.box.append(this.refmodSection.root, this.memoryDetails.root);
     this.castChipsEl = el('div', 'h3cc-chips');
     this.castChipsEl.setAttribute('aria-label', 'Characters, places and props in this clip');
     const cast = el('section');
     cast.append(el('div', 'h3ct-section-heading', 'In this clip'), this.castChipsEl);
     this.tabPanels.prompt.prepend(cast, this.promptProblemEl, this.dialogueField);
     this.checks = new CheckPanel(this);
-    this.continuityDetails = disclosure('Continuity check', this.checks.root); this.continuityDetails.open = true;
+    this.continuityDetails = new SwitchSection('Continuity check', {auto: true});
+    this.continuityDetails.body.append(this.checks.root);
+    this.checks.onRender = (available) => this.continuityDetails.set(available, {
+      title: available ? 'Available: this clip has a rendered take' : 'Turns on when this clip has a rendered take',
+      state: available ? '' : 'Render first'});
     this.clipTakesEl = el('div');
-    this.clipTakesEl.append(this.continuityDetails, this.takes.root, this.takes.bridgeRoot);
+    this.clipTakesEl.append(this.continuityDetails.root, this.takes.root, this.takes.bridgeRoot);
     this.tabPanels.takes.append(this.layerTakesNote, this.clipTakesEl);
+    for(const [control,name,label] of [[this.addButton,'plus','Add clip'],[this.renderNextButton,'next','Render next'],[this.renderButton,'all','Render remaining'],[this.boxRenderButton,'play','Generate clip'],[this.leftButton,'left','Move clip earlier'],[this.rightButton,'right','Move clip later'],[this.duplicateButton,'duplicate','Duplicate'],[this.deleteButton,'trash','Delete']])decorateIcon(control,name,label);
     this.panelEl.append(panelHead, this.videoPickerEl, this.panelTabsEl, this.tabButtons.references,
       ...['prompt', 'still', 'takes', 'box'].map(key => this.tabPanels[key]));
     this.setTab(this.activeTab);
@@ -716,7 +768,7 @@ export class TimelineEditor {
     this.pictures = new PicturesPanel(this);
     this.cast = new CastPage(this);
     this.castEl = this.cast.root;
-    this.root.append(head, this.readOnlyEl, this.feedbackEl, this.referencesEl, this.pictures.root, this.refmodsEl, this.chain.root, this.castEl, this.frameImages.preparation.root, lane, this.hintEl,
+    this.root.append(head, this.readOnlyEl, this.feedbackEl, this.referencesEl, this.pictures.root, this.refmodsEl, this.chain.root, this.castEl, this.frameImages.preparation.root, lane, this.trackEditor.footer, this.hintEl,
       this.panelEl);
     this.renderRefmods();
   }
@@ -728,7 +780,7 @@ export class TimelineEditor {
     for (const name of ['prompt', 'still', 'takes', 'box']) {
       const selected = name === key, tab = this.tabButtons[name];
       tab.setAttribute('aria-selected', String(selected));
-      tab.tabIndex = 0;
+      tab.tabIndex = selected?0:-1;
       this.tabPanels[name].hidden = !selected;
     }
     this.takes?.render();
@@ -737,10 +789,11 @@ export class TimelineEditor {
   focusClipPrompt() {
     if (!this.box()) return null;
     this.setTab('prompt');
-    const area = this.activePromptEl?.isConnected && !this.activePromptEl.closest('[hidden]')
-      ? this.activePromptEl : this.structureEl.querySelector('textarea') ?? this.promptEl;
-    const section = area.closest('details');
-    if (section) section.open = true;
+    const usable = (area) => area?.isConnected && !area.closest('[hidden], .h3sw-section:not(.on)');
+    const area = usable(this.activePromptEl) ? this.activePromptEl
+      : this.structureEl.querySelector('.h3sw-section.on textarea') ?? this.structureEl.querySelector('textarea') ?? this.promptEl;
+    const section = area.closest('.h3sw-section')?.h3swSection;
+    if (section && !section.open) { this.pins.set(section.pin, true); section.set(true); }
     this.activePromptEl = area;
     area.focus();
     return area;
@@ -902,12 +955,12 @@ export class TimelineEditor {
   regions() {
     return {summary: this.summaryEl, add: this.addButton, next: this.renderNextButton, all: this.renderButton,
       open: this.fullLink, download: this.fullDownloadLink, feedback: this.feedbackEl, references: this.referencesEl,
-      pictures: this.pictures.root, refmods: this.refmodsEl, lane: this.laneEl, hint: this.hintEl, readOnly: this.readOnlyEl, panel: this.panelEl,
+      pictures: this.pictures.root, refmods: this.refmodsEl, lane: this.laneEl, laneFooter:this.trackEditor.footer, hint: this.hintEl, readOnly: this.readOnlyEl, panel: this.panelEl,
       cast: this.castEl, sharedPrompt: this.sharedRoot, clipTakes: this.takes.root, videoPicker: this.videoPickerEl,
       bridgeTakes: this.takes.bridgeRoot, continuity: this.checks.root, bridgeSettings: this.bridges.root,
-      audioSettings: this.audioLanes.settings, dialogueSettings: this.dialogue.root, timedTextSettings: this.audioLanes.textSettings,
+      overlapSettings:this.trackEditor.overlap.root, audioSettings: this.audioLanes.settings, dialogueSettings: this.dialogue.root, timedTextSettings: this.audioLanes.textSettings,
       audioHeader: this.audioLanes.header, timedTextHeader: this.audioLanes.textHeader,
-      stillPrompts: this.frameImages.preparation.root, chainSettings: this.chain.root};
+      stillPrompts: this.frameImages.preparation.root, stillInstructions:this.frameImages.preparation.instructionsRoot, chainSettings: this.chain.root};
   }
 
   // Upload… beside a frame picker: the new picture becomes the `end` frame of the box chosen when it was pressed.
@@ -943,6 +996,7 @@ export class TimelineEditor {
 
   startIfEmpty() {
     if (this.state.boxes.length || this.readOnly.length) return;
+    if(tracks.enabled(this.state)){this.trackEditor.addClip();return;}
     model.addBox(this.state, this.host.context());
     this.save(model.serialize(this.state));
     this.render();
@@ -1061,6 +1115,7 @@ export class TimelineEditor {
   }
 
   addBox() {
+    if(tracks.enabled(this.state))return this.trackEditor.addClip();
     this.selected = model.addBox(this.state, this.host.context());
     this.commit();
     this.inspectClip();
@@ -1069,6 +1124,7 @@ export class TimelineEditor {
   // Moves the selected clip. A Continue clip that lands after a clip with several videos must become a Cut, so that
   // is asked first.
   move(delta) {
+    if(tracks.enabled(this.state))return this.trackEditor.move(delta);
     const context = this.host.context(), trial = model.parseState(model.serialize(this.state));
     model.moveBox(trial, this.selected, delta, context);
     const stacked = trial.boxes.findIndex((box, index) => videoLayers.continueAfterStack(trial, index));
@@ -1080,6 +1136,7 @@ export class TimelineEditor {
   }
 
   duplicate() {
+    if(tracks.enabled(this.state))return this.trackEditor.duplicate();
     this.selected = model.duplicateBox(this.state, this.selected, this.host.context());
     this.commit();
     this.inspectClip();
@@ -1088,6 +1145,7 @@ export class TimelineEditor {
   remove() {
     const videos = 1 + (this.box()?.layers?.length ?? 0);
     if (videos > 1 && !globalThis.confirm?.(`Delete clip ${this.selected + 1} and its ${videos} videos?`)) return;
+    if(tracks.enabled(this.state))return this.trackEditor.removeClip();
     this.picked = null;
     this.selected = Math.max(0, model.removeBox(this.state, this.selected, this.host.context()));
     this.commit();
@@ -1465,7 +1523,7 @@ export class TimelineEditor {
     else if (ok && !this.stale && this.status.preview_video_building) summary += ' · Building the video so far…';
     else if (ok && !this.stale && this.status.preview_error && !this.status.preview_video) summary += ` · ${this.status.preview_error}`;
     setText(this.summaryEl, summary);
-    setText(this.renderButton, count && !remaining ? '✓ All rendered' : `▶ Render ${remaining} remaining`);
+    setIconLabel(this.renderButton,count&&!remaining?'All rendered':`Render ${remaining} remaining`);
     this.renderButton.disabled = this.host.hasVideo?.()===false || !remaining || this.queuing || this.host.feeding?.()
       || !this.seedInput.validity.valid || this.readOnly.length > 0;
     this.addButton.disabled = this.readOnly.length > 0;
@@ -1541,6 +1599,7 @@ export class TimelineEditor {
     let start = 0;
     const starts = [];
     this.state.boxes.forEach((box, index) => {
+      start=tracks.startFrame(this.state,box.id);
       starts.push(start);
       const info = this.describe(index, connected, context);
       const status = this.statusOf(box);
@@ -1641,6 +1700,8 @@ export class TimelineEditor {
     this.renderStills(span, stillsWidth);
     // AudioLanes guards typing by state/clip identity, including after its settings root is borrowed.
     this.audioLanes.render(span, laneWidth);
+    this.trackEditor.render(span);
+    this.trackEditor.decorateAudio();
     if (this.audioLanes.lanes.lastChild !== this.playheads[2]) this.audioLanes.lanes.append(this.playheads[2]);
     this.placePlayhead(span);
     this.dialogue.render();
@@ -1790,6 +1851,63 @@ export class TimelineEditor {
     this.commit();
   }
 
+  // Off keeps only the main video; the removed videos' prompts come back with Undo.
+  toggleVideos(on) {
+    if (on) return this.addVideo();
+    const box = this.box(), others = box?.layers ?? [];
+    if (!others.length) return;
+    if (!globalThis.confirm?.(`Remove ${others.length === 1 ? 'the other video' : `the other ${others.length} videos`} of clip ${this.selected + 1} and its switch?`)) return;
+    for (const layer of [...others]) videoLayers.removeVideo(this.state, this.selected, layer.id);
+    this.picked = null;
+    this.commit();
+  }
+
+  // Off clears both frames, kept until the switch comes back on; on with nothing kept shows the empty pickers.
+  toggleFrames(on) {
+    const video = this.video(), key = `frames:${video.id}`;
+    this.pins.set(key, on);
+    if (on) {
+      const kept = this.stash.get(key);
+      this.stash.delete(key);
+      if (!kept) return this.renderPanel();
+      Object.assign(video, kept);
+    } else {
+      if (video.first || video.last) this.stash.set(key, {first: video.first ?? '', last: video.last ?? ''});
+      video.first = '';
+      video.last = '';
+    }
+    this.commit();
+  }
+
+  // On inserts time when it can, else a replacement around the cut; off takes the bridge out.
+  toggleBridge(on) {
+    if (!on) model.removeBridge(this.state, this.selected);
+    else {
+      const mode = !this.bridges.blocked('insert') ? 'insert'
+        : !this.bridges.unavailable() && !this.bridges.blocked('replace') ? 'replace' : null;
+      if (!mode) return;
+      model.insertBridge(this.state, this.selected, mode);
+    }
+    this.commit();
+  }
+
+  renderBridgeSwitch() {
+    const box = this.box(), index = this.selected, fresh = index > 0 && !!box?.cut;
+    this.bridgeDetails.hidden = !fresh;
+    if (!fresh) return;
+    const bridge = model.bridgeOf(this.state, index);
+    const insert = this.bridges.blocked('insert');
+    const replace = this.bridges.unavailable() || this.bridges.blocked('replace');
+    const why = bridge ? '' : insert && replace ? insert : '';
+    this.bridgeDetails.set(!!bridge, {disabled: this.readOnly.length > 0 || !!why, title: why,
+      state: bridge ? (model.isReplacement(bridge) ? 'Replacing around the cut' : `${bridge.frames} frames inserted`) : why});
+  }
+
+  renderFeedback() {
+    const text = this.feedbackInput.value.trim();
+    this.feedbackSection.set(!!text || this.pins.has('feedback'));
+  }
+
   // The Studio sets how wide the lane draws (zoom, 1 = fit the panel).
   setLaneView({zoom = 1} = {}) {
     if (zoom === this.zoom) return;
@@ -1842,23 +1960,40 @@ export class TimelineEditor {
       this.fillEndpointNote(this.firstNote, this.selected, 'first');
       this.fillEndpointNote(this.lastNote, this.selected, 'last');
     }
-    const bible = !!this.state.bible;
-    this.cutField.hidden = this.selected === 0 || bible;
+    const bible = !!this.state.bible, locked = this.readOnly.length > 0, kind = model.joinKind(box);
+    const framesKey = `frames:${video.id}`;
+    this.frameSettings.set(!!(video.first || video.last) || this.pins.has(framesKey), {disabled: locked,
+      state: [video.first && `@${video.first}`, video.last && `@${video.last}`].filter(Boolean).join(' → ')});
+    this.cutField.hidden = true;
     this.cutInput.checked = !!box.cut;
-    this.sceneField.hidden = this.selected === 0 || !box.cut || bible;
+    this.sceneField.hidden = !box.cut || bible;
     this.sceneInput.checked = !!box.new_scene;
-    this.joinField.hidden = this.selected === 0 || !bible;
-    this.joinSelect.value = model.joinKind(box);
+    this.joinField.hidden = !bible;
+    this.joinSelect.value = kind;
     this.joinNote.value = box.join?.note ?? '';
+    this.joinSettings.hidden = this.selected === 0;
+    this.joinSettings.titleEl.textContent = bible ? 'Transition or cut' : 'Cut';
+    this.joinSettings.set(kind !== 'continue', {disabled: locked,
+      state: kind === 'continue' ? `Continues clip ${this.selected}` : bible ? JOIN_LABELS[kind] : ''});
     this.refmodFramesInput.checked = !!box.flf_refmods;
+    this.refmodSection.set(!!box.flf_refmods, {disabled: locked});
     this.exactInput.checked = !!box.exact;
-    this.framesField.hidden = !box.exact;
+    this.framesField.hidden = false;
+    this.lengthSettings.set(!!box.exact, {disabled: locked,
+      state: box.exact ? `${box.frames} frames` : `${model.seconds(box.frames)} s on H3’s frame grid`});
     this.framesInput.max = String(model.limits(model.isFresh(this.state, this.selected), this.host.context(),
       model.maxFrames(this.state)).max);
     this.framesInput.value = String(box.frames);
     this.seedInput.setCustomValidity('');
     this.seedInput.value = video.seed ?? '';
     this.seedMode.value = box.seed_mode ?? 'fixed';
+    const randomSeed = box.seed_mode === 'randomize';
+    this.seedSettings.set(!randomSeed, {disabled: locked, state: randomSeed ? 'Random each render' : String(video.seed ?? 'auto')});
+    const memory = video.memory ?? 'off';
+    this.memoryDetails.set(memory !== 'off', {disabled: locked,
+      state: {off: 'Off', scene: 'Same scene', selected: 'Selected moments', cast: 'Cast'}[memory] ?? memory});
+    this.renderBridgeSwitch();
+    this.renderFeedback();
     this.leftButton.disabled = this.selected === 0;
     this.rightButton.disabled = this.selected >= this.state.boxes.length - 1;
     this.renderChips(connected);
@@ -1908,6 +2043,10 @@ export class TimelineEditor {
     const blocked = this.addVideoBlocked(index);
     const add = button('+ Video', blocked || 'Add another video of this clip’s time', () => this.addVideo(), 'h3ct-add-video');
     add.disabled = !!blocked || this.readOnly.length > 0;
+    const several = videos.length > 1;
+    this.videosGroup.set(several, {disabled: this.readOnly.length > 0 || (!several && !!blocked),
+      title: several ? 'Turn off to keep only the main video' : blocked || 'Render other videos of this clip’s time and swap between them',
+      state: several ? `${videos.length} videos` : ''});
     const notes = [];
     if (videos.length > 1) {
       notes.push('Each video renders the clip’s whole time from its own prompt and seed; the switch picks which one is '
@@ -1959,14 +2098,16 @@ export class TimelineEditor {
     const box = this.video(), layer = this.pickedLayer();
     if (!box) return;
     const mode = el('select', 'h3ct-select');
-    const modes = [['off', 'Off'], ['scene', 'Same scene'], ['selected', 'Selected moments']];
+    if (!box.memory || box.memory === 'off') return;
+    const modes = [['scene', 'Same scene'], ['selected', 'Selected moments']];
     if (this.state.bible || box.memory === 'cast') modes.push(['cast', 'Cast']);
     for (const [value, title] of modes) mode.append(option(value, title));
-    mode.value = box.memory ?? 'off';
+    mode.value = box.memory;
     mode.addEventListener('change', () => { box.memory = mode.value; this.commit(); });
-    root.append(field('Visual memory', mode), el('p', 'h3ct-hint', box.memory === 'cast'
+    mode.setAttribute('aria-label', 'Visual memory mode');
+    root.append(field('Mode', mode), el('p', 'h3ct-hint', box.memory === 'cast'
       ? "Cuts also receive the full preceding video for layout and movement, even when character pictures are supplied. When someone speaks on either side of the cut, they remember the moment before it instead, because H3 would copy the earlier lip movement. Cast adds earlier character and place views. A new scene follows its new setting prompt; a clip without a schedule uses Same scene."
-      : 'Cuts receive the full preceding video for layout, object appearance and movement. When someone speaks on either side of the cut, they remember the moment before it instead, because H3 would copy the earlier lip movement. Same scene also remembers its establishing view; a new scene follows its new setting prompt. Selected moments add chosen earlier views. Off disables visual memory.'));
+      : 'Cuts receive the full preceding video for layout, object appearance and movement. When someone speaks on either side of the cut, they remember the moment before it instead, because H3 would copy the earlier lip movement. Same scene also remembers its establishing view; a new scene follows its new setting prompt. Selected moments add chosen earlier views.'));
     const sources = model.memorySources(layer ? videoLayers.layerView(this.state, this.selected, layer.id) : this.state,
       this.selected);
     const listed = sources.map(source =>
@@ -2139,12 +2280,25 @@ export class TimelineEditor {
     if (!structured) return;
 
     for (const section of sections) {
-      const details = el('details', `h3ct-section ${section.key}`);
-      details.open = ['summary', 'detailed_description', 'integrated_multimodal_description'].includes(section.key);
-      const summary = el('summary', null, section.title);
-      summary.title = section.key;
+      // On while any of its fields has words; off empties them, kept here until it comes back on.
+      const key = `prompt:${box.id}:${section.key}`;
+      const block = new SwitchSection(section.title, {className: `h3ct-section ${section.key}`, onToggle: (on) => {
+        if (this.readOnly.length || this.video() !== box) return;
+        this.pins.set(key, on);
+        const kept = this.stash.get(key);
+        if (on && !kept) return this.renderPrompt();
+        if (on) section.fields.forEach((part, index) => { part.value = kept[index] ?? part.value; });
+        else {
+          this.stash.set(key, section.fields.map((part) => part.value));
+          for (const part of section.fields) part.value = '';
+        }
+        if (on) this.stash.delete(key);
+        box.prompt = writePromptSections(source, sections);
+        this.commit();
+      }});
+      block.pin = key;
+      block.head.title = section.key;
       const numbered = section.fields.filter((part) => /^[<@\[]/.test(part.label));
-      if (numbered.length) summary.append(el('span', 'h3ct-count', ` ${numbered.length}`));
       const fields = el('div', 'h3ct-section-fields');
       for (const part of section.fields) {
         const label = el('div', 'h3ct-prompt-field');
@@ -2158,6 +2312,7 @@ export class TimelineEditor {
         area.addEventListener('input', () => {
           if (!area.isConnected || this.video() !== box) return;
           part.value = area.value;
+          if (!section.fields.some((item) => item.value.trim())) this.pins.set(key, true);
           box.prompt = writePromptSections(source, sections);
           this.promptEl.value = box.prompt;
           this.typed();
@@ -2168,8 +2323,10 @@ export class TimelineEditor {
         fields.append(label);
         if (this.activePromptEl === this.promptEl || part.label === '[Shot 1]') this.activePromptEl = area;
       }
-      details.append(summary, fields);
-      this.structureEl.append(details);
+      block.body.append(fields);
+      block.set(section.fields.some((part) => part.value.trim()) || this.pins.has(key), {disabled: this.readOnly.length > 0,
+        state: numbered.length ? String(numbered.length) : ''});
+      this.structureEl.append(block.root);
     }
     for (const marks of this.sectionMarks) marks.render();
   }
@@ -2504,7 +2661,7 @@ export class TimelineEditor {
     if (!box) return;
     const context = this.host.context();
     setText(this.titleEl, `Clip ${this.selected + 1} · ${model.lengthLabel(this.state, this.selected, context)}`);
-    setText(this.clipActions.firstElementChild, `Clip ${this.selected + 1} actions`);
+    this.clipActions.setAttribute('aria-label',`Clip ${this.selected+1} actions`);
     const layer = this.pickedLayer(), label = this.pickedLabel();
     const info = this.pickedInfo(this.connectedSets(), context);
     const spoken = this.stale || layer ? '' : this.statusOf(box)?.dialogue_problem;
@@ -2513,7 +2670,7 @@ export class TimelineEditor {
     this.promptProblemEl.hidden = !blocking.length && !info.warnings.length;
     this.dialogueField.hidden = !this.state.dialogue?.cues?.length;
     this.dialogueSelect.value = this.video().dialogue === 'manual' ? 'manual' : 'cues';
-    setText(this.boxRenderButton, this.generateLabel());
+    setIconLabel(this.boxRenderButton,this.generateLabel());
     this.boxRenderButton.title = layer ? `Render only video ${label} of this clip, keeping the clip’s other videos`
       : 'Render only this clip using its seed mode, keeping its saved prompt and neighboring videos';
     setText(this.layerShotsNote, layer ? `Shot images for video ${label} come in a later version; its First and Last `
@@ -2550,6 +2707,7 @@ export class TimelineEditor {
     replaceChanged(this.effectivePromptEl, [el('summary', null, 'Effective H3 prompt and text window'), pre]);
     this.checks.render();
     this.bridges.render();
+    this.renderBridgeSwitch();
     this.takes.render();
   }
 

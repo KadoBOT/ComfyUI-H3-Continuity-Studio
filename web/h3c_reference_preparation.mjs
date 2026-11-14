@@ -1,3 +1,4 @@
+import {icon,iconButton} from './h3c_icons.mjs';
 import {stringifyJSON,seedValue} from './h3c_project.mjs?v=0882b8a6265a';
 import {ImageJobClient} from './h3c_image_jobs.mjs?v=441234615008';
 export const REFERENCE_CATEGORIES = ['cast','locations','props'];
@@ -158,9 +159,9 @@ const action=(text,run)=>{const node=element('button','h3ct-button',text);node.t
 
 export class ReferencePreparationPanel {
   constructor(editor) {
-    this.editor=editor;this.host=editor.host;this.rows=[];this.asked=0;this.busy=false;this.message='';this.capability=null;
+    this.editor=editor;this.host=editor.host;this.rows=[];this.asked=0;this.busy=false;this.message='';this.capability=null;this.selectedKey=null;this.filter='all';this.search='';this.mobileDetail=false;this.drafts=new Map();this.showObject=false;this.context=this.host.referenceContext?.();
     this.root=element('details','h3cr-preparation');
-    this.root.append(element('summary',null,'Prepare references'));
+    this.root.append(element('summary',null,'Reference images'));
     this.body=element('div','h3cr-body');this.root.append(this.body);
     this.root.addEventListener('toggle',()=>{if(this.root.open)this.refresh();});
     if(!document.getElementById('h3cr-preparation-style')) {
@@ -174,6 +175,23 @@ export class ReferencePreparationPanel {
       .h3cr-candidates{display:flex;flex-wrap:wrap;gap:8px}.h3cr-candidate{display:flex;flex-direction:column;gap:4px;max-width:100%}
       .h3cr-preparation .h3cr-title{display:flex;flex-wrap:wrap;gap:6px;align-items:center}.h3cr-status,.h3cr-note{font-size:12px;color:#aab1bd;overflow-wrap:anywhere;margin:0}
       .h3cr-preparation .h3ct-text{flex:1 1 130px}.h3cr-object{display:flex;flex-wrap:wrap;gap:6px;min-width:0}
+
+      .h3cr-preparation{padding:12px;border-radius:3px}.h3cr-toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.h3cr-toolbar .h3cr-count{margin-right:auto;color:#c3cad4;font-size:12px}
+      .h3cr-filters{display:flex;gap:4px;flex-wrap:wrap;align-items:center;padding:6px 0}.h3cr-filters input{margin-left:auto;min-width:140px;flex:1 1 160px;max-width:260px!important}
+      .h3cr-filters button[aria-pressed=true]{background:#2d405c;border-color:#8eb5ef;color:#e0edff}
+      .h3cr-workspace{display:grid;grid-template-columns:minmax(170px,240px) minmax(0,1fr);gap:16px;align-items:start;min-width:0}
+      .h3cr-master{max-height:55vh;overflow-y:auto;border-top:1px solid #343a46;min-width:0}.h3cr-item{display:flex;align-items:center;gap:10px;width:100%;text-align:left;padding:8px;border:0;border-bottom:1px solid #343a46;background:transparent;color:inherit;cursor:pointer;font:inherit;min-height:68px}
+      .h3cr-item:hover{background:#262c37}.h3cr-item[aria-pressed=true]{background:#2a3c55}.h3cr-item:focus-visible{outline:2px solid #9dbef1;outline-offset:-2px}
+      .h3cr-item img,.h3cr-item .h3cr-thumb{width:48px;height:48px;flex:0 0 48px;object-fit:cover;background:#252b35;border-radius:3px;display:flex;align-items:center;justify-content:center}
+      .h3cr-item-meta{display:flex;flex-direction:column;gap:3px;min-width:0}.h3cr-item-name{font-weight:500;overflow-wrap:anywhere}.h3cr-item-status{font-size:12px;color:#bec7d6}
+      .h3cr-detail{min-width:0}.h3cr-detail .h3cr-asset{border:0;padding:0;gap:10px}.h3cr-detail .h3cr-title{gap:10px}.h3cr-detail .h3cr-title>strong{font-size:16px;font-weight:600;margin-right:auto}
+      .h3cr-include{display:flex;align-items:center;gap:5px;font-size:12px;color:#c3cad4}.h3cr-detail textarea{font:13px/1.5 system-ui;min-height:110px;max-width:75ch;box-sizing:border-box}
+      .h3cr-detail .h3cr-candidates{gap:10px;align-items:flex-start}.h3cr-detail .h3cr-candidate{flex:1 1 160px;max-width:320px}.h3cr-detail .h3cr-candidate img{width:100%;height:180px;border-radius:3px;background:#10131a}
+      .h3cr-detail .h3cr-candidate:only-child img{height:220px}.h3cr-advanced{border-top:1px solid #343a46;padding-top:8px}.h3cr-advanced summary{font-size:13px;font-weight:400}
+      .h3cr-advanced .h3cr-actions{margin-top:8px}.h3cr-advanced label{display:flex;flex-direction:column;gap:4px;flex:1 1 100px;font-size:12px;color:#c3cad4}
+      .h3cr-used{display:flex;gap:5px;flex-wrap:wrap;font-size:12px}.h3cr-used .h3ct-button{font-size:12px;padding:2px 6px}.h3cr-back{display:none!important}.h3cr-batch-options{border-top:1px solid #343a46;padding-top:6px}.h3cr-batch-options summary{font-size:12px;font-weight:400}
+      .h3cr-object{padding:10px 0;border-bottom:1px solid #343a46}.h3cr-empty{padding:20px 8px;color:#c3cad4;font-size:13px}
+      @media(max-width:600px){.h3cr-workspace{display:block}.h3cr-mobile-detail .h3cr-master{display:none}.h3cr-workspace:not(.h3cr-mobile-detail) .h3cr-detail{display:none}.h3cr-back{display:inline-flex!important}.h3cr-filters input{max-width:100%!important}.h3cr-item{min-height:72px}.h3cr-toolbar{gap:6px}}
       `;document.head.append(style);
     }
     this.render();
@@ -187,17 +205,23 @@ export class ReferencePreparationPanel {
   async refresh() {
     if(!this.root.open)return;
     const asked=++this.asked,context=this.host.referenceContext?.(),before=stringifyJSON(this.editor.state);
+    if(context!==this.context){this.context=context;this.rows=[];this.drafts.clear();this.selectedKey=null;}
+    this.loading=true;if(!this.rows.length)this.render();
     try {
       const [rows,controls]=await Promise.all([this.host.referenceCatalog(),this.host.stillControls?.()]);
       if(asked!==this.asked||context!==this.host.referenceContext?.()||before!==stringifyJSON(this.editor.state))return;
-      this.rows=independentReferences(rows);this.controls=controls;this.capability=controls?.adapter==='pixels';this.message='';this.render();
-    } catch(error) {if(asked===this.asked){this.message=error.message;this.render();}}
+      this.rows=independentReferences(rows);this.controls=controls;this.capability=controls?.adapter==='pixels';this.message='';for(const row of this.rows)if(this.drafts.get(row.key)===row.prompt)this.drafts.delete(row.key);
+    } catch(error) {if(asked===this.asked)this.message=error.message;}
+    finally{if(asked===this.asked){this.loading=false;this.render();}}
   }
   commit(edit) {
+    if(this.editor.readOnly?.length)return;
     this.host.undoStep?.();edit(this.editor.state);this.editor.commit();this.host.undoStep?.();
     this.refresh();
   }
   editRow(row,values) {
+    const current=this.rows.find(r=>r.key===row.key);
+    if(!current||current.input_fingerprint!==row.input_fingerprint){this.message='This reference changed while editing. Review its current description before saving.';this.render();return;}
     this.commit(state=>{
       const preparation=state.reference_preparation??=preparationOf(state);
       let stored=preparation.assets.find(a=>a.key===row.key);
@@ -219,72 +243,97 @@ export class ReferencePreparationPanel {
     this.editRow(current,{candidates:[...(current.candidates??[]),{id:prompt_id+':0',file:pin.file,sha256:pin.sha256,
       input_fingerprint:fingerprint,request_id,prompt_id,batch_index:0,provenance:{origin:'uploaded'}}]});
   }
+  choose(key){this.selectedKey=key;this.mobileDetail=true;this.render();}
+  setFilter(category){this.filter=category;this.mobileDetail=false;this.render();}
   render() {
     const focus=this.body.contains(document.activeElement)?document.activeElement:null,focusKey=focus?.dataset.focus;
     const selection=focus&&typeof focus.selectionStart==='number'?[focus.selectionStart,focus.selectionEnd]:null;
     const state=this.editor.state,flags=preparationOf(state).generate,busy=this.busy||this.host.referenceBusy?.();
+    const readonly=!!this.editor.readOnly?.length;
+    const categories=[['all','All'],['cast','Characters'],['locations','Locations'],['props','Objects']];
+    const filtered=this.rows.filter(row=>(this.filter==='all'||row.category===this.filter)&&row.name.toLowerCase().includes(this.search.toLowerCase()));
+    if(!filtered.some(r=>r.key===this.selectedKey))this.selectedKey=filtered[0]?.key??null;
+    const selected=filtered.find(r=>r.key===this.selectedKey);
+    const toolbar=element('div','h3cr-toolbar'),needed=this.rows.filter(r=>flags[r.category]&&r.included!==false&&['missing','outdated'].includes(r.status));
+    const generate=action(`Generate missing (${needed.length})`,()=>this.run(()=>this.host.generateSelectedReferences(needed.map(r=>r.key))));
+    generate.classList.add('h3ct-primary');generate.disabled=!!busy||readonly||this.capability!==true||!needed.length;
+    generate.title=this.capability!==true?'Connect a pixel image recipe to generate references.':!Object.values(flags).some(Boolean)?'Choose categories under Batch options.':!needed.length?'Selected references are ready.':'Generate included missing or outdated references.';
+    const settings=iconButton('settings','Generator settings',()=>this.run(()=>this.host.openStillGenerator()));settings.dataset.action='generator-settings';settings.disabled=!this.host.openStillGenerator;
+    const stop=action('Stop after current image',()=>this.host.stopReferencePreparation());stop.hidden=!this.host.referenceBatch?.();
+    const addObject=action(this.showObject?'Close object form':'Add object',()=>{this.showObject=!this.showObject;this.render();});addObject.disabled=readonly;
+    toolbar.append(element('span','h3cr-count',`${this.rows.length} references`),generate,settings,stop,addObject);
+    const filters=element('div','h3cr-filters');filters.setAttribute('role','group');filters.setAttribute('aria-label','Filter references');
+    for(const [category,label] of categories){const button=action(label,()=>this.setFilter(category));button.setAttribute('aria-label',`Show ${label.toLowerCase()}`);button.setAttribute('aria-pressed',String(category===this.filter));filters.append(button);}
+    const search=element('input','h3ct-text');search.type='search';search.placeholder='Find a reference';search.value=this.search;search.setAttribute('aria-label','Search references');search.dataset.focus='reference-search';search.addEventListener('input',()=>{this.search=search.value;this.render();});filters.append(search);
+    const options=element('details','h3cr-batch-options');options.open=this.batchOptionsOpen??!Object.values(flags).some(Boolean);options.append(element('summary',null,'Batch options'));
+    options.addEventListener('toggle',()=>{this.batchOptionsOpen=options.open;});
     const switches=element('div','h3cr-switches');
-    for(const [category,title] of [['cast','Generate cast images'],['locations','Generate location images'],['props','Generate object / prop images']]) {
-      const label=element('label'),control=element('input');control.type='checkbox';control.checked=!!flags[category];control.dataset.category=category;
-      control.addEventListener('change',()=>this.commit(state=>setPreparationCategory(state,category,control.checked)));
-      label.append(control,element('span',null,title));switches.append(label);
+    for(const [category,title] of categories.filter(([key])=>key!=='all')){const label=element('label'),control=element('input');control.type='checkbox';control.checked=!!flags[category];control.disabled=readonly;control.setAttribute('aria-label',`Prepare ${title.toLowerCase()} references`);control.addEventListener('change',()=>this.commit(state=>setPreparationCategory(state,category,control.checked)));label.append(control,element('span',null,title));switches.append(label);}
+    options.append(switches,element('p','h3cr-note','Checked categories are generated. Inclusion in this batch does not change which approved references H3 uses.'));
+    const parts=[toolbar,filters,options];
+    if(this.capability===false)parts.push(element('p','h3cr-note','Connect a pixel image recipe to generate references. You can still upload images.'));
+    const batch=this.host.referenceBatch?.();if(batch){const progress=element('progress');progress.max=batch.keys.length;progress.value=batch.completed;progress.setAttribute('aria-label','Reference preparation progress');parts.push(progress,element('p','h3cr-note',`Preparing ${batch.current??'references'}: ${batch.completed} of ${batch.keys.length}${batch.stop?' (stopping after this image)':''}`));}
+    if(this.message){const note=element('p','h3cr-note',this.message);note.setAttribute('role','status');parts.push(note);}
+    if(this.showObject)parts.push(this.objectForm());
+    const workspace=element('div','h3cr-workspace');workspace.classList.toggle('h3cr-mobile-detail',this.mobileDetail);
+    const master=element('div','h3cr-master');master.setAttribute('aria-label','Reference list');
+    const statusLabel=row=>row.existing_images?.length&&row.status==='missing'?'Ready':({approved:'Approved',missing:row.candidates?.length?'Needs approval':'Missing',outdated:'Out of date',candidate:'Needs approval'}[row.status]??row.status);
+    for(const row of filtered){const button=action('',()=>this.choose(row.key));button.className='h3cr-item';button.setAttribute('aria-label',`Edit ${row.name} reference`);button.setAttribute('aria-pressed',String(row.key===this.selectedKey));
+      const approved=row.candidates?.find(c=>c.id===row.approved?.candidate_id),picture=approved??row.existing_images?.[0]??row.candidates?.[0];
+      if(picture){const image=element('img');image.src=this.host.viewUrl(picture.file);image.alt='';button.append(image);}else{const placeholder=element('span','h3cr-thumb');placeholder.append(icon('stills'));button.append(placeholder);}
+      const text=element('span','h3cr-item-meta');text.append(element('span','h3cr-item-name',row.name),element('span','h3cr-item-status',statusLabel(row)));button.append(text);master.append(button);
     }
-    const buttons=element('div','h3cr-actions');
-    const generate=action('Generate missing references',()=>this.run(()=>this.host.generateSelectedReferences(this.rows.filter(r=>flags[r.category]&&r.included!==false&&r.role!=='scene_layout'&&r.status!=='orphan').map(r=>r.key))));
-    generate.disabled=!!busy||this.capability!==true||!this.rows.some(r=>flags[r.category]&&r.included!==false&&['missing','outdated'].includes(r.status));
-    const settings=action('Generator settings',()=>this.run(()=>this.host.openStillGenerator()));settings.dataset.action='generator-settings';
-    const stop=action('Stop after current image',()=>this.host.stopReferencePreparation());stop.disabled=!this.host.referenceBatch?.();
-    buttons.append(generate,settings,stop);
-    const parts=[element('p','h3cr-note','One reference per character, outfit, location or object. Uploaded references are ready; generated candidates need Use as reference. Switching preparation off keeps approved images; Enabled references controls their use.'),switches,buttons];
-    if(this.capability===false)parts.push(element('p','h3cr-note','Connect a pixel image recipe to generate references here. Uploaded and imported images remain available.'));
-    const batch=this.host.referenceBatch?.();if(batch)parts.push(element('p','h3cr-note',`Preparing ${batch.current??'references'} · ${batch.completed} of ${batch.keys.length} completed${batch.stop?' · stopping after current image':''}`));
-    if(this.message)parts.push(element('p','h3cr-note',this.message));
-    parts.push(this.objectForm());
-    for(const row of this.rows) {
+    if(!filtered.length)master.append(element('p','h3cr-empty',this.loading?'Loading reference images…':this.rows.length?'No references match this filter.':'References appear here when characters, locations or objects are linked to clips.'));
+    const detail=this.detail=element('div','h3cr-detail');workspace.append(master,detail);
+    const back=action('Back to references',()=>{this.mobileDetail=false;this.render();});back.classList.add('h3cr-back');detail.append(back);
+    if(!selected)detail.append(element('p','h3cr-empty','Select a reference to edit its description or choose an image.'));
+    for(const row of selected?[selected]:[]) {
       const card=element('section','h3cr-asset');card.dataset.asset=row.key;
       const title=element('div','h3cr-title'),include=element('input');include.type='checkbox';include.checked=row.included!==false;
-      include.setAttribute('aria-label','Prepare '+row.name);include.addEventListener('change',()=>this.editRow(row,{included:include.checked}));
-      title.append(include,element('strong',null,row.name),element('span','h3cr-status',row.status));card.append(title);
-      card.append(element('p','h3cr-note',row.clips.length?'Used in clips '+row.clips.map(id=>state.boxes.findIndex(b=>b.id===id)+1).join(', '):'Owner removed or not yet scheduled'));
-      const prompt=element('textarea','h3ct-text');prompt.rows=3;prompt.value=row.prompt??'';prompt.setAttribute('aria-label',row.name+' image prompt');prompt.dataset.focus=row.key+':prompt';
-      prompt.addEventListener('change',()=>this.editRow(row,{prompt:prompt.value}));card.append(prompt);
+      include.disabled=readonly;include.setAttribute('aria-label','Include '+row.name+' in batch');include.addEventListener('change',()=>this.editRow(row,{included:include.checked}));
+      const inclusion=element('label','h3cr-include');inclusion.append(include,element('span',null,'Include in batch'));title.append(element('strong',null,row.name),element('span','h3cr-status',statusLabel(row)),inclusion);card.append(title);
+      const used=element('div','h3cr-used');used.append(element('span',null,'Used in'));for(const id of row.clips??[]){const index=state.boxes.findIndex(b=>b.id===id);if(index<0)continue;const link=action(`Clip ${index+1}`,()=>{this.editor.select?.(index);this.editor.inspectClip?.();this.root.dispatchEvent(new CustomEvent('h3c-show-page',{bubbles:true,detail:{page:'box'}}));});used.append(link);}card.append(used);
+      const prompt=element('textarea','h3ct-text');prompt.rows=4;prompt.value=this.drafts.get(row.key)??row.prompt??'';prompt.disabled=readonly;prompt.setAttribute('aria-label',row.name+' image prompt');prompt.dataset.focus=row.key+':prompt';
+      prompt.addEventListener('input',()=>this.drafts.set(row.key,prompt.value));prompt.addEventListener('change',()=>this.editRow(row,{prompt:prompt.value}));const description=element('label','h3cr-note','Visual description');description.htmlFor=`h3cr-prompt-${row.key}`;prompt.id=description.htmlFor;card.append(description,prompt);
       const fields=element('div','h3cr-actions');
       const seed=element('input','h3ct-text');seed.type='text';seed.inputMode='numeric';seed.placeholder='Seed: native generator';seed.value=row.seed==null?'':String(row.seed);seed.setAttribute('aria-label',row.name+' seed');seed.dataset.focus=row.key+':seed';
       seed.addEventListener('change',()=>{const value=seed.value===''?undefined:seedValue(seed.value);if(seed.value!==''&&value===undefined){this.message='Image seed must be an unsigned 64-bit integer.';this.render();return;}this.editRow(row,{seed:value});});
-      fields.append(seed);
+      const seedLabel=element('label',null,'Seed');seedLabel.append(seed);fields.append(seedLabel);
       for(const dimension of ['width','height']) {
         const size=element('input','h3ct-text');size.type='number';size.min='1';size.placeholder=dimension+' (native)';size.value=row.size?.[dimension]??'';size.setAttribute('aria-label',row.name+' '+dimension);size.dataset.focus=row.key+':'+dimension;
-        size.addEventListener('change',()=>{if(size.value===''){this.editRow(row,{size:undefined});return;}const width=Number(dimension==='width'?size.value:row.size?.width??this.controls?.width),height=Number(dimension==='height'?size.value:row.size?.height??this.controls?.height);if(Number.isInteger(width)&&width>0&&Number.isInteger(height)&&height>0)this.editRow(row,{size:{width,height}});else {this.message='Choose positive width and height, or use Generator settings.';this.render();}});fields.append(size);
+        size.addEventListener('change',()=>{if(size.value===''){this.editRow(row,{size:undefined});return;}const width=Number(dimension==='width'?size.value:row.size?.width??this.controls?.width),height=Number(dimension==='height'?size.value:row.size?.height??this.controls?.height);if(Number.isInteger(width)&&width>0&&Number.isInteger(height)&&height>0)this.editRow(row,{size:{width,height}});else {this.message='Choose positive width and height, or use Generator settings.';this.render();}});const dimensionLabel=element('label',null,dimension==='width'?'Width':'Height');dimensionLabel.append(size);fields.append(dimensionLabel);
       }
-      card.append(fields);
+      const advanced=element('details','h3cr-advanced');advanced.append(element('summary',null,'Advanced: seed and dimensions'),fields);
       const controls=element('div','h3cr-actions'),generateOne=action(row.status==='approved'?'Regenerate reference':row.candidates.length?'Regenerate candidate':'Generate reference',()=>this.run(()=>this.host.generateReference(row.key)));
-      generateOne.disabled=!!busy||!flags[row.category]||this.capability!==true||row.status==='orphan';
+      generateOne.disabled=readonly||!!busy||!flags[row.category]||this.capability!==true||row.status==='orphan';
       const upload=element('input');upload.type='file';upload.accept='image/*';upload.setAttribute('aria-label','Upload '+row.name+' reference');upload.hidden=true;upload.addEventListener('change',()=>this.run(()=>this.upload(row,upload.files[0])));
-      const uploadButton=action('Upload candidate',()=>upload.click());uploadButton.disabled=!!busy||row.status==='orphan';
+      const uploadButton=action('Upload candidate',()=>upload.click());uploadButton.disabled=readonly||!!busy||row.status==='orphan';
       controls.append(generateOne,uploadButton,upload);card.append(controls);
       const candidates=element('div','h3cr-candidates');
       for(const original of row.existing_images??[]) {
         const item=element('div','h3cr-candidate'),image=element('img');image.src=this.host.viewUrl(original.file);image.alt=row.name+' uploaded reference';
         item.append(image,element('span','h3cr-status','Uploaded reference — ready'));candidates.append(item);
       }
-      for(const candidate of row.candidates) {
+      for(const candidate of row.candidates??[]) {
         const item=element('div','h3cr-candidate'),image=element('img');image.src=this.host.viewUrl(candidate.file);image.alt=row.name+' candidate';
         const accept=action(row.approved?.candidate_id===candidate.id?'Approved reference':'Use as reference',()=>this.run(()=>this.host.approveReference({asset_key:row.key,candidate_id:candidate.id,expected_revision:row.approved?.revision??0})));
-        accept.disabled=!!busy||row.status==='orphan'||candidate.input_fingerprint!==row.input_fingerprint||row.approved?.candidate_id===candidate.id;
+        accept.disabled=readonly||!!busy||row.status==='orphan'||candidate.input_fingerprint!==row.input_fingerprint||row.approved?.candidate_id===candidate.id;
         item.append(image,accept);if(candidate.input_fingerprint!==row.input_fingerprint)item.append(element('span','h3cr-status','Out of date'));candidates.append(item);
       }
-      card.append(candidates);parts.push(card);
+      card.replaceChildren(title,used,candidates,description,prompt,controls,advanced);detail.append(card);
     }
-    this.body.replaceChildren(...parts);
+    parts.push(workspace);this.body.replaceChildren(...parts);
+    if(readonly)for(const input of this.body.querySelectorAll?.('input,textarea,select')??[])input.disabled=true;
     const again=focusKey&&[...this.body.querySelectorAll('[data-focus]')].find(n=>n.dataset.focus===focusKey);
     if(again){again.focus();if(selection&&again.setSelectionRange)again.setSelectionRange(...selection);}
   }
   objectForm() {
+    if(this.objectEl)return this.objectEl;
     const form=element('div','h3cr-object'),name=element('input','h3ct-text'),description=element('input','h3ct-text');
     name.placeholder='Object name (weapon, car, prop…)';name.setAttribute('aria-label','New object reference name');
     description.placeholder='Visual description';description.setAttribute('aria-label','New object reference description');
     const label=element('label'),whole=element('input');whole.type='checkbox';whole.checked=true;label.append(whole,element('span',null,'Use throughout this scene'));
     const add=action('Add object reference',()=>{try{this.commit(state=>addObjectReference(state,{name:name.value,description:description.value,boxId:state.boxes[this.editor.selected]?.id,wholeScene:whole.checked}));}catch(error){this.message=error.message;this.render();}});
-    form.append(name,description,label,add);return form;
+    form.append(name,description,label,add);this.objectEl=form;return form;
   }
 }

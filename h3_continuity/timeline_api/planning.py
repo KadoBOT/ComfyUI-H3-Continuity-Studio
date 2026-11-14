@@ -137,10 +137,11 @@ class Planner:
             asset_identity = box_reuse_asset_identity(prepared, project)
         identity = {"profile_sha256": project["profile_sha256"], "settings": prepared["settings"], "assets": asset_identity}
         units, by_box = [], {}
-        for index, box in enumerate(parsed.boxes):
+        for index in rules.render_order(parsed):
+            box=parsed.boxes[index]
             dependencies = []
             if not rules.is_fresh(parsed, index):
-                dependencies.append("box:" + parsed.boxes[index - 1].id)
+                dependencies.append("box:" + parsed.boxes[rules.previous_index(parsed,index)].id)
             dependencies.extend("box:" + parsed.boxes[source].id for source, _, _ in rules.memory_sources(parsed, index))
             length = prepared["boxes"][index]
             unit = {"id": "box:" + box.id, "kind": "box", "box_id": box.id, "index": index + 1,
@@ -154,7 +155,7 @@ class Planner:
             units.append(unit)
         for bridge in parsed.bridges:
             index = bridges.position(parsed, bridge)
-            before, after = parsed.boxes[index - 1].id, bridge["before"]
+            before, after = parsed.boxes[rules.previous_index(parsed,index)].id, bridge["before"]
             carried, frozen = bridges.ends(context, {"frames": by_box[before]["generated_frames"]},
                                            {"frames": by_box[after]["generated_frames"]})
             unit = {"id": "bridge:" + after, "kind": "bridge", "box_id": after,
@@ -167,7 +168,7 @@ class Planner:
             units.append(unit)
         for bridge in parsed.replacements:
             index = replacement.position(parsed, bridge)
-            before, after = parsed.boxes[index - 1].id, bridge["before"]
+            before, after = parsed.boxes[rules.previous_index(parsed,index)].id, bridge["before"]
             units.append({"id": "replacement:" + after, "kind": "replacement", "box_id": after,
                           "dependencies": ["box:" + before, "box:" + after], "left": bridge["left"],
                           "right": bridge["right"], "replaced_frames": bridge["left"] + bridge["right"],

@@ -8,8 +8,9 @@ the moment into separate clips that would each start over.
 
 ## Adding a video
 
-In the Studio, select a clip and press **+ Video**: under the clip's video rows on the Timeline, or in **Settings →
-Videos in this clip**. The new video copies the clip's prompt and seed, and starts with no First or Last frame. It
+In the Studio, select a clip and press **+ Video** under the clip's video rows on the Timeline, or turn on
+**Settings → Multiple videos**. Turning that switch off again keeps only the main video, after a confirmation. The new
+video copies the clip's prompt and seed, and starts with no First or Last frame. It
 takes over halfway through the time the last video is on screen. A clip holds at most four videos; **+ Video** is off
 at four, and when the clip is too short for another swap with its fade.
 
@@ -27,7 +28,7 @@ row on the Timeline picks it too.
 ## Swap, fade and sound
 
 Each swap is a frame of the clip where the next video comes on screen. Drag its handle on the Timeline (it snaps to
-beats like clip edges; Shift drags freely), or type the frame in **Settings → Switch**. The chip on the handle reads
+beats like clip edges; Shift drags freely), or type the frame under **Switch** in **Settings → Multiple videos**. The chip on the handle reads
 "27 · fade 6".
 
 - **Fade**: 0 to 12 frames, 6 by default, centred on the swap. 0 is a hard cut. Swaps stay at least one fade apart,

@@ -83,7 +83,7 @@ def states(folder, timeline, manifest, done, known, context):
         trouble = replacement.check(timeline, bridge, context, current_takes)
         links = [bridges.link(folder, segments.get(n)) for n in (index, index + 1)]
         region = None
-        if all(links) and [link["box"] for link in links] == [timeline.boxes[index - 1].id, timeline.boxes[index].id]:
+        if all(links) and [link["box"] for link in links] == [timeline.boxes[rules.previous_index(timeline,index)].id, timeline.boxes[index].id]:
             region = replacement.region_key(replacement.static_key(timeline, bridge, context), *links)
         recipe = replacement.recipe(timeline, bridge)
         saved = [{"entry": entry, "state": candidate_state(folder, entry, region, known)}
@@ -130,8 +130,8 @@ def active(found):
 
 def region(timeline, shape):
     """The region in sequence frames, with the frames it covers in each box's own delivered footage."""
-    before = timeline.boxes[shape.index - 1]
-    played = rules.played_frames(timeline, shape.index - 1)
+    before = timeline.boxes[rules.previous_index(timeline,shape.index)]
+    played = rules.played_frames(timeline, rules.previous_index(timeline,shape.index))
     return {"join": shape.join, "start": shape.start, "end": shape.end, "left": shape.left, "right": shape.right,
             "frames": shape.frames, "context_frames": shape.context_frames, "ending_frames": shape.ending_frames,
             "before": [before.id, played - shape.left, played], "after": [timeline.boxes[shape.index].id, 0, shape.right]}
@@ -154,7 +154,7 @@ def item(state, timeline, context, view, takes=None):
     names. `view(filename, version)` gives a candidate file's /view dict; `takes` maps box ids to their take identity,
     as in `replacement.check`."""
     bridge = state.bridge
-    ends = (timeline.boxes[state.index - 1].id, bridge["before"])
+    ends = (timeline.boxes[rules.previous_index(timeline,state.index)].id, bridge["before"])
     projected = dialogue.projected(timeline)
     choices = replacement.options(timeline, state.index, context, takes, projected)
     proposal = replacement.proposal(timeline, state.index, context, takes, choices)
