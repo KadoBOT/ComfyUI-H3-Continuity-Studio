@@ -1,0 +1,111 @@
+[
+  {
+    "name": "single_clip",
+    "timeline": {"version": 1, "requires": ["scene-map-1"], "prompt": "", "boxes": [
+      {"id": "a", "frames": 39, "prompt": "x", "cut": false, "scene_map": {
+        "on": true, "picture": {"type": "input", "subfolder": "maps", "filename": "yard.png"}, "width": 2000, "height": 1000,
+        "markers": [{"id": "m1", "label": "STRAY", "icon": "person"}, {"id": "m2", "label": "OUTCAST", "icon": "paw"}],
+        "camera": {"fov": 55, "height": 0.5},
+        "opening": {"camera": {"x": 0.5, "y": 0.9, "tx": 0.5, "ty": 0.4}, "markers": {"m1": [0.2, 0.5], "m2": [0.6, 0.5]}},
+        "end": {"markers": {"m1": [0.3, 0.4]}}}}]},
+    "expect": [
+      {"index": 0, "source": null, "markers": ["m1", "m2"],
+       "opening": {"camera": [0.5, 0.9, 0.5, 0.4], "markers": {"m1": [0.2, 0.5], "m2": [0.6, 0.5]}},
+       "end": {"camera": [0.5, 0.9, 0.5, 0.4], "markers": {"m1": [0.3, 0.4], "m2": [0.6, 0.5]}}}]
+  },
+  {
+    "name": "continuous_borrows",
+    "timeline": {"version": 1, "requires": ["scene-map-1"], "prompt": "", "boxes": [
+      {"id": "a", "frames": 39, "prompt": "x", "cut": false, "scene_map": {
+        "on": true, "picture": {"type": "input", "subfolder": "maps", "filename": "yard.png"}, "width": 2000, "height": 1000,
+        "markers": [{"id": "m1", "label": "STRAY", "icon": "person"}, {"id": "m2", "label": "OUTCAST", "icon": "paw"}],
+        "camera": {"fov": 55, "height": 0.5},
+        "opening": {"camera": {"x": 0.5, "y": 0.9, "tx": 0.5, "ty": 0.4}, "markers": {"m1": [0.2, 0.5], "m2": [0.6, 0.5]}},
+        "end": {"markers": {"m1": [0.3, 0.4]}}}},
+      {"id": "b", "frames": 34, "prompt": "y", "cut": false, "scene_map": {
+        "on": true, "markers": [{"id": "m9", "label": "GRAZER", "icon": "target"}],
+        "opening": {"camera": {"x": 0.1, "y": 0.1, "tx": 0.2, "ty": 0.2}, "markers": {"m9": [0.8, 0.6], "m1": [0.0, 0.0]}},
+        "end": {"camera": {"x": 0.55, "y": 0.9, "tx": 0.5, "ty": 0.4}, "markers": {"m1": [0.35, 0.3]}}}}]},
+    "expect": [
+      {"index": 1, "source": 0, "markers": ["m1", "m2", "m9"],
+       "opening": {"camera": [0.5, 0.9, 0.5, 0.4], "markers": {"m1": [0.3, 0.4], "m2": [0.6, 0.5], "m9": [0.8, 0.6]}},
+       "end": {"camera": [0.55, 0.9, 0.5, 0.4], "markers": {"m1": [0.35, 0.3], "m2": [0.6, 0.5], "m9": [0.8, 0.6]}}}]
+  },
+  {
+    "name": "cut_is_independent",
+    "timeline": {"version": 1, "requires": ["scene-map-1"], "prompt": "", "boxes": [
+      {"id": "a", "frames": 39, "prompt": "x", "cut": false, "scene_map": {
+        "on": true, "markers": [{"id": "m1", "label": "STRAY"}],
+        "opening": {"camera": {"x": 0.5, "y": 0.9, "tx": 0.5, "ty": 0.4}, "markers": {"m1": [0.2, 0.5]}}}},
+      {"id": "b", "frames": 39, "prompt": "y", "cut": true, "scene_map": {
+        "on": true, "markers": [{"id": "m1", "label": "STRAY"}],
+        "opening": {"camera": {"x": 0.1, "y": 0.9, "tx": 0.5, "ty": 0.4}, "markers": {"m1": [0.5, 0.5]}}}}]},
+    "expect": [
+      {"index": 1, "source": null, "markers": ["m1"],
+       "opening": {"camera": [0.1, 0.9, 0.5, 0.4], "markers": {"m1": [0.5, 0.5]}},
+       "end": {"camera": [0.1, 0.9, 0.5, 0.4], "markers": {"m1": [0.5, 0.5]}}}]
+  },
+  {
+    "name": "absent_propagates",
+    "timeline": {"version": 1, "requires": ["scene-map-1"], "prompt": "", "boxes": [
+      {"id": "a", "frames": 39, "prompt": "x", "cut": false, "scene_map": {
+        "on": true, "markers": [{"id": "m1", "label": "STRAY"}, {"id": "m2", "label": "OUTCAST"}],
+        "opening": {"camera": {"x": 0.5, "y": 0.9, "tx": 0.5, "ty": 0.4}, "markers": {"m1": [0.2, 0.5], "m2": [0.6, 0.5]}},
+        "end": {"markers": {"m1": [0.3, 0.4]}}}},
+      {"id": "b", "frames": 34, "prompt": "y", "cut": false, "scene_map": {"on": true, "absent": ["m2"]}},
+      {"id": "c", "frames": 34, "prompt": "z", "cut": false, "scene_map": {"on": true}}]},
+    "expect": [
+      {"index": 0, "source": null, "markers": ["m1", "m2"],
+       "opening": {"camera": [0.5, 0.9, 0.5, 0.4], "markers": {"m1": [0.2, 0.5], "m2": [0.6, 0.5]}},
+       "end": {"camera": [0.5, 0.9, 0.5, 0.4], "markers": {"m1": [0.3, 0.4], "m2": [0.6, 0.5]}}},
+      {"index": 1, "source": 0, "markers": ["m1"],
+       "opening": {"camera": [0.5, 0.9, 0.5, 0.4], "markers": {"m1": [0.3, 0.4]}},
+       "end": {"camera": [0.5, 0.9, 0.5, 0.4], "markers": {"m1": [0.3, 0.4]}}},
+      {"index": 2, "source": 1, "markers": ["m1"],
+       "opening": {"camera": [0.5, 0.9, 0.5, 0.4], "markers": {"m1": [0.3, 0.4]}},
+       "end": {"camera": [0.5, 0.9, 0.5, 0.4], "markers": {"m1": [0.3, 0.4]}}}]
+  },
+  {
+    "name": "broken_link_uses_copy",
+    "timeline": {"version": 1, "requires": ["scene-map-1"], "prompt": "", "boxes": [
+      {"id": "a", "frames": 39, "prompt": "x", "cut": false, "scene_map": {
+        "on": true, "markers": [{"id": "m1", "label": "STRAY"}, {"id": "m2", "label": "OUTCAST"}],
+        "opening": {"camera": {"x": 0.5, "y": 0.9, "tx": 0.5, "ty": 0.4}, "markers": {"m1": [0.2, 0.5], "m2": [0.6, 0.5]}},
+        "end": {"markers": {"m1": [0.9, 0.9]}}}},
+      {"id": "b", "frames": 39, "prompt": "y", "cut": true, "scene_map": {
+        "on": true, "markers": [{"id": "m1", "label": "STRAY"}, {"id": "m2", "label": "OUTCAST"}],
+        "opening": {"camera": {"x": 0.5, "y": 0.9, "tx": 0.5, "ty": 0.4}, "markers": {"m1": [0.3, 0.4], "m2": [0.6, 0.5]}}}}]},
+    "expect": [
+      {"index": 1, "source": null, "markers": ["m1", "m2"],
+       "opening": {"camera": [0.5, 0.9, 0.5, 0.4], "markers": {"m1": [0.3, 0.4], "m2": [0.6, 0.5]}},
+       "end": {"camera": [0.5, 0.9, 0.5, 0.4], "markers": {"m1": [0.3, 0.4], "m2": [0.6, 0.5]}}}]
+  },
+  {
+    "name": "stale_borrowed_copy_ignored",
+    "timeline": {"version": 1, "requires": ["scene-map-1"], "prompt": "", "boxes": [
+      {"id": "a", "frames": 39, "prompt": "x", "cut": false, "scene_map": {
+        "on": true, "markers": [{"id": "m1", "label": "STRAY"}],
+        "opening": {"camera": {"x": 0.5, "y": 0.9, "tx": 0.5, "ty": 0.4}, "markers": {"m1": [0.2, 0.5]}}}},
+      {"id": "b", "frames": 34, "prompt": "y", "cut": false, "scene_map": {
+        "on": true, "markers": [{"id": "m1", "label": "STRAY", "borrowed": true}, {"id": "m2", "label": "OUTCAST", "borrowed": true}],
+        "opening": {"markers": {"m1": [0.2, 0.5], "m2": [0.6, 0.5]}}}}]},
+    "expect": [
+      {"index": 1, "source": 0, "markers": ["m1"],
+       "opening": {"camera": [0.5, 0.9, 0.5, 0.4], "markers": {"m1": [0.2, 0.5]}},
+       "end": {"camera": [0.5, 0.9, 0.5, 0.4], "markers": {"m1": [0.2, 0.5]}}}]
+  },
+  {
+    "name": "predecessor_off",
+    "timeline": {"version": 1, "requires": ["scene-map-1"], "prompt": "", "boxes": [
+      {"id": "a", "frames": 39, "prompt": "x", "cut": false, "scene_map": {
+        "on": false, "markers": [{"id": "m1", "label": "STRAY"}],
+        "opening": {"camera": {"x": 0.5, "y": 0.9, "tx": 0.5, "ty": 0.4}, "markers": {"m1": [0.2, 0.5]}}}},
+      {"id": "b", "frames": 34, "prompt": "y", "cut": false, "scene_map": {
+        "on": true, "markers": [{"id": "m1", "label": "STRAY"}],
+        "opening": {"camera": {"x": 0.2, "y": 0.8, "tx": 0.5, "ty": 0.4}, "markers": {"m1": [0.4, 0.4]}}}}]},
+    "expect": [
+      {"index": 1, "source": null, "markers": ["m1"],
+       "opening": {"camera": [0.2, 0.8, 0.5, 0.4], "markers": {"m1": [0.4, 0.4]}},
+       "end": {"camera": [0.2, 0.8, 0.5, 0.4], "markers": {"m1": [0.4, 0.4]}}}]
+  }
+]

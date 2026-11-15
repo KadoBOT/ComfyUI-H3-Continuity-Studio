@@ -2,7 +2,7 @@
 
 H3 Continuity is a ComfyUI custom node pack for authoring and rendering sequences with MiniMax H3. Its Timeline organizes clips and carries context across continuing clips; the Studio adds story, reference and timeline editing. It also includes nodes for saved segments, stills and H3 context windows.
 
-Visual memory can bring selected moments from earlier clips into a later shot, including after an exterior scene or a camera-angle change. H3 Story can plan and write the Timeline through an OpenAI-compatible endpoint, local or cloud.
+Visual memory can bring selected moments from earlier clips into a later shot, including after an exterior scene or a camera-angle change. A per-clip scene map places the camera and characters on a top-down plan of the place. H3 Story can plan and write the Timeline through an OpenAI-compatible endpoint, local or cloud.
 
 [Watch the contest demo (under two minutes)](https://github.com/KadoBOT/ComfyUI-H3-Continuity-Studio/releases/download/v0.1.0/H3-Continuity-demo-contest.mp4) · [Full demo](https://github.com/KadoBOT/ComfyUI-H3-Continuity-Studio/releases/download/v0.1.0/H3-Continuity-demo-full.mp4) · [Reproduce the example](docs/MEMORY-DEMO.md)
 

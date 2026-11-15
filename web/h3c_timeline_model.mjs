@@ -1,12 +1,13 @@
 import * as tracks from './h3c_tracks.mjs';
+import {FEATURE as SCENE_MAP_FEATURE, normalizeSceneMap} from './h3c_scene_maps.mjs?v=bcaf35949d73';
 import {reconcileSceneAnchors} from './h3c_still_scene.mjs?v=1ca16919a3f9';
 // H3 Timeline editor model: the timeline JSON, lengths on the H3 frame grid, edits, and the rules that
 // decide how a box runs. Mirrors h3_continuity/timeline.py.
 import {parseJSON, stringifyJSON, seedValue} from './h3c_project.mjs?v=0882b8a6265a';
 import {imageDescriptionPrompt, imageDescriptionSource} from './h3c_image_descriptions.mjs?v=5f858b2b6a5a';
-import {acceptedGuideFrames} from './h3c_shot_preview.mjs?v=448aca934518';
+import {acceptedGuideFrames} from './h3c_shot_preview.mjs?v=5070c7d0834c';
 import {AUDIO_WINDOWS_FEATURE, pruneWindows, resolveWindows, audioSourceLocked} from './h3c_audio_windows.mjs?v=cdefbd77b246';
-import {LAYER_FIELDS, SWAPS_DONT_FIT, clampSwitch, hasLayers, layerIds, switchFits} from './h3c_layers.mjs?v=448aca934518';
+import {LAYER_FIELDS, SWAPS_DONT_FIT, clampSwitch, hasLayers, layerIds, switchFits} from './h3c_layers.mjs?v=5070c7d0834c';
 export const FPS = 24;
 export const MAX_FRAMES = 362;
 export const GRID = 17;
@@ -216,6 +217,7 @@ export function parseState(text) {
       ...(record(box.join) ? { join: structuredClone(box.join) } : {}),
       ...(record(box.source) ? { source: structuredClone(box.source) } : {}),
       ...(box.dialogue === 'manual' ? { dialogue: 'manual' } : {}),
+      ...(record(box.scene_map) ? { scene_map: normalizeSceneMap(box.scene_map) } : {}),
       ...parseLayers(box),
     })),
   };
@@ -270,6 +272,7 @@ export function serialize(state) {
       ...(box.join ? { join: box.join } : {}),
       ...(box.source ? { source: box.source } : {}),
       ...(box.dialogue === 'manual' ? { dialogue: 'manual' } : {}),
+      ...(box.scene_map ? { scene_map: box.scene_map } : {}),
       ...(box.layers?.length ? { layers: box.layers, switch: box.switch } : {}),
     })),
   });
@@ -277,7 +280,8 @@ export function serialize(state) {
 
 export const LAYERS_FEATURE = 'video-layers-1';
 // Reader features this editor writes into "requires" when the file depends on them, as timeline.REQUIRES lists them.
-export const OWN_FEATURES = ['dialogue-cues-1', 'replacement-bridges-1', AUDIO_WINDOWS_FEATURE, LAYERS_FEATURE, tracks.FEATURE];
+export const OWN_FEATURES = ['dialogue-cues-1', 'replacement-bridges-1', AUDIO_WINDOWS_FEATURE, LAYERS_FEATURE, tracks.FEATURE,
+  SCENE_MAP_FEATURE];
 
 // What the Timeline needs a reader to understand: this editor's features in use, and any newer one it was given.
 export function requiredFeatures(state) {
@@ -288,6 +292,7 @@ export function requiredFeatures(state) {
     || (state.audio_clips ?? []).some((clip) => clip.locked === true)) own.push('dialogue-cues-1');
   if (keptBridges(state).some(isReplacement)) own.push('replacement-bridges-1');
   if (hasLayers(state)) own.push(LAYERS_FEATURE);
+  if (state.boxes.some(box => box.scene_map?.on)) own.push(SCENE_MAP_FEATURE);
   return [...new Set([...(state.requires ?? []).filter((item) => !OWN_FEATURES.includes(item)), ...own])].sort();
 }
 

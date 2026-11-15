@@ -86,6 +86,7 @@ nav:
       - Writing prompts: build/prompts.md
       - References and pictures: build/references.md
       - First and last frames: build/frame-guides.md
+      - Scene maps: build/scene-maps.md
       - Stills with P-H3-Image: build/p-h3-image-stills.md
       - Stills with MiniMax H3 Image: build/minimax-h3-image-stills.md
       - Videos in one clip: build/video-layers.md

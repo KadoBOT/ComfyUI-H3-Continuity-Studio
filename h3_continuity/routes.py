@@ -222,6 +222,16 @@ async def reference_catalog(request):
         return web.json_response({'ok': False, 'error': str(error)}, status=400)
 
 
+async def scene_map_preview(request):
+    try:
+        body = await _object(request)
+        from . import scene_maps
+        result = await asyncio.to_thread(scene_maps.preview, body['timeline'], body['box'])
+        return web.json_response({'ok': True, **result})
+    except (ValueError, KeyError, TypeError) as error:
+        return web.json_response({'ok': False, 'error': str(error)}, status=400)
+
+
 async def reference_approve(request):
     try:
         body = await _object(request)
@@ -416,6 +426,9 @@ def register():
     routes.post("/h3c/audio/info")(audio_info)
     routes.post("/h3c/images/description")(image_description)
     routes.post('/h3c/reference-assets/approve')(reference_approve)
+    from . import scene_map
+    scene_map.register(routes)
+    routes.post('/h3c/scene-map/preview')(scene_map_preview)
     routes.post('/h3c/reference-assets/catalog')(reference_catalog)
     routes.post('/h3c/reference-assets/prepare')(reference_prepare)
     routes.post('/h3c/reference-assets/result')(reference_result)

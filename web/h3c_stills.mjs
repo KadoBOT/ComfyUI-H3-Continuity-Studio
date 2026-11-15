@@ -223,11 +223,13 @@ export function recipeControls(snapshot,recipe) {
     }
     return value;
   }
-  const additionalReferences=recipe.adapter==='pixels'?(recipe.bindings.references??[]).flatMap((locator,index)=>{
+  const additionalReferences=[],sceneMaps=[];
+  if(recipe.adapter==='pixels') (recipe.bindings.references??[]).forEach((locator,index)=>{
     const link=snapshot.output[locator.node]?.inputs[locator.input];
-    return Array.isArray(link)&&link.length===2&&typeof link[0]==='string'&&Number.isInteger(link[1])&&link[1]>=0&&snapshot.output[link[0]]?[`@still${index+1}`]:[];
-  }):[];
-  return {instruction:String(value(recipe.bindings.instruction)??''),seed:value(recipe.bindings.seed),...(recipe.version===2?{width:value(recipe.bindings.size.width.at(-1),true),height:value(recipe.bindings.size.height.at(-1),true),label:recipe.label??'Image generator',adapter:recipe.adapter??'h3',referenceLabel:recipe.reference_label}:{}),...(additionalReferences.length?{additionalReferences}:{})};
+    if(!(Array.isArray(link)&&link.length===2&&typeof link[0]==='string'&&Number.isInteger(link[1])&&link[1]>=0&&snapshot.output[link[0]]))return;
+    (snapshot.output[link[0]].class_type==='H3C_SceneMap'&&link[1]===0?sceneMaps:additionalReferences).push(`@still${index+1}`);
+  });
+  return {instruction:String(value(recipe.bindings.instruction)??''),seed:value(recipe.bindings.seed),...(recipe.version===2?{width:value(recipe.bindings.size.width.at(-1),true),height:value(recipe.bindings.size.height.at(-1),true),label:recipe.label??'Image generator',adapter:recipe.adapter??'h3',referenceLabel:recipe.reference_label}:{}),...(additionalReferences.length?{additionalReferences}:{}),...(sceneMaps.length?{sceneMaps}:{})};
 }
 
 // The wiring a compiled prompt follows, read from the live graph: serializing the workflow instead takes several ms on

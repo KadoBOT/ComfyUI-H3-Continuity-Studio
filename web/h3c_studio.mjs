@@ -5,16 +5,17 @@ import {SwitchSection, rememberDisclosures} from './h3c_switch_section.mjs?v=c25
 // closes, opens another Timeline or the Timeline's Story changes. Its Story page edits the Story node's inputs.
 import { liveBadge, progressText } from './h3c_render_watch.mjs?v=7c8222569836';
 import { templateRow } from './h3c_templates.mjs?v=ff7103cdcba7';
-import { soundtrackLine, soundtrackSlots } from './h3c_timeline_model.mjs?v=448aca934518';
+import { soundtrackLine, soundtrackSlots } from './h3c_timeline_model.mjs?v=5070c7d0834c';
 
 import { ideaImagesRow } from './h3c_idea_images.mjs?v=990e7177d821';
 import { partialBadge, partialTitle, previewBadge, previewLabel, previewTitle, timelineFrame, videoSeconds } from './h3c_partial_video.mjs?v=201bf0f48645';
 import {historyShortcut} from './h3c_history.mjs?v=aa0916b99431';
 import {setText} from './h3c_dom.mjs?v=584a9bf55653';
+import {SceneMapPage} from './h3c_scene_map_panel.mjs?v=e453e48952a9';
 
 const LIBRARY = ['references', 'cast', 'story', 'pictures', 'refmods', 'assets'];
 const CENTER = ['viewer', 'story', 'cast', 'assets'];
-const FOCUS = ['cast', 'story', 'assets', 'project'];
+const FOCUS = ['cast', 'story', 'assets', 'project', 'map'];
 const CORE_HINT = 'For a moving preview, add KJNodes’ Model Preview Override before the sampler.';
 const OLDER_TAKE = 'Outdated take: this clip changed after it rendered. It still plays in the full video; regenerate the clip to update it.';
 const MOVING = 'Moving the take…';
@@ -623,6 +624,7 @@ export class Studio {
         this.generationButton, this.generationNote, this.generationHistory),
       section(null, this.projectStill),
       section('Graph settings', notes, back));
+    this.mapPage = new SceneMapPage(this.pages.map);
     this.focus.append(focusHead, this.focusBody);
     const center = el('section', 'h3cx-center');
     center.append(nav, player, this.focus);
@@ -631,7 +633,7 @@ export class Studio {
     this.mobileMore = el('section', 'h3cx-mobile-more');
     this.mobileMore.setAttribute('aria-label', 'More Studio tools');
     this.mobileMore.append(el('h2', 'h3cx-title', 'Studio tools'));
-    for (const page of FOCUS.filter(name => name !== 'project')) {
+    for (const page of FOCUS.filter(name => name !== 'project' && name !== 'map')) {
       const label=page==='assets'?'References':page[0].toUpperCase()+page.slice(1);
       this.mobileMore.append(button(label, `Open ${label}`, () => this.openFocus(page)));
     }
@@ -1137,10 +1139,11 @@ export class Studio {
     if (!FOCUS.includes(page)) return;
     if(page==='project')this.loadGenerations();
     this.focusPage = page;
-    this.libraryPage = page === 'project' ? 'references' : page;
+    this.libraryPage = page === 'project' || page === 'map' ? 'references' : page;
     this.page = page;
     this.focusTitle.textContent = page === 'assets' ? 'References' : page === 'project' ? 'Project settings'
-      : page[0].toUpperCase() + page.slice(1);
+      : page === 'map' ? this.mapTitle() : page[0].toUpperCase() + page.slice(1);
+    if (page === 'map') this.mapPage.refresh(this.host?.editor ?? null);
     if(page==='assets'&&this.host){this.host.editor.pictures.root.open=true;this.host.editor.refmodsEl.open=true;}
     if(referenceSection)this.pages[referenceSection].scrollIntoView?.({block:'nearest'});
     if(page==='cast'){const preparation=this.host?.editor.cast?.preparation;if(preparation){if(!preparation.root.open)preparation.root.open=true;else preparation.refresh();}this.host?.editor.cast?.refresh({link});}
@@ -1148,6 +1151,11 @@ export class Studio {
     // Below 900 px the Inspector and References float over the centre, where this page opens.
     else if (this.narrowMedia.matches) { this.setInspectorVisible(false); this.setReferencesVisible(false); }
     this.renderNavigation();
+  }
+
+  mapTitle() {
+    const editor = this.host?.editor;
+    return editor?.box() ? `Scene map · Clip ${editor.selected + 1}` : 'Scene map';
   }
 
   backToViewer() {
@@ -1224,6 +1232,7 @@ export class Studio {
     this.nameEl.title = host.sequenceName?.() ?? '';
     setText(this.progressEl, host.progress?.() ?? progressText(watch, host.runningBox(), (id) => host.titleOf(id)));
     this.stopButton.hidden = host.editor.host.projectAttached === true || !(watch.running && !watch.turn);
+    if (this.focusPage === 'map') { setText(this.focusTitle, this.mapTitle()); this.mapPage.refresh(host.editor); }
     this.renderNavigation();
     const full = host.editor.fullLink.hidden ? null : host.editor.fullLink.getAttribute('href');
     const partial = full ? host.editor.partialVideo : null;
