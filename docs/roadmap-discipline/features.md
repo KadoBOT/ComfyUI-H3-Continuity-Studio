@@ -14,17 +14,17 @@ Historical Phase20 watch-through blockers remain in the original parent roadmap 
 ```json
 {
   "version": 1,
-  "revision": 11,
+  "revision": 14,
   "phase": "Phase 23: Continuity degradation protection",
   "active_features": [],
   "focus_feature": "None",
   "goal": "Implement the approved native continuity-protection node and preserve both sampler output paths",
   "done_when": "All five approved tasks, CPU suites, docs and independent final branch review pass; DP2 visual comparison remains separately authorized",
-  "last_completed": "All five Native implementation tasks and one independent review completed;3 material findings fixed RED-GREEN;402JS+577Python,79 adapter, strict docs and diff/roadmap pass",
-  "in_progress": "None for implementation. DP2 visual comparison not started; live installation and rendered story unchanged.",
+  "last_completed": "Implementation and cumulative final-review fixes committed as fa5bdd6 on feat/continuity-protection;402JS+577Python,79 adapter, strict docs, diff and roadmap checks pass",
+  "in_progress": "User-authorized draft PR publication: preparing current verified branch and test-later description; no code changes",
   "next": {
-    "action": "Keep this local feat/continuity-protection branch for deliberate integration; only after explicit GPU authorization and safe activation run DP2 matched baseline/protected comparison",
-    "reason": "Approved local implementation is complete; visual quality and camera-reset improvement require separate GPU evidence, not CPU assertions"
+    "action": "Commit roadmap follow-up, push feat/continuity-protection, create draft PR against main and link it to this thread",
+    "reason": "User explicitly requested a draft PR for later testing; no live deployment or inference requested"
   },
   "files": [
     {
@@ -46,30 +46,25 @@ Historical Phase20 watch-through blockers remain in the original parent roadmap 
   ],
   "repository": {
     "branch": "feat/continuity-protection",
-    "head": "c6235199c148",
+    "head": "fa5bdd6c4970",
     "dirty": [
-      "docs/research/2026-11-15-continuity-protection-review.md",
-      "docs/roadmap-discipline/readiness-checklist.md",
-      "docs/superpowers/plans/2026-11-15-degradation-protection.md",
-      "docs/superpowers/specs/2026-11-15-degradation-protection-design.md",
-      "h3_continuity/disk_cache.py",
-      "h3_continuity/protection.py",
-      "tests/python/test_disk_cache.py",
-      "tests/python/test_protection_latent.py",
-      "tests/python/test_protection_sampling.py",
-      "tests/python/test_protection_save.py",
-      "tests/python/test_protection_source.py"
+      "docs/roadmap-discipline/readiness-checklist.md"
     ],
-    "dirty_hash": "5a3963cf7673c55f161bdeaed5bc0db27d2f6d9cf96896952ae2a6e9b794cdf4"
+    "dirty_hash": "4345c24f5d0be2614e0092408566364dcb475280dc780975e85d58e7882c32d6"
   },
   "verification": {
     "required": "approved-design implementation plan; focused CPU regression checks; full suite; strict docs; diff check",
-    "last_run": "node tests/run.mjs; adapter unittest; mkdocs --strict; git diff --check; roadmap check; independent branch review plus parent fix regressions",
+    "last_run": "Previously verified product tree; git diff --check; roadmap check; remote PR metadata verification",
     "status": "passed",
-    "detail": "402JS+577Python,79 adapter, strict docs and static/roadmap pass.36 new CPU checks overall. Independent reviewer found3 Important defects; all reproduced/fixed and freshly verified. No second independent re-check or GPU result."
+    "detail": "No product changes since402JS+577Python,79 adapter and strict docs passed; publication-only follow-up"
   },
   "blockers": [],
   "reload": [
+    "docs/roadmap-discipline/features.md",
+    "docs/roadmap-discipline/phases/2026-11-15-degradation-protection.md",
+    "docs/superpowers/specs/2026-11-15-degradation-protection-design.md",
+    "docs/superpowers/plans/2026-11-15-degradation-protection.md",
+    "docs/research/2026-11-15-orbit29-30.md",
     "docs/research/2026-11-15-continuity-protection-review.md"
   ]
 }
