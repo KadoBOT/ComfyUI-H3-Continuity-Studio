@@ -51,3 +51,27 @@ test('new detail rank does not reorder existing narrative or cue lines',()=>{
     value:{key:'camera_movement',index:null,text:'A slow spiral around her left shoulder'}});
   assert.equal(next,'detailed_description:\n[Shot 1] A room.\nCamera movement: A slow spiral around her left shoulder\nEnd state: She waits.');
 });
+test('native dialogue preserves multilingual words and structure-looking lines verbatim',()=>{
+  const source='integrated_multimodal_description:\n[Shot 1] She waits.';
+  const words='营业中! “Wait.”\nsummary: stay\n  [Shot 9] is spoken text';
+  const next=writePromptField(source,{expectedSource:source,section:'integrated_multimodal_description',kind:'dialogue',shot:1,entry:null,
+    value:{speakers:['S1','S2'],identity:'<Subject 1> and <Subject 2>',language:'Chinese',text:words}});
+  assert.ok(next.includes('<d>[Chinese] '+words+'</d>'));
+  const entry=readPromptFields(next).sections[0].entries.find(e=>e.kind==='dialogue');
+  assert.ok(entry);assert.equal(entry.value.text,words);assert.deepEqual(entry.value.speakers,['S1','S2']);
+});
+test('voiceover and audio continuation use native tokens once and recover their flags',()=>{
+  const source='[Shot 1] A room.';
+  const next=writePromptField(source,{expectedSource:source,section:'integrated_multimodal_description',kind:'dialogue',shot:1,entry:null,
+    value:{speakers:['S3'],identity:'<Subject 1>',language:'English',text:'Wait.',voiceover:true,fromPrevious:true,cutoff:true}});
+  assert.ok(next.includes('<d>[English] <scenetrans>Wait.<cutoff></d>'));
+  assert.match(next,/lips remain completely closed/);
+  const entry=readPromptFields(next).sections[0].entries.find(e=>e.kind==='dialogue');
+  assert.equal(entry.value.text,'Wait.');assert.equal(entry.value.voiceover,true);assert.equal(entry.value.fromPrevious,true);assert.equal(entry.value.cutoff,true);
+});
+test('known uncued native speech is editable and changing a referenced speaker ID is rejected',()=>{
+  const source='subject_definitions:\n@audio1 is the voice for <Subject 1> (S1).\ndetailed_description:\n[Shot 1] She waits. <Subject 1> (S1) says: <d>[English] Hello.</d>';
+  const entry=readPromptFields(source).sections.find(s=>s.key==='detailed_description').entries.find(e=>e.kind==='dialogue');
+  assert.ok(entry);assert.equal(entry.value.text,'Hello.');
+  assert.throws(()=>writePromptField(source,{expectedSource:source,section:'detailed_description',kind:'dialogue',entry,value:{...entry.value,speakers:['S2']}}),/speaker.*used|referenc/i);
+});

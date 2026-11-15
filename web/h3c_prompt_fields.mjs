@@ -28,8 +28,53 @@ export const SHOT_FIELDS=[
   descriptor('colour_contrast','Colour and contrast',210),descriptor('reflections','Reflections',220),descriptor('atmosphere','Atmosphere',230),
   descriptor('materials','Materials',240),descriptor('depth_of_field','Depth of field',250),descriptor('gaze','Gaze',260),descriptor('expression','Expression',270),
   descriptor('breathing','Breathing',280),descriptor('posture','Posture',290),descriptor('hands','Hands',300),descriptor('continuity','Continuity',310),
-  descriptor('recovery','Recovery',320),descriptor('end_state','End state',330),descriptor('scene_sound','Scene sound',350,false),
+  descriptor('recovery','Recovery',320),descriptor('end_state','End state',330),descriptor('dialogue','Dialogue',340,false,[],true),descriptor('scene_sound','Scene sound',350,false),
 ];
+const dialogueTail=" while the corresponding on-screen characters' lips remain completely closed.";
+const audioTail=' The audio continues seamlessly across the cut.';
+const cueText=text=>text.split(/(<d>[\s\S]*?(?:<\/d>|$))/g).map(p=>p.startsWith('<d>')?p:p.replace(/\r?\n/g,'\n  ')).join('');
+const unindent=text=>text.split(/(<d>[\s\S]*?(?:<\/d>|$))/g).map(p=>p.startsWith('<d>')?p:p.replace(/\r?\n {2}/g,'\n')).join('');
+function nativeSpeech(text) {
+  const lead=/^([\s\S]*?)\((S[1-9]\d*(?:,S[1-9]\d*)*)\)(?:,\s*([\s\S]*?),)?\s+(says in an off-screen voiceover|sings|says):\s*<d>\[([^\]\r\n]+)\] ?/.exec(text);
+  if(!lead)return null;
+  const close=text.indexOf('</d>',lead[0].length);if(close<0)return null;
+  let words=text.slice(lead[0].length,close),end=close+4;
+  const fromPrevious=words.startsWith('<scenetrans>'),toNext=words.endsWith('<scenetrans>'),cutoff=words.endsWith('<cutoff>');
+  if(fromPrevious)words=words.slice(12);if(toNext)words=words.slice(0,-12);else if(cutoff)words=words.slice(0,-8);
+  const voiceover=lead[4].includes('voiceover');
+  if(voiceover){const tail=/^ while (?:the corresponding on-screen characters'|his|her|their|the character's) lips remain completely closed\./.exec(text.slice(end));if(!tail)return null;end+=tail[0].length;}
+  for(const tail of [audioTail,' The audio continues seamlessly.'])if(text.slice(end).startsWith(tail)){end+=tail.length;break;}
+  return {end,value:{speakers:lead[2].split(','),identity:lead[1].trim(),language:lead[5],text:words,delivery:lead[3]??'',
+    voiceover,singing:lead[4]==='sings',fromPrevious,toNext,cutoff,key:'dialogue',index:null}};
+}
+function speechText(value) {
+  if(!value.speakers?.length||value.speakers.some(s=>!/^S[1-9]\d*$/.test(s))||!value.language?.trim()||/[\]\r\n<>]/.test(value.language))
+    throw new Error('Enter stable speaker IDs such as S1 and a language for this dialogue.');
+  if(value.text.includes('</d>'))throw new Error('Use Raw text to edit literal dialogue delimiters.');
+  let words=value.text;
+  if(value.fromPrevious&&!words.startsWith('<scenetrans>'))words='<scenetrans>'+words;
+  if(value.toNext&&!words.endsWith('<scenetrans>'))words+='<scenetrans>';
+  else if(value.cutoff&&!words.endsWith('<cutoff>'))words+='<cutoff>';
+  const action=value.voiceover?'says in an off-screen voiceover':value.singing?'sings':'says';
+  return `${value.identity?value.identity+' ':''}(${value.speakers.join(',')})${value.delivery?', '+value.delivery+',':''} ${action}: <d>[${value.language}] ${words}</d>`
+    +(value.voiceover?dialogueTail:'')+(value.fromPrevious||value.toNext?audioTail:'');
+}
+function splitNativeSpeech(source,entry) {
+  if(entry.kind!=='narrative')return [entry];
+  const raw=entry.range.before,masked=withoutDialogue(raw),entries=[];let cursor=0;
+  for(const candidate of masked.matchAll(/<Subject [1-9]\d*>(?: and <Subject [1-9]\d*>)* \(S[1-9]\d*(?:,S[1-9]\d*)*\)/g)) {
+    if(candidate.index<cursor)continue;
+    const speech=nativeSpeech(raw.slice(candidate.index));if(!speech)continue;
+    const end=raw.slice(0,candidate.index).trimEnd().length;
+    if(end>cursor){const text=raw.slice(cursor,end);entries.push({kind:cursor?'existing':'narrative',shot:entry.shot,
+      range:range(source,entry.range.start+cursor,entry.range.start+end),value:{text:cursor?text:text.replace(/^\[Shot \d+\]\s*/,'').replace(/^At \d+:[0-5]\d\.\d{3},\s*/i,'')}});}
+    entries.push({kind:'dialogue',shot:entry.shot,range:range(source,entry.range.start+candidate.index,entry.range.start+candidate.index+speech.end),value:speech.value});
+    cursor=candidate.index+speech.end;
+  }
+  if(!cursor)return [entry];
+  if(raw.slice(cursor).trim())entries.push({kind:'existing',shot:entry.shot,range:range(source,entry.range.start+cursor,entry.range.end),value:{text:raw.slice(cursor)}});
+  return entries;
+}
 const escape=text=>text.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
 const cueRank=value=>{
   const field=SHOT_FIELDS.find(f=>f.key===value.key);
@@ -44,17 +89,19 @@ function shotFields(source,part,shot) {
       matches.push({start:part.start+match.index,body:part.start+match.index+match[0].length,field,index:match[1]?Number(match[1]):null});
   }
   matches.sort((a,b)=>a.start-b.start);
-  if(!matches.length)return [entryOf(source,part,'narrative',{text:part.value.replace(/^At \d+:[0-5]\d\.\d{3},\s*/i,'')},shot)];
+  if(!matches.length)return splitNativeSpeech(source,entryOf(source,part,'narrative',{text:part.value.replace(/^At \d+:[0-5]\d\.\d{3},\s*/i,'')},shot));
   const entries=[],end=source.slice(0,matches[0].start).trimEnd().length;
   entries.push({kind:'narrative',shot,range:range(source,part.entryStart??part.start,end),
     value:{text:source.slice(part.start,end).replace(/^At \d+:[0-5]\d\.\d{3},\s*/i,'')}});
   matches.forEach((m,i)=>{
     const end=source.slice(0,matches[i+1]?.start??part.end).trimEnd().length;
     const duplicate=matches.filter(other=>other.field.key===m.field.key&&other.index===m.index).length>1;
-    entries.push({kind:duplicate?'existing':'cue',shot,range:range(source,m.start,end),
-      value:duplicate?{text:source.slice(m.start,end)}:{key:m.field.key,index:m.index,text:source.slice(m.body,end).replace(/\r?\n {2}/g,'\n')}});
+    const body=unindent(source.slice(m.body,end)),speech=m.field.key==='dialogue'?nativeSpeech(body):null;
+    const kind=duplicate||m.field.key==='dialogue'&&(!speech||speech.end!==body.length)?'existing':speech?'dialogue':'cue';
+    entries.push({kind,shot,range:range(source,m.start,end),value:kind==='existing'?{text:source.slice(m.start,end)}:
+      speech?{...speech.value,index:m.index}:{key:m.field.key,index:m.index,text:body}});
   });
-  return entries;
+  return entries.flatMap(e=>splitNativeSpeech(source,e));
 }
 
 export function readPromptFields(source,{tags=[]}={}) {
@@ -131,18 +178,30 @@ export function writePromptField(source,edit,{tags=[]}={}) {
   if(source!==edit.expectedSource)throw new Error('The prompt changed. Reopen this field before editing.');
   const {entry,kind,value,section}=edit;
   if(entry&&value&&JSON.stringify(entry.value)===JSON.stringify(value))return source;
+  if(kind==='dialogue') {
+    if(value===null||!value.text?.trim())return entry?replacePromptRanges(source,[{...entry.range,text:''}]):source;
+    if(entry) {
+      const removed=entry.value.speakers.filter(s=>!value.speakers.includes(s)),rest=source.slice(0,entry.range.start)+source.slice(entry.range.end);
+      if([...withoutDialogue(rest).matchAll(/\((S\d+(?:,S\d+)*)\)/g)].some(m=>m[1].split(',').some(s=>removed.includes(s))))throw new Error('This speaker ID is still used elsewhere. Update those references first.');
+    }
+    const native=speechText(value);
+    if(entry){const prefix=/^Dialogue(?: \d+)?:\s*/.exec(entry.range.before);return replacePromptRanges(source,[{...entry.range,text:(prefix?.[0]??'')+cueText(native)}]);}
+    const dialogues=readPromptFields(source,{tags}).sections.find(s=>s.key===section)?.entries.filter(e=>e.shot===edit.shot&&e.kind==='dialogue')??[];
+    const index=value.index??(dialogues.length?Math.max(1,...dialogues.map(e=>e.value.index??1))+1:null);
+    return writePromptField(source,{...edit,kind:'cue',value:{key:'dialogue',index,text:native}},{tags});
+  }
   if(kind==='cue') {
     if(value===null||!value.text?.trim())return entry?replacePromptRanges(source,[{...entry.range,text:''}]):source;
     const field=SHOT_FIELDS.find(f=>f.key===value.key);
     if(!field||field.prefix.includes(' N')&&(!Number.isInteger(value.index)||value.index<1))throw new Error('Choose a valid detail and positive item number.');
     const prefix=field.prefix.replace(' N',' '+value.index)+(field.repeatable&&value.index?' '+value.index:'');
-    const text=prefix+': '+value.text.replace(/\r?\n/g,'\n  ');
+    const text=prefix+': '+cueText(value.text);
     if(entry)return replacePromptRanges(source,[{...entry.range,text}]);
     const entries=readPromptFields(source,{tags}).sections.find(s=>s.key===section)?.entries.filter(e=>e.shot===edit.shot)??[];
     if(!entries.length)throw new Error('Add a shot before adding details.');
-    const cues=entries.filter(e=>e.kind==='cue'),singleton=cues.find(e=>e.value.key===value.key&&e.value.index===null);
+    const cues=entries.filter(e=>e.kind==='cue'||e.kind==='dialogue'),singleton=cues.find(e=>e.value.key===value.key&&e.value.index===null);
     const patches=[];
-    if(field.repeatable&&value.index&&singleton)patches.push({...singleton.range,text:field.prefix+' 1: '+singleton.value.text.replace(/\r?\n/g,'\n  ')});
+    if(field.repeatable&&value.index&&singleton)patches.push({...singleton.range,text:singleton.range.before.replace(new RegExp('^'+escape(field.prefix)+':[ \\t]*'),field.prefix+' 1: ')});
     const next=cues.find(e=>cueRank(e.value)>cueRank(value));
     const at=next?.range.start??Math.max(...entries.map(e=>e.range.end));
     patches.push({start:at,end:at,before:'',text:(source[at-1]==='\n'?'':'\n')+text+(next?'\n':'')});

@@ -59,3 +59,26 @@ test('Advanced visibility never changes native text or history and populated det
   assert.equal(h.stored().boxes[0].prompt,prompt);assert.equal(h.history.entries.length,1);
   assert.match(h.panel.root.textContent,/Details present/);
 });
+test('manual dialogue is an explicit choice and never duplicates recording-owned lines',()=>{
+  const prompt='integrated_multimodal_description:\n[Shot 1] She waits.';
+  const h=formHarness({prompt});
+  assert.match(h.panel.root.textContent,/recording cues/i);
+  assert.equal(findAll(h.panel.root,n=>n.tagName==='BUTTON'&&n.textContent==='Add dialogue').length,0);
+  buttonNamed(h.panel.root,'Use typed dialogue').click();
+  assert.equal(h.stored().boxes[0].dialogue,'manual');assert.equal(h.stored().boxes[0].prompt,prompt);
+  buttonNamed(h.panel.root,'Add dialogue').click();
+  assert.equal(h.stored().boxes[0].prompt,prompt);
+});
+test('dialogue metadata can be filled one field at a time before spoken text is added',()=>{
+  const h=formHarness({prompt:'integrated_multimodal_description:\n[Shot 1] She waits.'});
+  buttonNamed(h.panel.root,'Use typed dialogue').click();buttonNamed(h.panel.root,'Add dialogue').click();
+  h.input('Shot 1 dialogue 1 speaker IDs','S1');h.input('Shot 1 dialogue 1 language','English');
+  h.input('Shot 1 dialogue 1 speaker','<Subject 1>');h.input('Shot 1 dialogue 1 words','Hello.');
+  assert.ok(h.stored().boxes[0].prompt.includes('<Subject 1> (S1) says: <d>[English] Hello.</d>'));
+  assert.equal(h.panel.hasDrafts(),false);
+});
+test('an optional camera field chosen from the form writes to its own shot',()=>{
+  const h=formHarness({prompt:'integrated_multimodal_description:\n[Shot 1] She waits.'});
+  h.input('Shot 1 add detail','camera_movement');h.input('Shot 1 Camera movement','A slow orbit');
+  assert.match(h.stored().boxes[0].prompt,/\[Shot 1\] She waits\.\nCamera movement: A slow orbit/);
+});

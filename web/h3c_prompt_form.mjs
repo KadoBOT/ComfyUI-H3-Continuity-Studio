@@ -60,10 +60,19 @@ export class PromptFormPanel {
     const base=this.drafts.get(key)?.value??entry?.value??this.newRows.find(r=>r.key===key)?.value??{};
     const value=patch===null?null:{...base,...(typeof patch==='function'?patch(base):patch)};
     try {
+      if(kind==='dialogue'&&this.editor.video().dialogue!=='manual')throw new Error('Switch to Typed in the prompt before editing manual dialogue.');
       if(value===null&&kind==='definition'&&this.editor.box()?.cast?.[entry.value.target])throw new Error('Unlink this subject from Cast before deleting its definition.');
-      const next=writePromptField(source,{expectedSource:source,section,kind,entry,value},{tags:this.tags()});
-      const removedCue=kind==='cue'&&!value?.text?.trim();
-      if(removedCue&&entry&&value)this.newDetails.set(`${this.editor.video().id}:${entry.shot}:${value.key}:${value.index??0}`,{shot:entry.shot,value});
+      const shot=entry?.shot??this.newRows.find(r=>r.key===key)?.shot??this.newDetails.get(key)?.shot;
+      const next=writePromptField(source,{expectedSource:source,section,kind,shot,entry,value},{tags:this.tags()});
+      if(index==null&&kind==='dialogue'&&value&&!value.text?.trim()) {
+        const pending=this.newRows.find(r=>r.key===key);if(pending)pending.value=value;
+        this.drafts.delete(key);this.draftMessage('');return;
+      }
+      const removedCue=(kind==='cue'||kind==='dialogue')&&!value?.text?.trim();
+      if(removedCue&&entry&&value) {
+        if(kind==='cue')this.newDetails.set(`${this.editor.video().id}:${entry.shot}:${value.key}:${value.index??0}`,{shot:entry.shot,value});
+        else this.newRows.push({section,kind:'dialogue',shot:entry.shot,key:'dialogue:new:'+ ++ids,value});
+      }
       if(this.editor.applyPrompt(source,next,{structural:index==null||value===null||removedCue})===false)throw new Error('This prompt is read-only or changed.');
       this.source=next;this.drafts.delete(key);this.message='';
       if(index==null||value===null||removedCue){this.newRows=this.newRows.filter(r=>r.key!==key);this.render();}
@@ -92,6 +101,10 @@ export class PromptFormPanel {
   shotCards(parent,entries) {
     const editor=this.editor,timing=shotTiming(editor.state,editor.selected,editor.host.context(),editor.pickedLayer?.()?.id??null);
     if(timing.carry)parent.append(el('p','h3ct-hint',`Times are in this clip’s playback. H3’s prompt also includes ${(timing.carry/24).toFixed(3)} s of replay.`));
+    if(editor.video().dialogue!=='manual') {
+      parent.append(el('p','h3ct-hint','Dialogue comes from recording cues. Choose Typed in the prompt to add or edit manual dialogue.'));
+      parent.append(button('Use typed dialogue',()=>{if(!this.canLeave()||editor.readOnly?.length)return;editor.host.undoStep?.();editor.video().dialogue='manual';editor.commit();editor.host.undoStep?.();this.render();}));
+    }
     for(const entry of entries.filter(e=>e.shot===null))this.row(parent,this.section,entry,entries.indexOf(entry),this.section+':'+entries.indexOf(entry));
     for(const shot of timing.shots) {
       const row=el('section','h3pf-row');row.setAttribute('aria-label',`Shot ${shot.number}`);row.append(el('strong',null,`Shot ${shot.number}`));parent.append(row);
@@ -152,7 +165,14 @@ export class PromptFormPanel {
     for(const entry of existing)show(entry.value,entry,entries.indexOf(entry),this.section+':'+entries.indexOf(entry));
     for(const [id,item] of pending)show(item.value,null,null,id);
     for(const entry of entries.filter(e=>e.shot===shot&&e.kind==='existing'))this.row(parent,this.section,entry,entries.indexOf(entry),this.section+':'+entries.indexOf(entry));
-    const options=SHOT_FIELDS.filter(f=>(this.advanced||!f.advanced)&&(f.repeatable||f.prefix.includes(' N')||!existing.some(e=>e.value.key===f.key)));
+    const dialogues=entries.filter(e=>e.shot===shot&&e.kind==='dialogue');
+    dialogues.forEach((entry,i)=>this.dialogueRow(parent,shot,entry,entries.indexOf(entry),this.section+':'+entries.indexOf(entry),i+1));
+    this.newRows.filter(r=>r.kind==='dialogue'&&r.shot===shot).forEach((entry,i)=>this.dialogueRow(parent,shot,entry,null,entry.key,dialogues.length+i+1));
+    if(this.editor.video().dialogue==='manual')parent.append(button('Add dialogue',()=>{
+      this.newRows.push({section:this.section,kind:'dialogue',shot,key:'dialogue:new:'+ ++ids,
+        value:{speakers:[],identity:'',language:'',text:'',index:null}});this.render();
+    }));
+    const options=SHOT_FIELDS.filter(f=>f.key!=='dialogue'&&(this.advanced||!f.advanced)&&(f.repeatable||f.prefix.includes(' N')||!existing.some(e=>e.value.key===f.key)));
     this.field(parent,`Shot ${shot} add detail`,'',key=>{
       if(!key)return;
       const field=SHOT_FIELDS.find(f=>f.key===key);
@@ -161,6 +181,25 @@ export class PromptFormPanel {
       if(field.prefix.includes(' N')){index=Math.max(1,...existing.filter(e=>e.value.key.startsWith('effect')).map(e=>e.value.index??1));if(existing.some(e=>e.value.key===key&&e.value.index===index))index++;}
       const id=`${this.editor.video().id}:${shot}:${key}:${index??0}`;this.newDetails.set(id,{shot,value:{key,index,text:''}});this.render();
     },{options:options.map(f=>[f.key,f.prefix.replace(' N','')])});
+  }
+  dialogueRow(parent,shot,entry,index,key,ordinal) {
+    const value=this.drafts.get(key)?.value??entry.value,title=`Shot ${shot} dialogue ${value.index??ordinal}`;
+    const row=el('fieldset','h3pf-row');row.disabled=this.editor.video().dialogue!=='manual';row.append(el('legend',null,title));parent.append(row);
+    const edit=patch=>this.edit(this.section,index,key,'dialogue',patch);
+    const ids=[...new Set([...this.source.replace(/<d>[\s\S]*?(?:<\/d>|$)/g,'').matchAll(/\((S\d+(?:,S\d+)*)\)/g)].flatMap(m=>m[1].split(',')))];
+    const next='S'+(Math.max(0,...ids.map(s=>Number(s.slice(1))))+1);
+    this.field(row,title+' speaker IDs',value.speakers.join(', '),text=>edit({speakers:text.split(/[,\s]+/).filter(Boolean)}),{suggestions:[...ids,next]});
+    const subjects=(readPromptFields(this.source).sections.find(s=>s.key==='subject_definitions')?.entries??[]).filter(e=>e.kind==='definition').map(e=>e.value.target);
+    this.field(row,title+' speaker',value.identity,identity=>edit({identity}),{suggestions:subjects});
+    this.field(row,title+' language',value.language,language=>edit({language}),{suggestions:['English','Spanish','Portuguese','French','Dutch','German','Japanese','Chinese','Korean']});
+    this.field(row,title+' words',value.text,text=>edit({text}),{area:true});
+    this.field(row,title+' delivery',value.delivery??'',delivery=>edit({delivery}),{suggestions:['Quietly','Whispering','Shouting','Breathless','Measured']});
+    for(const [name,label] of [['voiceover','Off-screen voiceover'],['singing','Singing'],['fromPrevious','Continues from previous shot'],['toNext','Continues into next shot'],['cutoff','Cut off at the end']]) {
+      const wrap=el('label','h3pf-actions'),input=el('input');input.type='checkbox';input.checked=!!value[name];input.setAttribute('aria-label',title+' '+label);
+      input.addEventListener('change',()=>edit({[name]:input.checked,...(name==='voiceover'&&input.checked?{singing:false}:name==='singing'&&input.checked?{voiceover:false}:{})}));
+      wrap.append(input,el('span',null,label));row.append(wrap);
+    }
+    row.append(button('Remove dialogue',()=>edit(null)));
   }
   row(parent,section,entry,index,key) {
     const row=el('div','h3pf-row');parent.append(row);
