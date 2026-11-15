@@ -6,6 +6,7 @@ import * as tracks from './h3c_tracks.mjs';
 // Plain DOM without ComfyUI imports; the host object connects it to the node.
 import { MentionCard, MentionLayer } from './h3c_mentions.mjs?v=b50bd6f28243';
 import { promptSections, promptShots, writePromptSections } from './h3c_prompt_sections.mjs?v=83b24a6e4d74';
+import {PromptFormPanel} from './h3c_prompt_form.mjs';
 import * as model from './h3c_timeline_model.mjs?v=a0c0634a00bf';
 import * as videoLayers from './h3c_layers.mjs?v=a0c0634a00bf';
 import {audioSourceLocked} from './h3c_audio_windows.mjs?v=cdefbd77b246';
@@ -543,7 +544,7 @@ export class TimelineEditor {
     this.promptEl.placeholder = 'What happens in this clip. Mention references as @image1 or @audio1.';
     this.promptEl.addEventListener('input', () => {
       this.video().prompt = this.promptEl.value;
-      this.sectionsButton.disabled = !promptSections(this.promptEl.value);
+      this.sectionsButton.disabled = false;
       this.typed();
     });
     this.promptEl.addEventListener('focus', () => { this.activePromptEl = this.promptEl; });
@@ -910,6 +911,7 @@ export class TimelineEditor {
   }
 
   destroy() {
+    this.promptForm?.destroy();
     clearTimeout(this.typingTimer);
     this.frameImages.destroy();
     this.replacements.destroy();
@@ -1126,6 +1128,15 @@ export class TimelineEditor {
     else { this.renderReferenceOverview(); this.renderPanelInfo(); }
     this.host.changed();
     this.cast.changed();
+  }
+
+  applyPrompt(source,next,{structural=false}={}) {
+    if(this.readOnly.length||this.video()?.prompt!==source)return false;
+    if(next===source)return true;
+    this.video().prompt=next;
+    if(this.promptEl)this.promptEl.value=next;
+    if(structural){this.host.undoStep?.();this.commit();this.host.undoStep?.();}else this.typed();
+    return true;
   }
 
   // A key typed into a text field: the Timeline text follows every key, and the rest of commit(), with the edit's
@@ -2317,10 +2328,9 @@ export class TimelineEditor {
     const box = this.video();
     const source = box.prompt;
     const sections = promptSections(source);
-    const structured = !!sections && !this.rawPrompt;
-    this.sectionsButton.disabled = !sections;
-    this.sectionsButton.title = sections ? 'Edit subjects, shots and sound separately'
-      : 'Sections are available for a complete H3 prompt. You can keep writing in raw text.';
+    const structured = !this.rawPrompt;
+    this.sectionsButton.disabled = false;
+    this.sectionsButton.title = 'Edit optional subjects, shots and sound fields';
     this.sectionsButton.setAttribute('aria-pressed', String(structured));
     this.rawButton.setAttribute('aria-pressed', String(!structured));
     this.structureEl.hidden = !structured;
@@ -2330,93 +2340,9 @@ export class TimelineEditor {
     this.promptMarks.render();
     if (!structured) return;
 
-    const tabs = el('div', 'h3ct-section-tabs');
-    tabs.setAttribute('role', 'tablist');
-    tabs.setAttribute('aria-label', 'Prompt sections');
-    this.structureEl.append(tabs);
-    const views = [];
-    if (!sections.some((section) => section.key === this.promptSection)) this.promptSection = sections[0].key;
-    const show = (key) => {
-      this.promptSection = key;
-      for (const {tab, block, section} of views) {
-        const selected = section.key === key;
-        tab.setAttribute('aria-selected', String(selected));
-        tab.tabIndex = selected ? 0 : -1;
-        block.root.hidden = !selected;
-      }
-      for (const marks of this.sectionMarks) marks.render();
-    };
-    tabs.addEventListener('keydown', (event) => {
-      if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
-      event.preventDefault();
-      const index = views.findIndex((view) => view.section.key === this.promptSection);
-      const next = event.key === 'Home' ? 0 : event.key === 'End' ? views.length - 1
-        : (index + (event.key === 'ArrowRight' ? 1 : -1) + views.length) % views.length;
-      show(views[next].section.key);
-      views[next].tab.focus();
-    });
-
-    for (const section of sections) {
-      // On while any of its fields has words; off empties them, kept here until it comes back on.
-      const key = `prompt:${box.id}:${section.key}`;
-      const block = new SwitchSection(section.title, {className: `h3ct-section ${section.key}`, onToggle: (on) => {
-        if (this.readOnly.length || this.video() !== box) return;
-        this.pins.set(key, on);
-        const kept = this.stash.get(key);
-        if (on && !kept) return this.renderPrompt();
-        if (on) section.fields.forEach((part, index) => { part.value = kept[index] ?? part.value; });
-        else {
-          this.stash.set(key, section.fields.map((part) => part.value));
-          for (const part of section.fields) part.value = '';
-        }
-        if (on) this.stash.delete(key);
-        box.prompt = writePromptSections(source, sections);
-        this.commit();
-      }});
-      block.pin = key;
-      block.head.title = section.key;
-      const numbered = section.fields.filter((part) => /^[<@\[]/.test(part.label));
-      const fields = el('div', 'h3ct-section-fields');
-      for (const part of section.fields) {
-        const label = el('div', 'h3ct-prompt-field');
-        const named = part.label !== section.title;
-        if (named) label.append(el('span', `h3ct-entry-label${/^[<@\[]/.test(part.label) ? ' numbered' : ''}`, part.label));
-        const area = el('textarea', 'h3ct-text');
-        area.setAttribute('aria-label', named ? `${section.title}: ${part.label}` : section.title);
-        area.value = part.value;
-        area.rows = Math.min(8, Math.max(2, Math.ceil(part.value.length / 85), part.value.split('\n').length));
-        area.addEventListener('focus', () => { this.activePromptEl = area; });
-        area.addEventListener('input', () => {
-          if (!area.isConnected || this.video() !== box) return;
-          part.value = area.value;
-          if (!section.fields.some((item) => item.value.trim())) this.pins.set(key, true);
-          box.prompt = writePromptSections(source, sections);
-          this.promptEl.value = box.prompt;
-          this.typed();
-        });
-        const marks = new MentionLayer(area, this.mentionHooks());
-        this.sectionMarks.push(marks);
-        label.append(marks.root);
-        fields.append(label);
-        if (this.activePromptEl === this.promptEl || part.label === '[Shot 1]') this.activePromptEl = area;
-      }
-      block.body.append(fields);
-      const filled = section.fields.some((part) => part.value.trim());
-      block.titleEl.textContent = 'Include in prompt';
-      block.set(filled || this.pins.has(key), {disabled: this.readOnly.length > 0,
-        title: filled ? `Turn off to clear ${section.title}; turning it on again brings the text back`
-          : `${section.title} is empty`});
-      const tab = button('', `${section.title}${filled ? '' : ' · empty'}`, () => show(section.key), 'h3ct-section-tab');
-      tab.setAttribute('role', 'tab');
-      tab.classList.toggle('empty', !filled);
-      tab.append(el('span', null, section.title), el('span', 'h3ct-tab-count', numbered.length ? String(numbered.length) : ''));
-      block.root.setAttribute('role', 'tabpanel');
-      block.root.setAttribute('aria-label', section.title);
-      tabs.append(tab);
-      views.push({tab, block, section});
-      this.structureEl.append(block.root);
-    }
-    show(this.promptSection);
+    this.promptForm ??= new PromptFormPanel(this);
+    this.structureEl.append(this.promptForm.root);
+    this.promptForm.render();
   }
 
   async editStory(edit) {
