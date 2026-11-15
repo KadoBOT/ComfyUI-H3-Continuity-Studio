@@ -93,6 +93,7 @@
     "long_chains": {
       "exposure": "graph",
       "skills": [
+        "h3-continuity-joins",
         "h3-continuity-timing"
       ],
       "tools": [],

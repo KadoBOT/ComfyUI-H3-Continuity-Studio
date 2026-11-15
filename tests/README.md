@@ -21,6 +21,15 @@ python -m unittest discover -s tests -t . -p test_shot_split_server.py -v
 
 These tests run on the CPU and load no models. They do not replace watching a render.
 
+Native continuity protection CPU regressions:
+
+```sh
+python -m unittest discover -s tests/python -t . -p 'test_protection_*.py' -v
+python -m unittest discover -s tests/python -t . -p test_disk_cache.py -v
+```
+
+Use the portable interpreter/COMFY_ROOT above. The tests exercise track/anchor selection, masks, core packed AV and `SamplerCustomAdvanced` output dispatch with weight-free evaluation, normal/denoised restoration, receipt validation before Save writes, node registration and actual CPU-executor cache bypass/pass-through. No real model/GPU generation, live server mutation or visual color-quality acceptance is covered. The source-based clips29–30 diagnosis is in `docs/research/2026-11-15-orbit29-30.md`.
+
 ## Standalone MCP adapter
 
 The adapter has its own isolated Python 3.11+ environment; do not install MCP into ComfyUI:

@@ -49,6 +49,12 @@ available through `skills/install.py`.
 Uploads read adapter-local allowed roots and send original bytes; managed artifact
 downloads verify immutable hash/size. Native file descriptors refer to the host.
 Scoped Story/managed cancellation is supported; native global Stop is not exposed.
+H3 Continuity Protection is configured in the captured graph, not Timeline JSON:
+its returned model goes to the guider, latent to the sampler and segment to Save.
+Read its schema through `h3_inspect` `nodes` and the joins skill before use. It
+rejects old pixel context noise/Context Windows and bypasses protected disk
+sampling cache; visual gains still need a matched render. Recapture deliberately
+after graph edits; adding it does not automatically regenerate existing takes.
 Only a person's explicit attestation authorizes managed `h3_abandon_job`.
 Replacement generation and retired guide split/recheck are unavailable. Browser
 layout, playback, edit history and beat analysis remain in the browser. Graph-only

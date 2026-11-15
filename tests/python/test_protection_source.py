@@ -121,7 +121,9 @@ class ProtectionSourceTest(unittest.TestCase):
             protection.load_anchors(self.segment(self.info()))
 
     def test_ending_and_authored_guides_suppress_capstone_not_front(self):
-        for info in (self.info(ending=39), self.info(guides=[(60, 'guide.png')])):
+        doc = parsed()
+        doc.boxes[1].last = 'image1'
+        for info in (self.info(ending=39), self.info(guides=[(60, 'guide.png')]), self.info(doc)):
             front, back, descriptor = protection.load_anchors(self.segment(info))
             self.assertIsNotNone(front)
             self.assertIsNone(back)

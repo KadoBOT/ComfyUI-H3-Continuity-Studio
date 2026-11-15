@@ -27,7 +27,7 @@ def source_info(parsed, index, entries, is_done, guides, ending):
             or not is_done(chain[0], source)):
         return dict(status='error', reason='The chain source needs rendering before protection can run.')
     reason = ('A following clip holds the ending.' if ending else
-              'An authored frame guide owns the target pose.' if guides else '')
+              'An authored frame guide owns the target pose.' if guides or parsed.boxes[index].last else '')
     return dict(status='ready', source=copy.deepcopy(source), context_noise=parsed.context_noise,
                 capstone_suppressed=reason)
 

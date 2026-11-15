@@ -67,6 +67,12 @@ Saves the first-pass sampler's result on disk and loads it, without running the 
 
 Picks the model the sampler uses for this run: `continuation_model` when the Timeline's `segment` carries frames from the clip before (a continuing clip or a bridge), `model` otherwise. Put it between your model chain and the guider, for example with a LoRA meant only for continuations on `continuation_model`. See [Long continuing chains](../continuity/long-chains.md).
 
+## H3 Continuity Protection
+
+Optional sampling protection for native continuing clips. Feed the chosen sampling `model`, Timeline `latent` and Timeline `segment`; outputs, in order, are `model` (0), `latent` (1), `segment` (2), and explanatory `info` (3). Send the model to the guider, latent to the sampler and **returned segment to Save Segment**. `enabled` defaults on; disabling it returns the original inputs. Existing workflows are unchanged until this node is added.
+
+It applies fractional sampler noise to carried video, uses the original chain's front anchor and appends/removes a late capstone inside model calls. Both normal and denoised outputs restore the original carried video and held audio/ending regions. Save verifies the completed output before writing. Turn off old **Context noise**; Context Windows are unsupported. Protected sampling bypasses disk cache. Fresh clips/cuts and suppressed appearance changes pass through; ending/frame guides suppress the capstone. Changed source takes or geometry fail explicitly. Use Regenerate or a new generation to replace existing clips after changing graph settings. See [wiring and limits](../continuity/long-chains.md#h3-continuity-protection); visual improvement is not yet verified by a matched GPU comparison.
+
 | Input | Notes |
 | --- | --- |
 | `model` | For clips that start fresh or cut. |

@@ -4,7 +4,36 @@ Each continuing clip copies the end of the clip before it and adds its own small
 
 These settings are experimental and off by default. They were compared on one six-clip chain (a woman talking to camera in a kitchen, FastH3 omniref 8-step int8 at 960 × 544); results on other models and scenes may differ, so compare a few clips before relying on them. On this chain, the model changed the burn more than any setting did: see [The model matters most](#the-model-matters-most).
 
+## H3 Continuity Protection
+
+Add this optional graph node to target accumulated color and detail drift during sampling. It uses the original latent from the beginning of the current continuing chain, with sampler-level noise on the overlap and a second anchor introduced late. It does not require Geiru or another model. Existing graphs keep their current behavior.
+
+Wire it once:
+
+```text
+Chosen sampling model ──> H3 Continuity Protection model ──> guider model
+H3 Timeline latent ────> H3 Continuity Protection latent ──> sampler latent
+H3 Timeline segment ───> H3 Continuity Protection segment ─> Save Segment segment
+Sampler output (normal or denoised) ──────────────────────> Save Segment latent
+```
+
+Use the node's **returned segment** for Save Segment. Both sampler outputs restore the real carried frames before decode/save; the historical front anchor and temporary late capstone never become visible extra frames. Save rejects an output that did not complete the matching protected sampling pass, before moving takes or writing files. Audio generation, held audio and clip lengths remain on their existing clocks.
+
+Turn off the Studio's old **Context noise** control first: it is a separate pixel-noise treatment and cannot be combined with this node. The new node has only an **enabled** switch. It leaves fresh clips, cuts, bridges and non-continuing layers unchanged; anchors reset at the next continuing chain on the same track. An authored appearance change suppresses protection through the next fresh clip, so an old look is not forced back. An authored Last/frame guide or a protected following neighbor suppresses only the late capstone; the node's info explains this.
+
+Protection needs a current native MiniMax H3 AV model with partial masks and an ordinary finite descending sigma schedule ending at zero. It rejects **Context Windows**, including windows added downstream. Missing or changed source takes and resolution mismatches require preparing/rendering the chain again; no source is silently substituted or resized.
+
+**Protected continuations bypass H3 Disk Cache** because Save needs a live sampling receipt. Disabled/fresh paths retain existing cache behavior with the usual Timeline positive/latent/seed keys. Adding or toggling this graph node does not automatically mark old rendered clips outdated: use **Regenerate** on affected clips or start an independent generation. Old takes stay until replacements save successfully. See [the node reference](../reference/nodes.md#h3-continuity-protection) and [cache limits](../output/first-pass-cache.md#continuity-protection).
+
+This feature has CPU checks for masks, native sampler outputs, joins' carried data and safe saves. **A matched GPU comparison has not yet established color/detail improvement on your model.** Compare the same prompts, seeds, model/schedule and memory in both arms. Watch motion and joins as well as color: a clean historical anchor can attract an earlier pose/composition. A continuing clip can still make an unrequested camera reset after its first guided frame; this node is not a demonstrated fix for that.
+
+Visual memory serves a different purpose. If a prop leaves the camera view, choose **Selected** memory from a moment that clearly shows it and label the details to retain. Automatic Same scene memory already includes an establishing view and recent view; those views may not clearly cover every object. Protection is not an object-permanence guarantee.
+
+Public technique references: [Geiru Context Suite](https://github.com/roycho87/geiru_context_suite) (clean keystone/capstone and late locking) and [ethanfel/Lumifel's context-noise work](https://github.com/ethanfel/ComfyUI-MiniMaxH3-Context-Loop). This is an independent native implementation using ComfyUI APIs, not a vendored copy of those node packs.
+
 ## What was measured
+
+The historical measurements below concern the older settings named in each row, not H3 Continuity Protection.
 
 Texture is the finest-detail energy of each clip against clip 1 (1.00 = no change). A "jump" is the largest frame-to-frame change at a join; the unchanged chain's joins measured 2.5 to 4.2.
 

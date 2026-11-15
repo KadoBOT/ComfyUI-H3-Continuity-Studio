@@ -31,6 +31,22 @@ wants one setting everywhere.
 
 ## Long continuing chains
 
+**H3 Continuity Protection** is an optional graph node: sampling MODEL plus native
+Timeline latent/segment in; model → guider, latent → sampler, **returned segment
+→ Save Segment**. It uses sampler-level context noise, a clean chain-front anchor
+and a late capstone, then restores real carried frames in both normal and denoised
+outputs. Save rejects an unmatched/unexecuted protected result before writes.
+Disable old pixel `context_noise`; do not combine with Context Windows. Protected
+continuations bypass disk sampling cache. Disabled/fresh/cut/bridge paths pass
+through; appearance changes suppress protection until the next fresh chain;
+authored ending/frame guides or a frozen following ending suppress the capstone.
+Graph toggles do not mark old takes outdated: use Regenerate or a new generation.
+No matched GPU comparison has verified the visual gain; inspect motion/camera
+resets as well as color. Selected memory from a clear earlier view remains the
+existing remedy when recent views no longer show a prop. Keep memory identical in
+baseline/protection comparisons. Public techniques: Geiru Context Suite and
+ethanfel/Lumifel; independently implemented against ComfyUI's native APIs.
+
 Over many continuing boxes, texture builds up ("burn"); the continuity check reports it as *N% grainier* and a hitch at a join as *Holds still: 3 frames at the join.* Optional Timeline fields, measured on a six-box chain (FastH3 omniref 8-step int8):
 
 - `"context_noise": true` cut texture growth by about a third (clip 6: 1.75 against 2.04), same framing, about 10% slower. With the **H3 Sigmas Tail** node (`BasicScheduler -> H3 Sigmas Tail -> sampler sigmas`, `segment` connected): 1.67.
