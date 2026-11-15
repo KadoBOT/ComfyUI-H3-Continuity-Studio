@@ -4,6 +4,14 @@ All notable changes to H3 Continuity Studio are recorded here. Versions follow [
 
 ## [Unreleased]
 
+### Added
+
+- **Stills from your own image workflow.** The Timeline has a **still_image** input. Connect the IMAGE output of any image workflow wrapped in a native subgraph whose inputs are named `prompt` and `seed` (optionally `width`, `height`, `negative`, and one IMAGE input per reference picture); the Studio generates stills and reference pictures through it and leaves every other setting alone. No Still Recipe node or written bindings are needed. A still that has fewer references than the workflow requires is reported before it is queued. **Still Recipe**, **P-H3-Image Still** and **MiniMax H3 Image Still** keep working. See [Stills with your own image workflow](guide/build/own-image-workflow-stills.md).
+
+### Changed
+
+- `examples/qwen_image_21_still.json` no longer contains a Still Recipe node: connect its IMAGE output to **still_image**.
+
 ### Fixed
 
 - **Prompt form Advanced switch, tabs and retention markers.** Advanced is on whenever a clip has advanced details; turning it off asks, removes them and keeps them until it is on again (read-only Timelines only show or hide them). Prompt section tabs use the Studio's icon and text tabs again. Reference retention **Relationship** is a choice of the H3 markers, with **Custom…** for other wording.

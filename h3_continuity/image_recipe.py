@@ -79,18 +79,28 @@ def _scalar(graph, value):
     return value
 
 
+PH3_CONDITIONING = 'PH3ImageConditioning'
+MINIMAX_CONDITIONING = 'MiniMaxH3ImageConditioning'
+
+
+def _targets(loc):
+    """One workflow input can reach several inner inputs; `more` lists the others."""
+    return [loc, *loc.get('more', [])]
+
+
 def _image_port(graph,loc):
+    """Check a native IMAGE input. True when the node cannot run with it left empty."""
     import nodes
     cls=nodes.NODE_CLASS_MAPPINGS.get(graph[loc['node']]['class_type'])
     if cls is None:raise ValueError('Still recipe reference node is not registered: '+graph[loc['node']]['class_type'])
     schema=cls.INPUT_TYPES();inputs={**schema.get('required',{}),**schema.get('optional',{})};port=loc['input']
     item=inputs.get(port)
-    if item is not None and item[0]=='IMAGE':return
+    if item is not None and item[0]=='IMAGE':return port in schema.get('required',{})
     parent,_,child=port.partition('.')
     item=inputs.get(parent)
     if item and item[0]=='COMFY_AUTOGROW_V3':
         template=item[1].get('template',{});spec=template.get('input',{});members={**spec.get('required',{}),**spec.get('optional',{})}
-        if child in template.get('names',[]) and len(members)==1 and next(iter(members.values()))[0]=='IMAGE':return
+        if child in template.get('names',[]) and len(members)==1 and next(iter(members.values()))[0]=='IMAGE':return False
     raise ValueError(f'Still reference port {loc["node"]}.{port} must be a native IMAGE input')
 
 def prepare(recipe, workflow, request, references):
@@ -107,16 +117,22 @@ def prepare(recipe, workflow, request, references):
     if not _link(output) or output[0] not in graph:
         raise ValueError('Still recipe IMAGE output is missing')
     ports=bindings.get('references',[])
-    keys=[(loc.get('node'),loc.get('input')) for loc in ports]
+    # A recipe read from the workflow's own input names; a written recipe addresses one generator node directly.
+    auto=recipe.get('auto') is True
+    keys=[(loc.get('node'),loc.get('input')) for port in ports for loc in _targets(port)]
     if len(set(keys))!=len(keys):
         raise ValueError('Still recipe has duplicate reference ports')
     controls=[bindings.get(key) for key in ('prompt','instruction','seed','negative')]+[loc for group in bindings.get('size',{}).values() for loc in group]
-    scalar_ports={(loc.get('node'),loc.get('input')) for loc in controls if isinstance(loc,dict)}
+    scalar_ports={(loc.get('node'),loc.get('input')) for control in controls if isinstance(control,dict) for loc in _targets(control)}
     if scalar_ports.intersection(keys):raise ValueError('Still reference IMAGE ports collide with scalar controls')
-    for loc in ports:
-        if loc.get('node') not in graph or not isinstance(loc.get('input'),str):raise ValueError('Still reference IMAGE port is missing')
-        _image_port(graph,loc)
-    owners={loc['node'] for loc in ports}
+    needed=[]
+    for port in ports:
+        required=False
+        for loc in _targets(port):
+            if loc.get('node') not in graph or not isinstance(loc.get('input'),str):raise ValueError('Still reference IMAGE port is missing')
+            required=_image_port(graph,loc) or required
+        needed.append(required)
+    owners={loc['node'] for port in ports for loc in _targets(port)}
     for ref in references:
         if 'output' not in ref:
             continue
@@ -130,17 +146,17 @@ def prepare(recipe, workflow, request, references):
     label=recipe.get('reference_label')
     if not isinstance(label,str) or '{index}' not in label:
         raise ValueError('Still recipe reference label must contain {index}')
-    def bind(loc,value,optional=False):
-        node,port=loc.get('node'),loc.get('input')
-        if node not in graph or not isinstance(port,str) or not port or (not optional and port not in graph[node]['inputs']):
-            raise ValueError(f'Still recipe port {node}.{port} is missing')
-        graph[node]['inputs'][port]=value
+    def bind(target,value,optional=False):
+        for loc in _targets(target):
+            node,port=loc.get('node'),loc.get('input')
+            if node not in graph or not isinstance(port,str) or not port or (not optional and port not in graph[node]['inputs']):
+                raise ValueError(f'Still recipe port {node}.{port} is missing')
+            graph[node]['inputs'][port]=copy.deepcopy(value)
     if not isinstance(body.get('prompt'),str):
         raise ValueError('Still prompt must be text')
-    for loc in ports:
-        if loc.get('node') not in graph or not isinstance(loc.get('input'),str):
-            raise ValueError('Still recipe reference port is invalid')
-        graph[loc['node']]['inputs'].pop(loc['input'],None)
+    for port in ports:
+        for loc in _targets(port):
+            graph[loc['node']]['inputs'].pop(loc['input'],None)
     if body.get('seed') is not None:
         if type(body['seed']) is not int or not 0<=body['seed']<=rules.MAX_SEED:
             raise ValueError('Still seed must be an unsigned 64-bit integer')
@@ -148,9 +164,11 @@ def prepare(recipe, workflow, request, references):
     size=body.get('size')
     if size is not None and (not isinstance(size,dict) or set(size)!={'width','height'}):
         raise ValueError('Still size needs width and height')
-    for dimension in ('width','height'):
-        if not bindings['size'].get(dimension):
-            raise ValueError(f'Still recipe {dimension} binding is missing')
+    sized=all(bindings.get('size',{}).get(dimension) for dimension in ('width','height'))
+    if not sized and (size or not auto):
+        raise ValueError('This image workflow has no width and height inputs, so the Studio cannot set the still size. '
+                         'Add number inputs named width and height to its subgraph.' if auto else 'Still recipe size binding is missing')
+    for dimension in ('width','height') if sized else ():
         if size:
             value=timeline_prepare.setting(dimension,size[dimension])
             for loc in bindings['size'][dimension]: bind(loc,value)
@@ -173,12 +191,15 @@ def prepare(recipe, workflow, request, references):
             ref['slots']=[ref['slot']] if ref.get('slot') else []; unique.append(ref)
     if len(unique)>limit:
         raise ValueError(f'Still reference capacity {limit} cannot fit {len(unique)} required references: '+', '.join('/'.join(ref['roles']) for ref in unique))
-    qwen = any(graph[loc['node']]['class_type'] == 'TextEncodeQwenImage21' for loc in ports)
-    ph3 = any(graph[loc['node']]['class_type'] == PH3_IMAGE_CLASS for loc in ports)
-    minimax = any(graph[loc['node']]['class_type'] == MINIMAX_IMAGE_CLASS for loc in ports)
+    # The model decides how a prompt names its pictures. A workflow of native nodes shows it anywhere above its output.
+    classes = ({node['class_type'] for node in _ancestry(graph, output).values()} if auto
+               else {graph[loc['node']]['class_type'] for loc in ports})
+    qwen = 'TextEncodeQwenImage21' in classes
+    ph3 = bool(classes & {PH3_IMAGE_CLASS, PH3_CONDITIONING})
+    minimax = bool(classes & {MINIMAX_IMAGE_CLASS, MINIMAX_CONDITIONING})
     scene = qwen or ph3 or minimax
     environment = None
-    if scene:
+    if scene and not auto:
         owner = 'Qwen' if qwen else 'MiniMax H3 Image' if minimax else 'P-H3-Image'
         if len({loc['node'] for loc in ports}) != 1:
             raise ValueError(owner + ' scene references must bind directly to one ' + ('TextEncodeQwenImage21' if qwen else MINIMAX_IMAGE_CLASS if minimax else PH3_IMAGE_CLASS) + ' node')
@@ -189,11 +210,12 @@ def prepare(recipe, workflow, request, references):
         ports = sorted(ports, key=lambda loc: int(loc['input'].rsplit('_', 1)[-1]))
         if qwen:
             label = '<image{index}>'
+    if scene:
         environment = next((ref for role in ('scene_layout', 'location', 'scene anchor', 'current action state') for ref in unique if role in _roles(ref)), None)
         priority = {'scene_layout': 0, 'location': 1, 'identity': 2, 'additional identity': 2, 'appearance': 3, 'prop': 4,
                     'scene anchor': 5, 'current action state': 6}
         unique.sort(key=lambda ref: (ref is not environment, min((priority.get(role, 7) for role in _roles(ref)), default=7)))
-    if ph3 and not size:
+    if PH3_IMAGE_CLASS in classes and not auto and not size:
         node = 'h3c_ph3_size'
         if node in graph:
             raise ValueError('Still recipe collides with invocation size node')
@@ -207,8 +229,8 @@ def prepare(recipe, workflow, request, references):
             for loc in bindings['size'][dimension]:
                 bind(loc, [node, slot])
     tags={}; descriptions=[]
-    width=graph[bindings['size']['width'][-1]['node']]['inputs'][bindings['size']['width'][-1]['input']]
-    height=graph[bindings['size']['height'][-1]['node']]['inputs'][bindings['size']['height'][-1]['input']]
+    width,height=[graph[bindings['size'][dimension][-1]['node']]['inputs'][bindings['size'][dimension][-1]['input']] if sized else None
+                  for dimension in ('width','height')]
     # MiniMax H3 Image edits <Picture 1> and keeps its canvas, so a multi-view location sheet there becomes a grid.
     sheet = []
     if minimax and clip_request and environment and environment.get('file') and 'pin' not in environment \
@@ -232,7 +254,7 @@ def prepare(recipe, workflow, request, references):
             source=copy.deepcopy(ref)
             inputs={'source':json.dumps(source)}
             # Keep calculated dimensions in native inputs so the scheduler evaluates their ancestry.
-            if at==0 and not (ph3 or minimax): inputs.update(width=copy.deepcopy(width),height=copy.deepcopy(height))
+            if at==0 and sized and not (ph3 or minimax): inputs.update(width=copy.deepcopy(width),height=copy.deepcopy(height))
             graph[node]={'class_type':'H3C_StillImageSource','inputs':inputs}
             image=[node,0]
         views=sheet if ref is environment and len(sheet)>1 else [None]
@@ -245,7 +267,7 @@ def prepare(recipe, workflow, request, references):
                 graph[crop]={'class_type':'ImageCrop','inputs':{'image':image,'x':box[0],'y':box[1],'width':box[2],'height':box[3]}}
                 link=[crop,0]
             bind(ports[port],link,True)
-            if not labels: ref['port']=copy.deepcopy(ports[port])
+            if not labels: ref['port']={key:copy.deepcopy(ports[port][key]) for key in ('node','input')}
             labels.append(label.replace('{index}',str(port+1))); port+=1
         ref['label']=', '.join(labels)
         if len(views)>1:
@@ -258,6 +280,11 @@ def prepare(recipe, workflow, request, references):
                                    if role.split(':',1)[0].strip() in reference_use))
         context = '. '.join(str(ref[key]) for key in ('title', 'description') if ref.get(key))
         descriptions.append(text_label+': '+', '.join(roles)+('. '+' '.join(usage) if usage else '')+('. '+context if context else ''))
+    # ComfyUI refuses a prompt whose required input is empty, with a message that names an inner node.
+    empty=[at for at in range(port,len(ports)) if needed[at]] if auto else []
+    if empty:
+        raise ValueError(f'This image workflow needs {empty[-1]+1} reference picture{"s" if empty[-1] else ""}, and this still has {port}. '
+                         'Add references to the clip, or make the extra image inputs optional in the workflow.')
     prompt=body['prompt']
     if descriptions and not clip_request:
         if scene:
@@ -293,7 +320,7 @@ def prepare(recipe, workflow, request, references):
     generator = graph[bindings['prompt']['node']]
     if generator['class_type'] == MINIMAX_IMAGE_CLASS:
         provenance['prompt_enhancer'] = _scalar(graph, generator['inputs'].get('prompt_enhancer', 'off'))
-    if minimax and unique:
+    if MINIMAX_IMAGE_CLASS in classes and unique:
         from .minimax_image_nodes import REFERENCE_MEGAPIXELS
         provenance['reference_resize_megapixels'] = REFERENCE_MEGAPIXELS
     return {'ok':True,'prompt_id':str(uuid.uuid4()),'prompt':graph,'outputs':['h3c_still_output'],'provenance':provenance}

@@ -139,7 +139,6 @@
           "name": "IMAGE",
           "type": "IMAGE",
           "links": [
-            1,
             2
           ]
         }
@@ -167,49 +166,6 @@
         "steps": 25,
         "sampler": "euler"
       }
-    },
-    {
-      "id": 23,
-      "type": "H3C_StillRecipe",
-      "pos": [
-        480,
-        0
-      ],
-      "size": [
-        350,
-        240
-      ],
-      "flags": {},
-      "order": 23,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "image",
-          "type": "IMAGE",
-          "link": 1
-        },
-        {
-          "name": "bindings",
-          "type": "STRING",
-          "link": null,
-          "widget": {
-            "name": "bindings"
-          }
-        }
-      ],
-      "outputs": [
-        {
-          "name": "H3C_STILL_RECIPE",
-          "type": "H3C_STILL_RECIPE",
-          "links": []
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "H3C_StillRecipe"
-      },
-      "widgets_values": [
-        "{\"version\": 2, \"adapter\": \"pixels\", \"label\": \"Qwen Image 2.1\", \"reference_limit\": 10, \"reference_label\": \"<image{index}>\", \"prompt\": {\"node\": [\"11\"], \"input\": \"prompt\"}, \"instruction\": {\"node\": [\"7\"], \"input\": \"value\"}, \"negative\": {\"node\": [\"11\"], \"input\": \"negative_prompt\"}, \"seed\": {\"node\": [\"17\"], \"input\": \"noise_seed\"}, \"size\": {\"width\": [{\"node\": [\"9\"], \"input\": \"value\"}, {\"node\": [\"12\"], \"input\": \"width\"}], \"height\": [{\"node\": [\"10\"], \"input\": \"value\"}, {\"node\": [\"12\"], \"input\": \"height\"}]}, \"references\": [{\"node\": [\"11\"], \"input\": \"images.image_1\"}, {\"node\": [\"11\"], \"input\": \"images.image_2\"}, {\"node\": [\"11\"], \"input\": \"images.image_3\"}, {\"node\": [\"11\"], \"input\": \"images.image_4\"}, {\"node\": [\"11\"], \"input\": \"images.image_5\"}, {\"node\": [\"11\"], \"input\": \"images.image_6\"}, {\"node\": [\"11\"], \"input\": \"images.image_7\"}, {\"node\": [\"11\"], \"input\": \"images.image_8\"}, {\"node\": [\"11\"], \"input\": \"images.image_9\"}, {\"node\": [\"11\"], \"input\": \"images.image_10\"}]}"
-      ]
     },
     {
       "id": 21,
@@ -250,14 +206,6 @@
     }
   ],
   "links": [
-    [
-      1,
-      22,
-      0,
-      23,
-      0,
-      "IMAGE"
-    ],
     [
       2,
       22,

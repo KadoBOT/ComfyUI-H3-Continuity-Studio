@@ -284,6 +284,9 @@ def still_recipe_node(prompt, timeline_id):
     """Resolve the selected still recipe without executing its generator or switch controls."""
     settings = (prompt.get(str(timeline_id)) or {}).get("inputs") or {}
     link = settings.get("still_recipe")
+    if link is None and _link(settings.get("still_image")):
+        # The user's own image workflow, connected by its IMAGE output.
+        return prompt.get(str(settings["still_image"][0])) or {}
     if not _link(link):
         return {}
     node = prompt.get(str(link[0])) or {}
@@ -321,9 +324,27 @@ def still_recipe_node(prompt, timeline_id):
     return node
 
 
+NATIVE_IMAGE_MODELS = {'PH3ImageConditioning': 'P-H3-Image', 'MiniMaxH3ImageConditioning': 'MiniMax H3 Image'}
+
+
 def still_model_for(prompt, timeline_id):
     node = still_recipe_node(prompt, timeline_id)
-    return SELF_IMAGE_MODELS.get(node.get('class_type'), '')
+    model = SELF_IMAGE_MODELS.get(node.get('class_type'), '')
+    image = ((prompt.get(str(timeline_id)) or {}).get("inputs") or {}).get("still_image")
+    if model or not node or not _link(image):
+        return model
+    # A workflow of native nodes names its model by the conditioning node above its image output.
+    seen, pending = set(), [str(image[0])]
+    while pending:
+        key = pending.pop()
+        if key in seen:
+            continue
+        seen.add(key)
+        current = prompt.get(key) or {}
+        if current.get('class_type') in NATIVE_IMAGE_MODELS:
+            return NATIVE_IMAGE_MODELS[current['class_type']]
+        pending.extend(str(value[0]) for value in (current.get("inputs") or {}).values() if _link(value))
+    return ''
 
 
 def renderer_for(prompt, timeline_id):

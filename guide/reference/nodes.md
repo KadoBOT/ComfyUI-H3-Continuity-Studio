@@ -19,6 +19,7 @@ The heart of the pack. Draw clips in the Studio; each queued run renders the nex
 | `images.imageN`, `videos.videoN`, `video_audios.…`, `audios.audioN` | optional | [Connected references](../build/references.md). |
 | `negative` | optional | Negative conditioning. |
 | `still_recipe` | optional | A [Still Recipe](../build/frame-guides.md); video rendering never evaluates it. |
+| `still_image` | optional | The IMAGE output of [your own image workflow](../build/own-image-workflow-stills.md); video rendering never evaluates it. `still_recipe` is used when both are connected. |
 | `story` | optional | From **H3 Story**. Renders never wait for it. |
 
 | Output | Type |

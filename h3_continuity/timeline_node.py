@@ -578,6 +578,11 @@ class H3C_Timeline(io.ComfyNode):
                 io.Conditioning.Input("negative", optional=True),
                 StillRecipeType.Input("still_recipe", optional=True, raw_link=True, lazy=True,
                                       tooltip="Native still generator recipe; video rendering never evaluates it."),
+                io.Image.Input("still_image", optional=True, raw_link=True, lazy=True,
+                               tooltip="The IMAGE output of your own image workflow, wrapped in a subgraph whose inputs are "
+                                       "named prompt and seed (optionally width, height, negative, and one "
+                                       "IMAGE input per reference picture). The Studio generates stills through it; "
+                                       "video rendering never evaluates it."),
                 StoryType.Input("story", optional=True, lazy=True,
                                 tooltip="From H3 Story, which writes this Timeline's prompts. Renders never wait "
                                         "for it."),
@@ -654,7 +659,7 @@ class H3C_Timeline(io.ComfyNode):
 
     @classmethod
     def execute(cls, clip=None, vae=None, name="h3_story", width=1024, height=576, context_frames=39, carry_audio=True, ref_image_size="match", timeline="{}",
-                audio_vae=None, images=None, audios=None, negative=None, story=None, videos=None, video_audios=None, still_recipe=None, audio_context_frames=0) -> io.NodeOutput:
+                audio_vae=None, images=None, audios=None, negative=None, story=None, videos=None, video_audios=None, still_recipe=None, audio_context_frames=0, still_image=None) -> io.NodeOutput:
         from .timeline_api.service import authorize_sequence, sequence_owner
         owner_job = authorize_sequence(name, sequence_owner(cls), "conditioning")
         if clip is None or vae is None:

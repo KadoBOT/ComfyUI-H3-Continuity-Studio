@@ -37,7 +37,7 @@ The screenshots show two candidates the Qwen Image 2.1 example generated for a c
 
 <div style="clear: both"></div>
 
-Still generation needs a **still recipe**: connect a native image-generator subgraph's `IMAGE` output to the **Still Recipe** node, and that node's output to the Timeline's `still_recipe` input. The example workflows include ready-made recipes:
+Still generation needs an image generator connected to the Timeline. The simplest connection is your own image workflow: wrap it in a native subgraph and connect its `IMAGE` output to the Timeline's `still_image` input; see [Stills with your own image workflow](own-image-workflow-stills.md). The example workflows below connect theirs through a **Still Recipe** or a ready-made node on the `still_recipe` input, which keeps working:
 
 | Example workflow | Image generator |
 | --- | --- |
@@ -48,7 +48,7 @@ Still generation needs a **still recipe**: connect a native image-generator subg
 | `examples/ph3_image_story_studio.json` | P-H3-Image, with one ready-made node and no recipe to build. See [Stills with P-H3-Image](p-h3-image-stills.md). |
 | `examples/minimax_h3_image_story_studio.json` | Official MiniMax H3 Image, with one ready-made node. See [Stills with MiniMax H3 Image](minimax-h3-image-stills.md). |
 
-Select models you have installed; nothing is downloaded. Other pixel generators can be connected by declaring where their prompt, seed, size and reference inputs are. This is the **Still Recipe** node's `bindings` input; see the Qwen Story Studio notes in the repository for the schema.
+Select models you have installed; nothing is downloaded. Other image generators connect through `still_image` with no extra node. The **Still Recipe** node's `bindings` input, which declares where a generator's prompt, seed, size and reference inputs are, remains for workflows that already use it; see the Qwen Story Studio notes in the repository for the schema.
 
 !!! info "Which prompt is used"
     Generate candidates always uses the selected clip's prompt. Shared text, saved prepared still prompts, extra descriptions and generator instructions are not appended. **MiniMax H3 Image Still** sends that text as written unless its optional prompt enhancer is turned on, and splits a location sheet into separate views; see [Stills with MiniMax H3 Image](minimax-h3-image-stills.md#location-sheets). References remain image inputs; their labels and descriptions remain in candidate metadata. The subgraph's own prompt and instruction are used when you run it standalone.

@@ -8,7 +8,7 @@ const SELF_RECIPES = {[SELF_RECIPE_CLASS]:SELF_RECIPE,
 export function captureRecipe({workflow, output}, timelineId) {
   const fail = message => {throw new Error(`Still recipe: ${message}`);};
   let link = output?.[String(timelineId)]?.inputs?.still_recipe;
-  if (link == null) return null;
+  if (link == null) return captureWorkflow({workflow, output}, timelineId);
   const switches = new Set();
   while (output[link?.[0]]?.class_type === 'LazySwitchKJ') {
     if (!Array.isArray(link) || link.length!==2 || link[1]!==0 || switches.has(link[0])) fail('still_recipe switch connection is invalid or cyclic');
@@ -110,6 +110,75 @@ export function captureRecipe({workflow, output}, timelineId) {
 }
 
 
+// The names a connected image workflow gives its inputs are its contract: no recipe node and no written bindings.
+// Text the workflow adds to every prompt stays inside it: the Studio's own instruction field is already part of the prompt it sends.
+const CONTROL_NAMES = {prompt:['prompt','positive_prompt'], negative:['negative','negative_prompt'], seed:['seed','noise_seed'],
+  width:['width'], height:['height']};
+const REFERENCE_LABELS = [[['TextEncodeQwenImage21'],'<image{index}>'],
+  [['PH3ImageConditioning','MiniMaxH3ImageConditioning','H3C_PH3ImageStill','H3C_MiniMaxH3ImageStill'],'<Picture {index}>']];
+export const DEFAULT_REFERENCE_LABEL = 'image {index}';
+
+// still_image takes the IMAGE output of a native subgraph, or of one node that has its own prompt and seed inputs.
+export function captureWorkflow({workflow, output}, timelineId) {
+  const fail = message => {throw new Error(`Still workflow: ${message}`);};
+  const image = output?.[String(timelineId)]?.inputs?.still_image;
+  if (image == null) return null;
+  if (!Array.isArray(image) || image.length!==2 || typeof image[0]!=='string' || !Number.isInteger(image[1]) || image[1]<0 || !output[image[0]]) fail('the image output is missing or muted');
+  const definitions = new Map((workflow.definitions?.subgraphs ?? []).map(g=>[g.id,g]));
+  const graphAt = path => {
+    let graph = workflow;
+    for (const id of path) graph = definitions.get(graph?.nodes?.find(n=>String(n.id)===String(id))?.type);
+    return graph;
+  };
+  const wires = graph => (graph?.links ?? []).map(l=>Array.isArray(l)?{id:l[0],origin_id:l[1],origin_slot:l[2],target_id:l[3],target_slot:l[4]}:l);
+  const live = node => node && node.mode!==2 && node.mode!==4;
+  // From the Timeline's socket to the node that draws the image, out through any subgraph the Timeline sits in.
+  let path = String(timelineId).split(':'), socket = 'still_image', generator, timeline;
+  while (path.length) {
+    const graph = graphAt(path.slice(0,-1)), node = graph?.nodes?.find(n=>String(n.id)===path.at(-1));
+    timeline ??= node;
+    const input = typeof socket==='number' ? node?.inputs?.[socket] : node?.inputs?.find(i=>i.name===socket);
+    const wire = wires(graph).find(l=>String(l.id)===String(input?.link));
+    if (!wire) fail('the image connection is missing');
+    if (String(wire.origin_id)===String(graph.inputNode?.id)) {path = path.slice(0,-1); socket = wire.origin_slot; continue;}
+    path = [...path.slice(0,-1), String(wire.origin_id)];
+    generator = graph.nodes.find(n=>String(n.id)===String(wire.origin_id));
+    break;
+  }
+  if (!live(generator)) fail('the image output is missing or muted');
+  const definition = definitions.get(generator.type);
+  // Every inner input one subgraph input reaches, through nested subgraphs.
+  function targets(graph, prefix, slot) {
+    return wires(graph).filter(l=>String(l.origin_id)===String(graph.inputNode?.id) && l.origin_slot===slot).flatMap(l=>{
+      const node = graph.nodes?.find(n=>String(n.id)===String(l.target_id)), inner = definitions.get(node?.type), id = [...prefix,String(l.target_id)];
+      if (!live(node)) return [];
+      if (inner) return targets(inner, id, l.target_slot);
+      const name = node.inputs?.[l.target_slot]?.name;
+      return name && output[id.join(':')] ? [{node:id.join(':'), input:name}] : [];
+    });
+  }
+  const ports = definition
+    ? (definition.inputs ?? []).map((input,slot)=>({name:input.name, type:input.type, to:targets(definition, path, slot)}))
+    : [...new Map([...Object.keys(output[path.join(':')]?.inputs ?? {}).map(name=>[name,{name}]),
+        ...(generator.inputs ?? []).map(input=>[input.name,input])]).values()]
+        .map(input=>({name:input.name, type:input.type, to:[{node:path.join(':'), input:input.name}]}));
+  const locator = to => to.length>1 ? {...to[0], more:to.slice(1)} : to[0];
+  const named = key => ports.find(port=>port.type!=='IMAGE' && CONTROL_NAMES[key].includes(String(port.name).trim().toLowerCase()) && port.to.length);
+  const how = definition ? `Name an input of the "${definition.name ?? 'image'}" subgraph` : 'Select the image nodes, choose Convert to Subgraph, and name one of its inputs';
+  if (!named('prompt')) fail(`there is no text input named prompt. ${how} "prompt".`);
+  if (!named('seed')) fail(`there is no number input named seed, so every candidate would be the same picture. ${how} "seed".`);
+  const references = ports.filter(port=>port.type==='IMAGE' && port.to.length).map(port=>locator(port.to));
+  const scope = path.join(':'), classes = new Set(Object.entries(output).filter(([id])=>id===scope || id.startsWith(scope+':')).map(([,node])=>node.class_type));
+  const chosen = timeline?.properties?.h3c_still_reference_label;
+  if (chosen != null && (typeof chosen!=='string' || !chosen.includes('{index}'))) fail('the Timeline property h3c_still_reference_label must contain {index}');
+  const reference_label = chosen ?? REFERENCE_LABELS.find(([names])=>names.some(name=>classes.has(name)))?.[1] ?? DEFAULT_REFERENCE_LABEL;
+  const optional = key => named(key) ? {[key]:locator(named(key).to)} : {};
+  return {version:2, adapter:'pixels', auto:true, reference_limit:references.length, reference_label,
+    label:definition?.name ?? generator.title ?? generator.type, output:[image[0],image[1]],
+    bindings:{prompt:locator(named('prompt').to), seed:locator(named('seed').to), ...optional('negative'),
+      size:{width:named('width')?.to ?? [], height:named('height')?.to ?? []}, references}};
+}
+
 // Root IDs are direct; shared nested definitions need an unambiguous current instance.
 export function captureTimelineId(snapshot, nodeId, {root = false} = {}) {
   const local=String(nodeId),output=snapshot.output ?? {};
@@ -177,7 +246,7 @@ export class StillClient extends ImageJobClient {
 export function isolateVideoPrompt(snapshot,timelineId,outputs) {
   const copy=structuredClone(snapshot),graph=copy.output,keep=new Set();
   // Validation follows raw/lazy links too, so detach before walking dependencies.
-  for(const node of Object.values(graph)) if(node.class_type==='H3C_Timeline') delete node.inputs.still_recipe;
+  for(const node of Object.values(graph)) if(node.class_type==='H3C_Timeline') {delete node.inputs.still_recipe;delete node.inputs.still_image;}
   function visit(id) {
     if(keep.has(id)) return;
     if(!graph[id]) throw new Error(`Video input ${id} is missing.`);
@@ -210,6 +279,7 @@ export function videoOutputs(snapshot,timelineId,definitions) {
 
 export function recipeControls(snapshot,recipe) {
   function value(locator,computed=false) {
+    if(!locator)return undefined;
     let value=snapshot.output[locator.node].inputs[locator.input];
     const seen=new Set();
     while(Array.isArray(value)) {
@@ -227,7 +297,7 @@ export function recipeControls(snapshot,recipe) {
     const link=snapshot.output[locator.node]?.inputs[locator.input];
     return Array.isArray(link)&&link.length===2&&typeof link[0]==='string'&&Number.isInteger(link[1])&&link[1]>=0&&snapshot.output[link[0]]?[`@still${index+1}`]:[];
   }):[];
-  return {instruction:String(value(recipe.bindings.instruction)??''),seed:value(recipe.bindings.seed),...(recipe.version===2?{width:value(recipe.bindings.size.width.at(-1),true),height:value(recipe.bindings.size.height.at(-1),true),label:recipe.label??'Image generator',adapter:recipe.adapter??'h3',referenceLabel:recipe.reference_label}:{}),...(additionalReferences.length?{additionalReferences}:{})};
+  return {instruction:String(value(recipe.bindings.instruction)??''),seed:value(recipe.bindings.seed,recipe.auto),...(recipe.version===2?{width:value(recipe.bindings.size.width.at(-1),true),height:value(recipe.bindings.size.height.at(-1),true),label:recipe.label??'Image generator',adapter:recipe.adapter??'h3',referenceLabel:recipe.reference_label}:{}),...(additionalReferences.length?{additionalReferences}:{})};
 }
 
 // The wiring a compiled prompt follows, read from the live graph: serializing the workflow instead takes several ms on
