@@ -196,7 +196,7 @@ export class PromptFormPanel {
     this.field(row,title+' delivery',value.delivery??'',delivery=>edit({delivery}),{suggestions:['Quietly','Whispering','Shouting','Breathless','Measured']});
     for(const [name,label] of [['voiceover','Off-screen voiceover'],['singing','Singing'],['fromPrevious','Continues from previous shot'],['toNext','Continues into next shot'],['cutoff','Cut off at the end']]) {
       const wrap=el('label','h3pf-actions'),input=el('input');input.type='checkbox';input.checked=!!value[name];input.setAttribute('aria-label',title+' '+label);
-      input.addEventListener('change',()=>edit({[name]:input.checked,...(name==='voiceover'&&input.checked?{singing:false}:name==='singing'&&input.checked?{voiceover:false}:{})}));
+      input.addEventListener('change',()=>edit({[name]:input.checked,...(input.checked?{voiceover:{singing:false},singing:{voiceover:false},toNext:{cutoff:false},cutoff:{toNext:false}}[name]??{}:{})}));
       wrap.append(input,el('span',null,label));row.append(wrap);
     }
     row.append(button('Remove dialogue',()=>edit(null)));

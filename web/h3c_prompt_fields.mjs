@@ -48,13 +48,14 @@ function nativeSpeech(text) {
     voiceover,singing:lead[4]==='sings',fromPrevious,toNext,cutoff,key:'dialogue',index:null}};
 }
 function speechText(value) {
-  if(!value.speakers?.length||value.speakers.some(s=>!/^S[1-9]\d*$/.test(s))||!value.language?.trim()||/[\]\r\n<>]/.test(value.language))
+  if(!value.speakers?.length||value.speakers.some(s=>!/^S[1-9]\d*$/.test(s))||!value.language?.trim()||/[\[\]\r\n<>]/.test(value.language))
     throw new Error('Enter stable speaker IDs such as S1 and a language for this dialogue.');
   if(value.text.includes('</d>'))throw new Error('Use Raw text to edit literal dialogue delimiters.');
+  if(value.toNext&&value.cutoff)throw new Error('Choose whether to continue or cut off this dialogue.');
   let words=value.text;
   if(value.fromPrevious&&!words.startsWith('<scenetrans>'))words='<scenetrans>'+words;
   if(value.toNext&&!words.endsWith('<scenetrans>'))words+='<scenetrans>';
-  else if(value.cutoff&&!words.endsWith('<cutoff>'))words+='<cutoff>';
+  if(value.cutoff&&!words.endsWith('<cutoff>'))words+='<cutoff>';
   const action=value.voiceover?'says in an off-screen voiceover':value.singing?'sings':'says';
   return `${value.identity?value.identity+' ':''}(${value.speakers.join(',')})${value.delivery?', '+value.delivery+',':''} ${action}: <d>[${value.language}] ${words}</d>`
     +(value.voiceover?dialogueTail:'')+(value.fromPrevious||value.toNext?audioTail:'');
@@ -221,7 +222,7 @@ export function writePromptField(source,edit,{tags=[]}={}) {
       // Existing shot labels and their original boundary remain owned by the shot editor.
       const label=/^\[Shot \d+\]\s*/.exec(entry.range.before);
       const clock=/^At \d+:[0-5]\d\.\d{3},\s*/i.exec(entry.range.before.slice(label?.[0].length??0));
-      if(label)text=label[0]+(clock?.[0]??'')+text;
+      if(label)text=label[0]+(clock?(clock[0].endsWith(',')?clock[0]+' ':clock[0]):'')+text;
     }
     return replacePromptRanges(source,[{...entry.range,text}]);
   }

@@ -49,6 +49,8 @@ window.hostPaths=()=>withHosts(async host=>{
  const real=host(NEWER),widget=real.widget,editor=real.editor;
  check('construction and load keep the text',widget.value===NEWER);
  check('the editor is read-only',JSON.stringify(editor.readOnly)==='["video-layers-99"]');
+ check('the new form refuses read-only edits',editor.applyPrompt(editor.video().prompt,'BAD',{structural:true})===false&&widget.value===NEWER);
+ check('Cast assignment refuses a read-only Timeline',await editor.cast.addToClip(editor.box().id,'e1')===false&&widget.value===NEWER);
  editor.state.boxes[1].prompt='Changed.';editor.commit();
  check('an edit is not written',widget.value===NEWER);
  check('an edit is undone',editor.state.boxes[1].prompt==='Two angles.');
@@ -137,7 +139,10 @@ with sync_playwright() as p:
     buttons=page.evaluate("()=>Object.fromEntries(['addButton','renderButton','renderNextButton','boxRenderButton'].map(name=>[name,editor[name].disabled]))")
     prompt=page.locator('textarea:visible').first
     before=prompt.input_value()
-    prompt.click();page.keyboard.type('xy')
+    if not prompt.is_disabled():
+        prompt.click();page.keyboard.type('xy')
+    else:
+                assert page.locator('.h3pf').evaluate('(form)=>form.disabled'), 'the whole prompt form must be disabled'
     typed={'kept':page.evaluate('stored()===NEWER'),'field':prompt.input_value()==before}
     page.screenshot(path=str(ROOT/'.tmp'/'read-only-timeline-1440.png'))
     page.set_viewport_size({'width':390,'height':844})

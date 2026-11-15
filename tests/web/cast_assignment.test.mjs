@@ -20,7 +20,8 @@ test('Cast reply commits prompt, mapping and schedule together once',async()=>{
   assert.equal(editor.commits,1);assert.equal(editor.steps,1);
 });
 test('late Cast reply after a schedule edit or Undo/Redo cannot overwrite newer state',async()=>{
-  for(const change of [editor=>editor.state.boxes[0].schedule={entities:[],place:null},editor=>editor.editRevision+=2]) {
+  for(const change of [editor=>editor.state.boxes[0].schedule={entities:[],place:null},editor=>editor.editRevision+=2,
+    editor=>editor.promptForm={hasDrafts:()=>true}]) {
     let finish;
     const {page,editor}=fixture(()=>new Promise(resolve=>{finish=resolve;}));
     const pending=page.change({action:'assign',box:'a',entity:'e1'});

@@ -410,7 +410,7 @@ export class CastPage {
       ...Object.keys(answer?.sources ?? {})];
     if (!answer?.ok) this.note = answer?.error ?? 'The bible could not be updated.';
     else if ((body.action==='assign' && (this.editor.editRevision!==undefined&&this.editor.editRevision!==revision
-        ||model.serialize(now)!==sentText)) || JSON.stringify(now.bible ?? null) !== sentBible || touched.some((id) => find(id)?.prompt !== sentPrompts.get(id))) {
+        ||this.editor.promptForm?.hasDrafts()||model.serialize(now)!==sentText)) || JSON.stringify(now.bible ?? null) !== sentBible || touched.some((id) => find(id)?.prompt !== sentPrompts.get(id))) {
       this.note = STALE;
     } else {
       if(body.action==='assign') {

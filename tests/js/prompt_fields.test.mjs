@@ -75,3 +75,16 @@ test('known uncued native speech is editable and changing a referenced speaker I
   assert.ok(entry);assert.equal(entry.value.text,'Hello.');
   assert.throws(()=>writePromptField(source,{expectedSource:source,section:'detailed_description',kind:'dialogue',entry,value:{...entry.value,speakers:['S2']}}),/speaker.*used|referenc/i);
 });
+test('a description added after an empty timed shot keeps the native comma separator',()=>{
+  const source='[Shot 1] A room.\n[Shot 2] At 00:02.500,';
+  const entry=readPromptFields(source).sections[0].entries.find(e=>e.kind==='narrative'&&e.shot===2);
+  const next=writePromptField(source,{expectedSource:source,section:'integrated_multimodal_description',kind:'narrative',entry,value:{text:'the camera cuts to her hands.'}});
+  assert.ok(next.endsWith('[Shot 2] At 00:02.500, the camera cuts to her hands.'));
+});
+test('dialogue language delimiters and mutually exclusive ending flags are validated',()=>{
+  const source='[Shot 1] A room.';
+  const edit={expectedSource:source,section:'integrated_multimodal_description',kind:'dialogue',shot:1,entry:null,
+    value:{speakers:['S1'],language:'[English]',identity:'',text:'Hello.'}};
+  assert.throws(()=>writePromptField(source,edit),/language/i);
+  assert.throws(()=>writePromptField(source,{...edit,value:{...edit.value,language:'English',toNext:true,cutoff:true}}),/continue|cut off/i);
+});

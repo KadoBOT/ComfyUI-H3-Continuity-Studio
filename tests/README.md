@@ -55,3 +55,11 @@ uv run --with playwright python tests/browser/read_only_timeline.py
 ```
 
 A Timeline whose `requires` names an unknown feature must keep its text byte for byte through editor edits and typing, endpoint adoption on load, a context change, still and reference writes, Story Write and Undo with and without an editor, and undo and redo between whole Timelines. It also checks that the notice is on screen at 1440 and 390 px wide and that **+ Clip**, Render and Generate are off. Screenshots go to `.tmp/read-only-timeline-*.png`.
+
+Structured prompt forms (real Studio/editor/history at desktop and phone sizes):
+
+```sh
+uv run --with playwright python tests/browser/prompt_forms.py
+```
+
+This isolated fixture routes this checkout's modules locally and mocks Bible, storage and queue responses. It checks Cast insertion, optional/custom fields, Basic/Advanced and Raw/Sections switching, shot times, draft and guide guards, manual dialogue, history, reload, alternate videos, read-only projects and edits in an 88-clip Timeline. It never contacts ComfyUI, starts a server, mutates a live workflow or generates media. Screenshots go to `.tmp/prompt-forms-*.png`.
