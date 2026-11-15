@@ -100,7 +100,10 @@ def _image_port(graph,loc):
     item=inputs.get(parent)
     if item and item[0]=='COMFY_AUTOGROW_V3':
         template=item[1].get('template',{});spec=template.get('input',{});members={**spec.get('required',{}),**spec.get('optional',{})}
-        if child in template.get('names',[]) and len(members)==1 and next(iter(members.values()))[0]=='IMAGE':return False
+        # A template either lists its socket names or numbers them after a prefix.
+        prefix=template.get('prefix')
+        member=child in template.get('names',[]) or (isinstance(prefix,str) and child.startswith(prefix) and child[len(prefix):].isdigit())
+        if member and len(members)==1 and next(iter(members.values()))[0]=='IMAGE':return False
     raise ValueError(f'Still reference port {loc["node"]}.{port} must be a native IMAGE input')
 
 def prepare(recipe, workflow, request, references):

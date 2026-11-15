@@ -19,6 +19,8 @@ def node_class(required=(), optional=()):
 CLASSES = {
     "Encode": node_class([("text", "STRING")], [("image1", "IMAGE"), ("image2", "IMAGE")]),
     "Scale": node_class([("image", "IMAGE")]),
+    "Grow": type("Grow", (), {"INPUT_TYPES": classmethod(lambda cls: {"required": {"prompt": ("STRING",)}, "optional": {"images": (
+        "COMFY_AUTOGROW_V3", {"template": {"input": {"required": {"image": ("IMAGE", {})}}, "prefix": "image_", "min": 0, "max": 100}})}})}),
     "MiniMaxH3ImageConditioning": node_class([("prompt", "STRING")], [("image1", "IMAGE"), ("image2", "IMAGE")]),
 }
 
@@ -99,6 +101,15 @@ class StillWorkflowTest(unittest.TestCase):
         self.assertEqual(result["provenance"]["environment_reference"], "<Picture 1>")
         self.assertNotIn("reference_resize_megapixels", result["provenance"])
         self.assertNotIn("h3c_ph3_size", result["prompt"])
+
+    def test_numbered_autogrow_sockets_are_optional_reference_inputs(self):
+        made = recipe([at("9:3", "images.image_0"), at("9:3", "images.image_1")])
+        made["bindings"]["prompt"] = at("9:3", "prompt")
+        graph = prepare(made, [reference("image17", ["image17"], "a" * 64)], workflow("Grow"))["prompt"]
+        self.assertEqual(graph["9:3"]["inputs"]["images.image_0"], ["h3c_still_source_0", 0])
+        made["bindings"]["references"] = [at("9:3", "images.other_0")]
+        with self.assertRaisesRegex(ValueError, "must be a native IMAGE input"):
+            prepare(made, graph=workflow("Grow"))
 
     def test_story_recognises_a_connected_workflow_and_its_native_model(self):
         prompt = {"1": {"class_type": "H3C_Timeline", "inputs": {"still_image": ["9:5", 0]}}, **workflow("MiniMaxH3ImageConditioning")["api"]}
