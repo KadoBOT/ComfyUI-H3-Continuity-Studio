@@ -2314,7 +2314,7 @@ export class TimelineEditor {
     this.card.hide();
     for (const marks of this.sectionMarks) marks.destroy();
     this.sectionMarks = [];
-    this.structureEl.replaceChildren();
+    if(!this.promptForm)this.structureEl.replaceChildren();
     // Keep still controls connected so a refresh cannot cancel a mouse click or blur an edit.
     for(const child of [...this.previewsEl.children]) if(child!==this.frameImages.root) child.remove();
     const shots = shotFrames(this.state, this.selected, this.host.context());
@@ -2357,7 +2357,7 @@ export class TimelineEditor {
     if (!structured) return;
 
     this.promptForm ??= new PromptFormPanel(this);
-    this.structureEl.append(this.promptForm.root);
+    if(this.promptForm.root.parentNode!==this.structureEl)this.structureEl.append(this.promptForm.root);
     this.promptForm.render();
   }
 

@@ -28,3 +28,26 @@ test('deleting a referenced subject and applying stale source ranges are rejecte
   assert.throws(()=>writePromptField(source,edit),/used|reference/i);
   assert.throws(()=>writePromptField(source+'!',edit),/changed/i);
 });
+test('optional lighting is a readable cue and multiline cue-looking values round trip',()=>{
+  const source='integrated_multimodal_description:\n[Shot 1] A quiet room.';
+  const text='Warm window light\nCamera movement: keep this literal';
+  const next=writePromptField(source,{expectedSource:source,section:'integrated_multimodal_description',kind:'cue',shot:1,entry:null,
+    value:{key:'lighting',index:null,text}});
+  assert.equal(next,source+'\nLighting: Warm window light\n  Camera movement: keep this literal');
+  const cues=readPromptFields(next).sections[0].entries.filter(e=>e.kind==='cue');
+  assert.equal(cues.length,1);assert.equal(cues[0].value.text,text);
+});
+test('repeated actions are addressable and duplicate cue names stay opaque',()=>{
+  const source='integrated_multimodal_description:\n[Shot 1] A room.\nAction: She lifts a cup.';
+  const next=writePromptField(source,{expectedSource:source,section:'integrated_multimodal_description',kind:'cue',shot:1,entry:null,
+    value:{key:'action',index:2,text:'She sets it down.'}});
+  assert.match(next,/Action 1: She lifts a cup\.\nAction 2: She sets it down\./);
+  const duplicate=readPromptFields('[Shot 1] A room.\nLighting: A.\nLighting: B.');
+  assert.equal(duplicate.sections[0].entries.filter(e=>e.kind==='cue').length,0);
+});
+test('new detail rank does not reorder existing narrative or cue lines',()=>{
+  const source='detailed_description:\n[Shot 1] A room.\nEnd state: She waits.';
+  const next=writePromptField(source,{expectedSource:source,section:'detailed_description',kind:'cue',shot:1,entry:null,
+    value:{key:'camera_movement',index:null,text:'A slow spiral around her left shoulder'}});
+  assert.equal(next,'detailed_description:\n[Shot 1] A room.\nCamera movement: A slow spiral around her left shoulder\nEnd state: She waits.');
+});

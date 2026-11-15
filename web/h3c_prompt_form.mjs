@@ -1,4 +1,4 @@
-import {readPromptFields,writePromptField,SECTION_TITLES,RETENTION_VISUAL,RETENTION_AUDIO,SUMMARY_TASKS} from './h3c_prompt_fields.mjs';
+import {readPromptFields,writePromptField,SECTION_TITLES,RETENTION_VISUAL,RETENTION_AUDIO,SUMMARY_TASKS,SHOT_FIELDS} from './h3c_prompt_fields.mjs';
 import {promptShots} from './h3c_prompt_sections.mjs';
 import {promptSections,replacePromptRanges} from './h3c_prompt_sections.mjs';
 import {SwitchSection} from './h3c_switch_section.mjs';
@@ -25,6 +25,7 @@ export class PromptFormPanel {
   constructor(editor) {
     style();this.editor=editor;this.root=el('fieldset','h3pf');this.drafts=new Map();this.newRows=[];this.marks=[];
     this.section=null;this.controls=new Map();this.serial=++ids;this.message='';this.sectionStash=new Map();
+    this.advanced=false;this.newDetails=new Map();this.openDetails=new Set();
   }
   tags(){return this.editor.pickedInfo?.().tags??[];}
   hasDrafts(){return this.drafts.size>0;}
@@ -61,9 +62,11 @@ export class PromptFormPanel {
     try {
       if(value===null&&kind==='definition'&&this.editor.box()?.cast?.[entry.value.target])throw new Error('Unlink this subject from Cast before deleting its definition.');
       const next=writePromptField(source,{expectedSource:source,section,kind,entry,value},{tags:this.tags()});
-      if(this.editor.applyPrompt(source,next,{structural:index==null||value===null})===false)throw new Error('This prompt is read-only or changed.');
+      const removedCue=kind==='cue'&&!value?.text?.trim();
+      if(removedCue&&entry&&value)this.newDetails.set(`${this.editor.video().id}:${entry.shot}:${value.key}:${value.index??0}`,{shot:entry.shot,value});
+      if(this.editor.applyPrompt(source,next,{structural:index==null||value===null||removedCue})===false)throw new Error('This prompt is read-only or changed.');
       this.source=next;this.drafts.delete(key);this.message='';
-      if(index==null||value===null){this.newRows=this.newRows.filter(r=>r.key!==key);this.render();}
+      if(index==null||value===null||removedCue){this.newRows=this.newRows.filter(r=>r.key!==key);this.render();}
       else {const note=this.note; if(note)note.textContent='';}
     } catch(error){this.drafts.set(key,{value,source});this.draftMessage(error.message);}
   }
@@ -89,7 +92,7 @@ export class PromptFormPanel {
   shotCards(parent,entries) {
     const editor=this.editor,timing=shotTiming(editor.state,editor.selected,editor.host.context(),editor.pickedLayer?.()?.id??null);
     if(timing.carry)parent.append(el('p','h3ct-hint',`Times are in this clip’s playback. H3’s prompt also includes ${(timing.carry/24).toFixed(3)} s of replay.`));
-    for(const entry of entries.filter(e=>e.kind!=='narrative'))this.row(parent,this.section,entry,entries.indexOf(entry),this.section+':'+entries.indexOf(entry));
+    for(const entry of entries.filter(e=>e.shot===null))this.row(parent,this.section,entry,entries.indexOf(entry),this.section+':'+entries.indexOf(entry));
     for(const shot of timing.shots) {
       const row=el('section','h3pf-row');row.setAttribute('aria-label',`Shot ${shot.number}`);row.append(el('strong',null,`Shot ${shot.number}`));parent.append(row);
       if(shot.number!==1) {
@@ -111,6 +114,7 @@ export class PromptFormPanel {
         const entry=entries[index],body=entry.value.text.replace(/^At \d+:[0-5]\d\.\d{3},\s*/i,'');
         this.field(row,`Shot ${shot.number} description`,body,text=>this.edit(this.section,index,this.section+':'+index,'narrative',{text}),{area:true});
       }
+      this.shotDetails(row,shot.number,entries);
       row.append(button(`Delete Shot ${shot.number}`,()=>this.applyShot({kind:'remove',shot:shot.number},'shot-remove:'+shot.number)));
     }
     if(this.newShot) {
@@ -125,6 +129,38 @@ export class PromptFormPanel {
       if(!timing.shots.length)return this.applyShot({kind:'append',seconds:0,text:''});
       this.newShot=true;this.drafts.set('shot:new',{text:''});this.render();
     }));
+  }
+  shotDetails(parent,shot,entries) {
+    const existing=entries.filter(e=>e.shot===shot&&e.kind==='cue');
+    const pending=[...this.newDetails.entries()].filter(([id,item])=>id.startsWith(this.editor.video().id+':')&&item.shot===shot
+      &&!existing.some(e=>e.value.key===item.value.key&&e.value.index===item.value.index));
+    const extras=existing.filter(e=>SHOT_FIELDS.find(f=>f.key===e.value.key)?.advanced);
+    let advanced=parent;
+    if(!this.advanced&&(extras.length||pending.some(([,e])=>SHOT_FIELDS.find(f=>f.key===e.value.key)?.advanced))) {
+      const details=el('details');details.open=this.openDetails.has(shot);details.append(el('summary',null,`Details present (${extras.length})`));
+      details.addEventListener('toggle',()=>{if(details.open)this.openDetails.add(shot);else this.openDetails.delete(shot);});
+      parent.append(details);advanced=details;
+    }
+    const show=(value,entry,index,key)=>{
+      const field=SHOT_FIELDS.find(f=>f.key===value.key);if(!field)return;
+      const root=field.advanced&&!this.advanced?advanced:parent;
+      const label=`Shot ${shot} ${field.prefix.replace(' N',' '+value.index)}${field.repeatable&&value.index?' '+value.index:''}`;
+      this.field(root,label,value.text,text=>{
+        this.edit(this.section,index,key,'cue',{...value,text});
+      },{area:!field.suggestions.length,suggestions:field.suggestions.length?field.suggestions:null});
+    };
+    for(const entry of existing)show(entry.value,entry,entries.indexOf(entry),this.section+':'+entries.indexOf(entry));
+    for(const [id,item] of pending)show(item.value,null,null,id);
+    for(const entry of entries.filter(e=>e.shot===shot&&e.kind==='existing'))this.row(parent,this.section,entry,entries.indexOf(entry),this.section+':'+entries.indexOf(entry));
+    const options=SHOT_FIELDS.filter(f=>(this.advanced||!f.advanced)&&(f.repeatable||f.prefix.includes(' N')||!existing.some(e=>e.value.key===f.key)));
+    this.field(parent,`Shot ${shot} add detail`,'',key=>{
+      if(!key)return;
+      const field=SHOT_FIELDS.find(f=>f.key===key);
+      let index=null;
+      if(field.repeatable)index=existing.some(e=>e.value.key===key)?Math.max(1,...existing.filter(e=>e.value.key===key).map(e=>e.value.index??1))+1:null;
+      if(field.prefix.includes(' N')){index=Math.max(1,...existing.filter(e=>e.value.key.startsWith('effect')).map(e=>e.value.index??1));if(existing.some(e=>e.value.key===key&&e.value.index===index))index++;}
+      const id=`${this.editor.video().id}:${shot}:${key}:${index??0}`;this.newDetails.set(id,{shot,value:{key,index,text:''}});this.render();
+    },{options:options.map(f=>[f.key,f.prefix.replace(' N','')])});
   }
   row(parent,section,entry,index,key) {
     const row=el('div','h3pf-row');parent.append(row);
@@ -167,7 +203,7 @@ export class PromptFormPanel {
       this.field(row,'Custom task types',custom.join(' + '),text=>this.edit(section,index,key,kind,current=>({taskTypes:[...current.taskTypes.filter(t=>SUMMARY_TASKS.includes(t)),...text.split(/\s*\+\s*/).filter(Boolean)]})));
       this.field(row,'Summary',value.text,text=>edit({text}),{area:true});
     } else {
-      this.field(row,entry.shot?`Shot ${entry.shot} description`:section==='overall_soundscape'?'Soundscape':section==='non_diegetic_music'?'Background music':'Existing text',value.text,text=>edit({text}),{area:true});
+      this.field(row,entry.shot?`Shot ${entry.shot} Existing text`:section==='overall_soundscape'?'Soundscape':section==='non_diegetic_music'?'Background music':'Existing text',value.text,text=>edit({text}),{area:true});
     }
     if(kind!=='narrative')row.append(button('Remove entry',()=>edit(null)));
   }
@@ -193,6 +229,8 @@ export class PromptFormPanel {
         if(this.canLeave()){this.section=keys[next];this.render();}});tabs.append(tab);
     }
     this.root.append(tabs);
+    const mode=el('label','h3pf-actions'),toggle=el('input');toggle.type='checkbox';toggle.checked=this.advanced;toggle.setAttribute('aria-label','Advanced mode');
+    toggle.addEventListener('change',()=>{this.advanced=toggle.checked;this.render();});mode.append(toggle,el('span',null,'Advanced mode'));this.root.append(mode);
     this.note=el('p','h3pf-error',this.message);this.note.setAttribute('role','status');this.root.append(this.note);
     this.discardButton=button('Discard draft',()=>this.discardDrafts());this.discardButton.hidden=!this.hasDrafts();this.root.append(this.discardButton);
     let body=el('div');body.setAttribute('role','tabpanel');body.setAttribute('aria-label',SECTION_TITLES[this.section]??'Existing text');this.root.append(body);

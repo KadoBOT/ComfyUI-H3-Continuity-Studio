@@ -50,3 +50,12 @@ test('a project or history reload explicitly discards an incompatible structural
   assert.equal(h.panel.hasDrafts(),false);assert.equal(h.stored().boxes[0].prompt,prompt);
   assert.match(h.panel.root.textContent,/discarded.*history/i);
 });
+test('Advanced visibility never changes native text or history and populated details remain discoverable',()=>{
+  const prompt='integrated_multimodal_description:\n[Shot 1] A room.\nLighting: Warm window light';
+  const h=formHarness({prompt});
+  let toggle=findAll(h.panel.root,n=>n.getAttribute?.('aria-label')==='Advanced mode')[0];assert.ok(toggle);
+  toggle.checked=true;toggle.fire('change');
+  toggle=findAll(h.panel.root,n=>n.getAttribute?.('aria-label')==='Advanced mode')[0];toggle.checked=false;toggle.fire('change');
+  assert.equal(h.stored().boxes[0].prompt,prompt);assert.equal(h.history.entries.length,1);
+  assert.match(h.panel.root.textContent,/Details present/);
+});
