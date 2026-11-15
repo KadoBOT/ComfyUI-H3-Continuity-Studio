@@ -714,7 +714,7 @@ export class TimelineHost {
   async prepareReference(request) {
     const snapshot=await app.graphToPrompt();
     const id=captureTimelineId(snapshot,this.node.id,{root:this.node.graph===(app.rootGraph??app.graph)});
-    const recipe=captureRecipe(snapshot,id);if(!recipe)throw Error('Connect an image workflow to the Timeline's still_image input before generating references.');
+    const recipe=captureRecipe(snapshot,id);if(!recipe)throw Error("Connect an image workflow to the Timeline's still_image input before generating references.");
     const body=captureStillBody(snapshot,id,{...request,request_id:request.request_id??crypto.randomUUID(),recipe});
     if(this.project?.project){body.name=this.project.project.sequence;body.workflow.api[id].inputs.name=body.name;}
     const result=await this.stillRequest('/h3c/reference-assets/prepare',body);
@@ -829,7 +829,7 @@ export class TimelineHost {
   async openStillGenerator() {
     const snapshot=await app.graphToPrompt();
     const id=captureTimelineId(snapshot,this.node.id,{root:this.node.graph===(app.rootGraph??app.graph)});
-    const recipe=captureRecipe(snapshot,id);if(!recipe)throw Error('Connect an image workflow to the Timeline's still_image input first.');
+    const recipe=captureRecipe(snapshot,id);if(!recipe)throw Error("Connect an image workflow to the Timeline's still_image input first.");
     const root=app.rootGraph??app.graph,rootId=recipe.output[0].split(':')[0];
     const node=root.getNodeById(rootId);if(!node)throw Error('The connected generator is missing.');
     studio().close();if(app.canvas.graph!==root)app.canvas.setGraph(root);
@@ -914,7 +914,7 @@ export class TimelineHost {
     const snapshot=await app.graphToPrompt();
     const id=captureTimelineId(snapshot,this.node.id,{root:this.node.graph===(app.rootGraph??app.graph)});
     const recipe=captureRecipe(snapshot,id);
-    if (!recipe) throw new Error('Connect an image workflow to this Timeline's still_image input.');
+    if (!recipe) throw new Error("Connect an image workflow to this Timeline's still_image input.");
     const body=captureStillBody(snapshot,id,{...request,request_id:request.request_id ?? crypto.randomUUID(),recipe});
     if(this.project?.project) {
       body.name=this.project.project.sequence;
