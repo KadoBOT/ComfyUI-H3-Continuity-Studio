@@ -1,6 +1,6 @@
 # Continuity degradation protection
 
-Status: proposed for user approval. DP0 is active; no product implementation or GPU comparison has run.
+Status: approved by the user on 2026-11-15 ("Approved"). DP0 is passing; DP1 implementation planning is active. No product implementation or GPU comparison has run.
 
 ## Intent and observed evidence
 
@@ -22,7 +22,7 @@ User clarification: the automatically selected recent views passed through clips
 2. **Depend directly on Geiru.** Reuse its nodes, requiring another installation and an adapter from our native segment storage. More installation/wiring and compatibility surface; its source snapshot carries GPL-3.0 while this repository carries MIT. Do not vendor its implementation into the current MIT codebase.
 3. **Correct color after decode.** Smaller visually, but does not address accumulated latent texture/detail changes, can fight deliberate lighting changes and feeds uncorrected latents forward. Does not fulfill the requested generation-level continuity protection.
 
-The user requested the integration outcome and delegated implementation choices. The native approach is proposed, not recorded as user-approved. Public mechanisms will be implemented independently against ComfyUI APIs, with attribution and links to Geiru and its cited context-noise author; no upstream source is copied. If implementation requires reused licensed code, revisit that decision explicitly rather than silently vendoring it.
+The user approved this native approach and the complete written design on 2026-11-15. Public mechanisms will be implemented independently against ComfyUI APIs, with attribution and links to Geiru and its cited context-noise author; no upstream source is copied. If implementation requires reused licensed code, revisit that decision explicitly rather than silently vendoring it.
 
 ## Product shape and wiring
 
@@ -90,4 +90,4 @@ Choose internal helper boundaries and the smallest safe wrapper APIs from the in
 
 ## Design verification
 
-Fresh read-only builder check found three material gaps, now resolved: restore callback-derived denoised output as well as normal output; suppress across in-chain appearance changes until a fresh boundary; return an owned segment and validate an executed receipt before Save metadata/file writes. To keep scope small and safe, protected runs deliberately bypass disk sampling cache in this first integration. No second review, product tests or protected GPU render is claimed. Roadmap/diff validation is recorded in the phase ledger; this design still requires the user's approval.
+Fresh read-only builder check found three material gaps, now resolved: restore callback-derived denoised output as well as normal output; suppress across in-chain appearance changes until a fresh boundary; return an owned segment and validate an executed receipt before Save metadata/file writes. To keep scope small and safe, protected runs deliberately bypass disk sampling cache in this first integration. No second review, product tests or protected GPU render is claimed. Roadmap/diff validation is recorded in the phase ledger; user approved the full design on 2026-11-15.
