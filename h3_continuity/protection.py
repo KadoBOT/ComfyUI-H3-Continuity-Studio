@@ -1,6 +1,8 @@
 """Native H3 continuation protection; public techniques credited in the long-chain guide."""
 
 import copy
+import math
+import threading
 
 import torch
 
@@ -103,3 +105,155 @@ def prepare_latent(latent, segment, front):
     from comfy.nested_tensor import NestedTensor
     prepared = dict(latent, samples=NestedTensor((video, audio)), noise_mask=NestedTensor((vm, am)))
     return prepared, originals
+
+
+class ProtectionReceipt:
+    """An opaque execution witness: never a cacheable or persisted prepared setting."""
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.complete = False
+        self.accepted = set()
+        self.descriptor = None
+        self.schedule = None
+        self.calls = 0
+
+
+def _streams(value, shapes):
+    from comfy.utils import unpack_latents
+    return list(value.tensors) if getattr(value, 'is_nested', False) else list(unpack_latents(value, shapes))
+
+
+def _restored(value, shapes, segment, originals, core, *, internal=False):
+    from comfy.nested_tensor import NestedTensor
+    from comfy.utils import pack_latents
+    parts = _streams(value, shapes)
+    video, audio = (v.clone() for v in parts)
+    if video.shape[2] != timing.tokens_for_frames(segment.frames) or tuple(video.shape[3:]) != segment.latent_size:
+        raise ValueError(f'{WHO}: sampler output shape changed; cannot restore carried frames.')
+
+    def converted(tensor, target, *, sound=False):
+        if internal:
+            tensor = core.latent_format.process_in(tensor)
+            if sound:
+                tensor = tensor * core.audio_scale()
+        return tensor.to(target)
+
+    video[:, :, :originals.shape[2]] = converted(originals, video)
+    if segment.ending_video is not None:
+        video[:, :, -segment.ending_video.shape[2]:] = converted(segment.ending_video, video)
+    if segment.carried_audio is not None:
+        start = segment.carried_audio_start
+        audio[..., start:start + segment.carried_audio.shape[-1]] = converted(segment.carried_audio, audio, sound=True)
+    if segment.ending_audio is not None:
+        start = timing.audio_tail_start(segment.frames, audio.shape[-1],
+                                        timing.frames_for_tokens(segment.ending_video.shape[2]))
+        audio[..., start:start + segment.ending_audio.shape[-1]] = converted(segment.ending_audio, audio, sound=True)
+    result = NestedTensor((video, audio))
+    return result if getattr(value, 'is_nested', False) else pack_latents(result.tensors)[0]
+
+
+def _sample_digest(value, shapes):
+    from comfy.nested_tensor import NestedTensor
+    from .disk_cache import content_digest
+    return content_digest(NestedTensor(_streams(value, shapes)))
+
+
+def patch_model(model, prepared, segment, originals, capstone, descriptor):
+    import comfy.model_base
+    import comfy.patcher_extension as pe
+    import comfy.utils
+    core = model.model
+    if (not isinstance(core, comfy.model_base.MiniMaxH3) or isinstance(core, comfy.model_base.MiniMaxH3Image)
+            or not hasattr(core, '_denoise_mask_values')):
+        raise ValueError(f'{WHO}: a current native MiniMax H3 AV model with partial masks is required.')
+    if model.model_options.get('context_handler') is not None:
+        raise ValueError(f'{WHO}: Context Windows are not supported; use a non-windowed continuing clip.')
+    if model.model_options.get('h3c_protection'):
+        raise ValueError(f'{WHO}: this model is already protected; connect only one protection node.')
+    m = model.clone()
+    m.model_options['h3c_protection'] = True
+    receipt = ProtectionReceipt()
+    previous = m.model_options.get('model_function_wrapper')
+
+    def evaluate(apply_model, args):
+        c = args['c']
+        options = c.get('transformer_options') or {}
+        if options.get('context_window') is not None:
+            raise ValueError(f'{WHO}: Context Windows are not supported.')
+        if receipt.schedule is None:
+            raise ValueError(f'{WHO}: sample this model through the protected sampler path.')
+        values = args['timestep'].detach().float().flatten()
+        sigma = float(values[0])
+        if not bool(torch.isfinite(values).all()) or not bool((values == values[0]).all()) or not 0 <= sigma <= receipt.schedule[0]:
+            raise ValueError(f'{WHO}: ambiguous model timestep for the sampling schedule.')
+        receipt.calls += 1
+        if capstone is None or sigma > receipt.schedule[receipt.start]:
+            return previous(apply_model, args) if previous else apply_model(args['input'], args['timestep'], **c)
+        shapes = c.get('latent_shapes')
+        if shapes is None or len(shapes) != 2:
+            raise ValueError(f'{WHO}: missing native packed AV shapes for the capstone.')
+        video, audio = comfy.utils.unpack_latents(args['input'], shapes)
+        anchor = core.latent_format.process_in(capstone).to(video).expand(video.shape[0], -1, -1, -1, -1)
+        enlarged, new_shapes = comfy.utils.pack_latents((torch.cat((video, anchor), dim=2), audio))
+        mask = c.get('denoise_mask')
+        if mask is None or mask.shape[2] != video.shape[2]:
+            raise ValueError(f'{WHO}: missing native video mask for the capstone.')
+        conditions = dict(c, latent_shapes=new_shapes,
+                          denoise_mask=torch.cat((mask, torch.zeros_like(mask[:, :, :1])), dim=2),
+                          transformer_options=dict(options))
+        # Native H3 rebuilds its packed layout on a changed temporal signature.
+        if 'minimax_payload' in conditions:
+            conditions['minimax_payload'] = {k:v for k,v in conditions['minimax_payload'].items() if k != 'layout'}
+        call = dict(args, input=enlarged, c=conditions)
+        result = previous(apply_model, call) if previous else apply_model(enlarged, args['timestep'], **conditions)
+        streams = comfy.utils.unpack_latents(result, new_shapes)
+        return comfy.utils.pack_latents((streams[0][:, :, :video.shape[2]], streams[1]))[0]
+
+    def sample(executor, noise, latent_image, sampler, sigmas, denoise_mask=None, callback=None,
+               disable_pbar=False, seed=None, latent_shapes=None):
+        if not receipt.lock.acquire(blocking=False):
+            raise ValueError(f'{WHO}: this prepared model is already sampling.')
+        receipt.complete, receipt.accepted, receipt.descriptor = False, set(), None
+        receipt.calls = 0
+        receipt.schedule = None
+        try:
+            if getattr(executor.class_obj, 'model_options', {}).get('context_handler') is not None:
+                raise ValueError(f'{WHO}: Context Windows are not supported.')
+            schedule = sigmas.detach().double().cpu().flatten().tolist()
+            if (len(schedule) < 2 or schedule[-1] != 0 or not all(math.isfinite(s) for s in schedule)
+                    or not all(a > b >= 0 for a,b in zip(schedule, schedule[1:]))):
+                raise ValueError(f'{WHO}: needs a finite descending sigma schedule ending at zero.')
+            if latent_shapes is None or len(latent_shapes) != 2:
+                raise ValueError(f'{WHO}: needs native packed AV sampling.')
+            _current_source(segment, descriptor)
+            receipt.schedule = schedule
+            receipt.start = min(len(schedule)-2, math.ceil(.75 * (len(schedule)-1)))
+            last_x0 = None
+
+            def restored_callback(step, x0, x, total):
+                nonlocal last_x0
+                restored = _restored(x0, latent_shapes, segment, originals, core, internal=True)
+                last_x0 = _sample_digest(core.process_latent_out(restored.cpu()), latent_shapes)
+                if callback:
+                    callback(step, restored, x, total)
+
+            result = executor(noise, latent_image, sampler, sigmas, denoise_mask, restored_callback,
+                              disable_pbar, seed, latent_shapes=latent_shapes)
+            result = _restored(result, latent_shapes, segment, originals, core)
+            if not receipt.calls:
+                raise ValueError(f'{WHO}: the protected model was not evaluated by the sampler.')
+            receipt.accepted = {_sample_digest(result, latent_shapes)}
+            if last_x0 is not None:
+                receipt.accepted.add(last_x0)
+            receipt.descriptor = dict(descriptor, late_start_step=receipt.start if capstone is not None else None,
+                                      sampling_steps=len(schedule)-1)
+            receipt.complete = True
+            return result
+        finally:
+            receipt.schedule = None
+            receipt.lock.release()
+
+    m.set_model_unet_function_wrapper(evaluate)
+    # Run restoration outside existing wrappers, so Save sees the final restored result.
+    pe.add_wrapper_with_key(pe.WrappersMP.OUTER_SAMPLE, METHOD, sample, m.model_options, is_model_options=True)
+    return m, receipt
