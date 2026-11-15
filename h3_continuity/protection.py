@@ -3,6 +3,7 @@
 import copy
 import math
 import threading
+from dataclasses import replace
 
 import torch
 
@@ -10,6 +11,7 @@ from . import latents, store, timeline, timing
 
 METHOD = 'h3c-continuity-protection-v1'
 WHO = 'H3 Continuity Protection'
+RECEIPT_KEY = '_h3c_protection_receipt'
 
 
 def source_info(parsed, index, entries, is_done, guides, ending):
@@ -257,3 +259,51 @@ def patch_model(model, prepared, segment, originals, capstone, descriptor):
     # Run restoration outside existing wrappers, so Save sees the final restored result.
     pe.add_wrapper_with_key(pe.WrappersMP.OUTER_SAMPLE, METHOD, sample, m.model_options, is_model_options=True)
     return m, receipt
+
+
+def validate_save(segment, latent):
+    receipt = segment.protection_receipt
+    if receipt is None and RECEIPT_KEY not in latent:
+        return None
+    if not isinstance(receipt, ProtectionReceipt) or latent.get(RECEIPT_KEY) is not receipt:
+        raise ValueError(f'{WHO}: connect this node\'s returned segment and sampler output to Save Segment.')
+    from .disk_cache import content_digest
+    if not receipt.complete or content_digest(latent['samples']) not in receipt.accepted:
+        raise ValueError(f'{WHO}: this output has no matching completed sampling receipt; sample again.')
+    return copy.deepcopy(receipt.descriptor)
+
+
+from comfy_api.latest import io
+from .nodes import CATEGORY, SegmentType
+
+
+class H3C_ContinuityProtection(io.ComfyNode):
+    @classmethod
+    def define_schema(cls):
+        return io.Schema(node_id='H3C_ContinuityProtection', display_name=WHO, category=CATEGORY,
+                         description='Opt-in context noise, clean scene anchors and a late capstone for native '
+                                     'continuations. Connect model to the guider, latent to the sampler and the '
+                                     'returned segment to Save Segment. Turn off old Context noise. Protected '
+                                     'sampling bypasses disk cache. No Context Windows. Regenerate affected clips '
+                                     'or start a new generation; graph changes do not mark old takes outdated.',
+                         inputs=[io.Model.Input('model'), io.Latent.Input('latent'), SegmentType.Input('segment'),
+                                 io.Boolean.Input('enabled', default=True)],
+                         outputs=[io.Model.Output(display_name='model'), io.Latent.Output(display_name='latent'),
+                                  SegmentType.Output(display_name='segment'), io.String.Output(display_name='info')])
+
+    @classmethod
+    def execute(cls, model, latent, segment, enabled=True):
+        info = segment.protection_source or {}
+        if not enabled or segment.carried_video is None or info.get('status') == 'skip':
+            reason = 'Disabled.' if not enabled else info.get('reason', 'No continuing native chain.')
+            return io.NodeOutput(model, latent, segment, f'{WHO}: passed through. {reason}')
+        owned = replace(segment, timeline=copy.deepcopy(segment.timeline),
+                        protection_source=copy.deepcopy(segment.protection_source))
+        front, capstone, descriptor = load_anchors(owned)
+        prepared, originals = prepare_latent(latent, owned, front)
+        model, owned.protection_receipt = patch_model(model, prepared, owned, originals, capstone, descriptor)
+        prepared[RECEIPT_KEY] = owned.protection_receipt
+        message = f'{WHO}: prepared; sampler-level noise and clean chain anchor. Disk sampling cache bypassed.'
+        if descriptor.get('capstone_suppressed'):
+            message += f" Capstone off: {descriptor['capstone_suppressed']}"
+        return io.NodeOutput(model, prepared, owned, message)

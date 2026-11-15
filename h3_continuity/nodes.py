@@ -320,6 +320,10 @@ class H3C_SaveSegment(io.ComfyNode):
     @classmethod
     def execute(cls, segment, latent, fps, write_full_video, crf, images=None, audio=None, description="", color_space="sRGB",
                 codec="H.264", guide_frames=None) -> io.NodeOutput:
+        if segment.protection_receipt is not None or '_h3c_protection_receipt' in latent:
+            from .protection import validate_save
+            applied = validate_save(segment, latent)
+            segment.timeline = dict(segment.timeline or {}, degradation_protection=applied)
         sequence = segment.sequence
         from .timeline_api.service import authorize_sequence, sequence_owner
         authorize_sequence(sequence.name, sequence_owner(cls), "save_segment")
