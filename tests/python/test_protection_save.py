@@ -1,5 +1,4 @@
 import asyncio
-import copy
 import json
 import tempfile
 import unittest
@@ -39,6 +38,18 @@ class ProtectionSaveTest(unittest.TestCase):
             output=protection.H3C_ContinuityProtection.execute(model,latent,segment).args
             self.assertIs(output[1],latent)
             self.assertIn('appearance change',output[3])
+
+    def test_bridge_replacement_and_layer_pass_through_without_anchor(self):
+        latent,segment,front=carried()
+        segment.protection_source=None
+        model=object()
+        with mock.patch.object(protection,'load_anchors',side_effect=AssertionError('unexpected source read')):
+            for kind in ('bridge','replacement','layer'):
+                segment.timeline={kind:'b'}
+                output=protection.H3C_ContinuityProtection.execute(model,latent,segment).args
+                self.assertIs(output[0],model)
+                self.assertIs(output[1],latent)
+                self.assertIs(output[2],segment)
 
     def test_save_accepts_normal_or_denoised_receipt_only(self):
         model,prepared,owned,original,latent=self.prepare()

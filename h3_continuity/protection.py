@@ -14,6 +14,18 @@ WHO = 'H3 Continuity Protection'
 RECEIPT_KEY = '_h3c_protection_receipt'
 
 
+def passthrough_reason(segment):
+    info = getattr(segment, 'protection_source', None) or {}
+    record = getattr(segment, 'timeline', None) or {}
+    if any(kind in record for kind in ('bridge', 'replacement', 'layer')):
+        return 'Bridge, replacement or layer: no protected continuing chain.'
+    if getattr(segment, 'carried_video', False) is None:
+        return 'Fresh clip: no carried chain.'
+    if info.get('status') == 'skip':
+        return info.get('reason') or 'No protected continuing chain.'
+    return None
+
+
 def source_info(parsed, index, entries, is_done, guides, ending):
     """Defer optional source failures: ordinary Timeline graphs need no protection anchor."""
     chain = timeline.continuation_chain(parsed, index)
@@ -83,8 +95,31 @@ def prepare_latent(latent, segment, front):
         raise ValueError(f'{WHO}: turn off the old Context noise control before using sampler-level protection.')
     video, audio = latents.split_h3_latent(latent, WHO)
     count = timing.tokens_for_frames(segment.context_frames)
+    if (timing.frames_for_tokens(video.shape[2]) != segment.frames or tuple(video.shape[3:]) != segment.latent_size
+            or audio.shape[:3] != (video.shape[0], 32, 2)
+            or audio.shape[-1] != timing.ticks_for_frames(segment.frames)):
+        raise ValueError(f'{WHO}: latent geometry does not match the native segment.')
     if tuple(front.shape) != (1, 24, 1, *video.shape[3:]) or count >= video.shape[2]:
         raise ValueError(f'{WHO}: anchor or carried length does not match this latent.')
+
+    def same(actual, expected, label):
+        try:
+            matches = expected is not None and torch.equal(actual, expected.to(actual).expand_as(actual))
+        except RuntimeError:
+            matches = False
+        if not matches:
+            raise ValueError(f'{WHO}: {label} does not match the native segment.')
+
+    same(video[:, :, :count], segment.carried_video, 'carried video')
+    if segment.carried_audio is not None:
+        start = segment.carried_audio_start
+        same(audio[..., start:start + segment.carried_audio.shape[-1]], segment.carried_audio, 'carried audio')
+    if segment.ending_video is not None:
+        same(video[:, :, -segment.ending_video.shape[2]:], segment.ending_video, 'ending video')
+    if segment.ending_audio is not None:
+        start = timing.audio_tail_start(segment.frames, audio.shape[-1],
+                                        timing.frames_for_tokens(segment.ending_video.shape[2]))
+        same(audio[..., start:start + segment.ending_audio.shape[-1]], segment.ending_audio, 'ending audio')
     masks = latent.get('noise_mask')
     if not getattr(masks, 'is_nested', False) or len(masks.tensors) != 2:
         raise ValueError(f'{WHO}: expected the native Timeline AV noise mask.')
@@ -164,6 +199,8 @@ def patch_model(model, prepared, segment, originals, capstone, descriptor):
     import comfy.model_base
     import comfy.patcher_extension as pe
     import comfy.utils
+    import comfy.sampler_helpers
+    from .disk_cache import content_digest
     core = model.model
     if (not isinstance(core, comfy.model_base.MiniMaxH3) or isinstance(core, comfy.model_base.MiniMaxH3Image)
             or not hasattr(core, '_denoise_mask_values')):
@@ -176,6 +213,11 @@ def patch_model(model, prepared, segment, originals, capstone, descriptor):
     m.model_options['h3c_protection'] = True
     receipt = ProtectionReceipt()
     previous = m.model_options.get('model_function_wrapper')
+    expected_samples, expected_shapes = comfy.utils.pack_latents(prepared['samples'].tensors)
+    expected_input = _sample_digest(expected_samples, expected_shapes)
+    expected_mask = content_digest(comfy.utils.pack_latents([
+        comfy.sampler_helpers.prepare_mask(mask, shape, torch.device('cpu'))
+        for mask, shape in zip(prepared['noise_mask'].tensors, expected_shapes)])[0].float())
 
     def evaluate(apply_model, args):
         c = args['c']
@@ -227,6 +269,10 @@ def patch_model(model, prepared, segment, originals, capstone, descriptor):
                 raise ValueError(f'{WHO}: needs a finite descending sigma schedule ending at zero.')
             if latent_shapes is None or len(latent_shapes) != 2:
                 raise ValueError(f'{WHO}: needs native packed AV sampling.')
+            if _sample_digest(latent_image, latent_shapes) != expected_input:
+                raise ValueError(f'{WHO}: sampler did not receive the prepared input latent.')
+            if denoise_mask is None or content_digest(denoise_mask) != expected_mask:
+                raise ValueError(f'{WHO}: sampler did not receive the prepared noise mask.')
             _current_source(segment, descriptor)
             receipt.schedule = schedule
             receipt.start = min(len(schedule)-2, math.ceil(.75 * (len(schedule)-1)))
@@ -293,9 +339,8 @@ class H3C_ContinuityProtection(io.ComfyNode):
 
     @classmethod
     def execute(cls, model, latent, segment, enabled=True):
-        info = segment.protection_source or {}
-        if not enabled or segment.carried_video is None or info.get('status') == 'skip':
-            reason = 'Disabled.' if not enabled else info.get('reason', 'No continuing native chain.')
+        reason = 'Disabled.' if not enabled else passthrough_reason(segment)
+        if reason:
             return io.NodeOutput(model, latent, segment, f'{WHO}: passed through. {reason}')
         owned = replace(segment, timeline=copy.deepcopy(segment.timeline),
                         protection_source=copy.deepcopy(segment.protection_source))

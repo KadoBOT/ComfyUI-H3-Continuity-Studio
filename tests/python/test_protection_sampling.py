@@ -1,4 +1,3 @@
-import copy
 import math
 import types
 import unittest
@@ -217,6 +216,30 @@ class ProtectionSamplingTest(unittest.TestCase):
         result=guider.sample(prepared['samples'],prepared['samples'],object(),torch.tensor([]))
         self.assertIs(result,prepared['samples'])
         self.assertFalse(receipt.complete)
+
+    def test_changed_sampling_input_or_mask_fails_before_model_evaluation(self):
+        for change in ('samples','noise_mask'):
+            _,model,prepared,segment,original,receipt=self.setup_run()
+            guider=CpuGuider(model)
+            samples=prepared['samples']+1 if change=='samples' else prepared['samples']
+            mask=NestedTensor([torch.zeros_like(t) for t in prepared['noise_mask'].tensors]) if change=='noise_mask' else prepared['noise_mask']
+            with mock.patch.object(protection,'_current_source'):
+                with self.assertRaisesRegex(ValueError,'prepared.*input|prepared.*mask'):
+                    guider.sample(NestedTensor([torch.zeros_like(t) for t in samples.tensors]),samples,
+                                  object(),torch.linspace(1,0,9),denoise_mask=mask)
+            self.assertFalse(guider.calls)
+            self.assertFalse(receipt.complete)
+
+    def test_mixed_av_dtype_binding_matches_native_packing(self):
+        latent,segment,front=carried(dtype=torch.bfloat16)
+        latent['samples']=NestedTensor((latent['samples'].tensors[0],latent['samples'].tensors[1].float()))
+        prepared,original=protection.prepare_latent(latent,segment,front)
+        with mock.patch.object(protection,'_current_source'):
+            model,receipt=protection.patch_model(patcher(),prepared,segment,original,front,dict(source_stamp=[1,2]))
+            outputs,_=run(model,prepared)
+        self.assertTrue(receipt.complete)
+        for output in outputs:
+            self.assertTrue(torch.equal(output['samples'].tensors[0][:,:,:12],original.float()))
 
 
 if __name__=='__main__':unittest.main()

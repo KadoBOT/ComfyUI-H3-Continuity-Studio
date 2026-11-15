@@ -8,7 +8,7 @@ from comfy.nested_tensor import NestedTensor
 from h3_continuity import latents, nodes, protection, timing
 
 
-def carried(context=39, *, feather=0, dtype=torch.float32, batch=1, ending=False):
+def carried(context=39, *, feather=0, dtype=torch.float32, batch=1, ending=False, ending_audio=False):
     tokens = timing.tokens_for_frames(context + 85)
     video = torch.randn(batch, 24, tokens, 4, 4, dtype=dtype)
     audio = torch.randn(batch, 32, 2, timing.ticks_for_frames(context + 85), dtype=dtype)
@@ -19,7 +19,7 @@ def carried(context=39, *, feather=0, dtype=torch.float32, batch=1, ending=False
     plan = nodes.SegmentPlan(None, context, ticks, context + 85, (4,4), original, original_audio,
                              protection_source=dict(status='ready', context_noise=False))
     if ending:
-        latent, plan.ending_video, plan.ending_audio = latents.build_ending(latent, source, sound, 22, False, context)
+        latent, plan.ending_video, plan.ending_audio = latents.build_ending(latent, source, sound, 22, ending_audio, context)
     return latent, plan, source[:, :, :1]
 
 
@@ -77,6 +77,24 @@ class ProtectionLatentTest(unittest.TestCase):
         plan.context_frames = 123
         with self.assertRaises(ValueError):
             protection.prepare_latent(latent, plan, front)
+
+    def test_different_segment_carry_or_ending_is_rejected_before_preparation(self):
+        latent,plan,front=carried(ending=True,ending_audio=True)
+        different,other,_=carried(ending=True)
+        with self.assertRaisesRegex(ValueError,'carried'):
+            protection.prepare_latent(different,plan,front)
+        for field in ('carried_audio','ending_video','ending_audio'):
+            original=getattr(plan,field)
+            setattr(plan,field,original+1)
+            with self.assertRaisesRegex(ValueError,'carried|ending'):
+                protection.prepare_latent(latent,plan,front)
+            setattr(plan,field,original)
+        short=dict(latent,samples=NestedTensor((latent['samples'].tensors[0],latent['samples'].tensors[1][...,:-1])))
+        with self.assertRaisesRegex(ValueError,'geometry'):
+            protection.prepare_latent(short,plan,front)
+        plan.latent_size=(8,8)
+        with self.assertRaisesRegex(ValueError,'geometry'):
+            protection.prepare_latent(latent,plan,front)
 
 
 if __name__ == '__main__':

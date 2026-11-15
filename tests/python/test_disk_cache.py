@@ -254,18 +254,21 @@ class ProtectionSchedulerTest(unittest.TestCase):
         from tests.python.test_protection_sampling import patcher
         self.protection = protection
 
-        def timeline_output(width, box, manifest, fresh):
+        def timeline_output(width, box, manifest, fresh, kind):
             with torch.random.fork_rng():
                 torch.manual_seed(42)
                 latent, segment, front = carried()
             if fresh:
                 segment.carried_video = None
                 segment.context_frames = 0
+            if kind:
+                segment.timeline={kind:'b'}
+                segment.protection_source=None
             return ([[torch.zeros(1,3),{}]], latent, 7, segment)
 
         extras = {
             'TestProtectionTimeline': stand_in('TestProtectionTimeline',
-                dict(width='INT',box='INT',manifest='STRING',fresh='BOOLEAN'),
+                dict(width='INT',box='INT',manifest='STRING',fresh='BOOLEAN',kind='STRING'),
                 ('CONDITIONING','LATENT','INT','H3C_SEGMENT'),timeline_output),
             'TestProtectionModel': stand_in('TestProtectionModel',{},('MODEL',),lambda:(patcher(),)),
             'TestProtectedSampler': stand_in('TestProtectedSampler',
@@ -278,10 +281,11 @@ class ProtectionSchedulerTest(unittest.TestCase):
                                         dict(method=protection.METHOD,source_stamp=[1,2],capstone_suppressed='guide')))):
             patch.start();self.addCleanup(patch.stop)
 
-    def graph(self, *, enabled=True, fresh=False, manifest='a', mode='use', key=None):
+    def graph(self, *, enabled=True, fresh=False, manifest='a', mode='use', key=None, kind=''):
         graph=prompt(manifest=manifest,mode=mode)
         graph['tl']['class_type']='TestProtectionTimeline'
         graph['tl']['inputs']['fresh']=fresh
+        graph['tl']['inputs']['kind']=kind
         graph['model']=dict(class_type='TestProtectionModel',inputs={})
         graph['protect']=dict(class_type='H3C_ContinuityProtection',inputs=dict(
             model=['model',0],latent=['tl',1],segment=['tl',3],enabled=enabled))
@@ -310,6 +314,14 @@ class ProtectionSchedulerTest(unittest.TestCase):
             self.assertNotIn('TestProtectedSampler',RAN)
             self.assertEqual(save.call_count,1)
             self.assertEqual(load.call_count,1)
+
+    def test_bridge_replacement_and_layer_pass_through_keeps_cache_hits(self):
+        for kind in ('bridge','replacement','layer'):
+            for manifest in ('a','next'):
+                graph=self.graph(kind=kind,manifest=manifest)
+                graph['cache']['inputs']['namespace']=kind
+                run(graph)
+            self.assertNotIn('TestProtectedSampler',RAN)
 
 
 if __name__ == "__main__":

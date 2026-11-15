@@ -209,8 +209,8 @@ class GraphHasher:
                     segment = values[int(segment_link[1])]
                     if isinstance(segment, (tuple, list)) and len(segment) == 1:
                         segment = segment[0]
-                    passed = (getattr(segment, 'carried_video', False) is None
-                              or (getattr(segment, 'protection_source', None) or {}).get('status') == 'skip')
+                    from .protection import passthrough_reason
+                    passed = bool(passthrough_reason(segment))
             if not passed:
                 raise Uncacheable('continuity protection requires a live sampling receipt')
             # A disabled/fresh protection node returns model/latent unchanged; its segment is not sampled.

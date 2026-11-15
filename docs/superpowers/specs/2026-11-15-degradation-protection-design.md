@@ -1,6 +1,6 @@
 # Continuity degradation protection
 
-Status: approved by the user on 2026-11-15 ("Approved"). DP0 is passing; DP1 implementation planning is active. No product implementation or GPU comparison has run.
+Status: approved by the user on 2026-11-15 ("Approved"). DP0 and DP1 are passing: five Native implementation tasks and one independent review/fix/verification gate completed locally. DP2 GPU comparison is not started; no visual improvement is claimed.
 
 ## Intent and observed evidence
 
@@ -90,4 +90,4 @@ Choose internal helper boundaries and the smallest safe wrapper APIs from the in
 
 ## Design verification
 
-Fresh read-only builder check found three material gaps, now resolved: restore callback-derived denoised output as well as normal output; suppress across in-chain appearance changes until a fresh boundary; return an owned segment and validate an executed receipt before Save metadata/file writes. To keep scope small and safe, protected runs deliberately bypass disk sampling cache in this first integration. No second review, product tests or protected GPU render is claimed. Roadmap/diff validation is recorded in the phase ledger; user approved the full design on 2026-11-15.
+The design-time read-only builder check found three material gaps, resolved before approval: restore callback-derived denoised output as well as normal output; suppress across in-chain appearance changes until a fresh boundary; return an owned segment and validate an executed receipt before Save metadata/file writes. To keep scope small and safe, protected runs deliberately bypass disk sampling cache in this first integration. User approved the full design on2026-11-15. Implementation and final independent branch review are recorded in the phase ledger and docs/research/2026-11-15-continuity-protection-review.md; protected GPU quality remains unverified.
