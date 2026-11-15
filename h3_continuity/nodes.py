@@ -61,6 +61,8 @@ class SegmentPlan:
     regeneration: dict | None = None
     # A Timeline with several videos in a clip: puts each clip's stack in its segment's place (stacks.restacker).
     restack: object = None
+    protection_source: dict | None = None
+    protection_receipt: object | None = None
 
 
 def _plural(count, word):

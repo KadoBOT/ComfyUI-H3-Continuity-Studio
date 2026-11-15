@@ -925,6 +925,8 @@ class H3C_Timeline(io.ComfyNode):
             elif parsed.render_box is not None and same_box and not cut:
                 raise ValueError(f"H3 Timeline: box {next_index + 2} has no compatible saved overlap; "
                                  "render the remaining boxes to rebuild continuity")
+        from . import protection
+        segment.protection_source = protection.source_info(parsed, next_index, by_index, is_done, guides, ending)
         segment.box_order = [item.id for item in parsed.boxes]
         segment.restack = stacks.restacker(parsed, len(parsed.boxes)) if parsed.layers or parsed.tracks is not None else None
         segment.description = box.prompt
