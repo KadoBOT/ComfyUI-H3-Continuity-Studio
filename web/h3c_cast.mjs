@@ -387,12 +387,13 @@ export class CastPage {
   // Sends `body` with the current Timeline; the answer lands as one edit unless a box it changes, or the bible,
   // changed while it was computed. Returns whether it landed.
   async change(body, {build = false, link = false, clear = [], without = null, note = null} = {}) {
-    if (this.busy) return false;
+    if (this.busy || this.editor.readOnly?.length) return false;
     this.offer = null;
     const state = this.editor.state;
     const sentPrompts = new Map(state.boxes.map((box) => [box.id, box.prompt]));
     const sentBible = JSON.stringify(state.bible ?? null);
     const timeline = JSON.parse(model.serialize(state));
+    const sentText=model.serialize(state), revision=this.editor.editRevision??0;
     this.busy = true;
     this.unlinked = [];
     this.render();
@@ -408,9 +409,24 @@ export class CastPage {
     const touched = [...Object.keys(answer?.prompts ?? {}), ...Object.keys(answer?.casts ?? {}),
       ...Object.keys(answer?.sources ?? {})];
     if (!answer?.ok) this.note = answer?.error ?? 'The bible could not be updated.';
-    else if (JSON.stringify(now.bible ?? null) !== sentBible || touched.some((id) => find(id)?.prompt !== sentPrompts.get(id))) {
+    else if ((body.action==='assign' && (this.editor.editRevision!==undefined&&this.editor.editRevision!==revision
+        ||model.serialize(now)!==sentText)) || JSON.stringify(now.bible ?? null) !== sentBible || touched.some((id) => find(id)?.prompt !== sentPrompts.get(id))) {
       this.note = STALE;
     } else {
+      if(body.action==='assign') {
+        if(answer.changed===false) {this.editor.promptForm?.focusSubject(answer.subject);return true;}
+        const index=now.boxes.findIndex(b=>b.id===body.box),entity=now.bible.entities.find(e=>e.id===body.entity);
+        const pictures=picturesAt(entity,now.boxes,index);
+        const refs=this.editor.referenceOptions?.();
+        const problem=refs&&pictures.find(name=>!model.referenceEnabled(now,name)||!refs.some(ref=>ref.name===name&&!ref.problem&&!ref.conflict));
+        if(problem){this.note=`${problem} is missing, disabled or conflicting. Fix it before adding Cast.`;this.render();return false;}
+        if(this.editor.connectedSets) {
+          const trial=structuredClone(now);trial.boxes[index].prompt=answer.prompts[body.box];
+          const before=model.describeBox(now,index,this.editor.connectedSets(),this.editor.host.context()).problems;
+          const problems=model.describeBox(trial,index,this.editor.connectedSets(),this.editor.host.context()).problems.filter(p=>!before.includes(p));
+          if(problems.length){this.note=problems.join(' ');this.render();return false;}
+        }
+      }
       for (const key of clear) this.drafts.delete(key);
       this.note = note && !Object.keys(answer.prompts ?? {}).length ? note
         : build ? answer.summary : link ? linkNote(answer, now.boxes) : noteFor(answer, now.boxes);
@@ -419,6 +435,7 @@ export class CastPage {
         if ('bible' in answer) now.bible = answer.bible;
         for (const [id, cast] of Object.entries(answer.casts ?? {})) find(id).cast = cast;
         for (const [id, prompt] of Object.entries(answer.prompts ?? {})) find(id).prompt = prompt;
+        for (const [id, schedule] of Object.entries(answer.schedules ?? {})) find(id).schedule = schedule;
         for (const [id, source] of Object.entries(answer.sources ?? {})) {
           if (source === null) delete find(id).source;
           else find(id).source = source;
@@ -430,6 +447,7 @@ export class CastPage {
         // A voice clip's card follows its character; the editor's commit() leaves the reference cards as they were.
         this.editor.renderRefmods();
         this.editor.host.undoStep?.();
+        if(body.action==='assign') this.editor.promptForm?.focusSubject(answer.subject);
         if (body.action === 'apply') {
           this.offer = proseOffer(answer, now.boxes);
           this.render();
@@ -589,6 +607,12 @@ export class CastPage {
     this.editor.commit();
   }
 
+  async addToClip(boxId,entityId) {
+    if(this.editor.promptDraftsReady?.()===false)return false;
+    if(this.editor.pickedLayer?.())this.editor.pick(boxId);
+    return this.change({action:'assign',box:boxId,entity:entityId});
+  }
+
   // Rendering
 
   pictures() {
@@ -662,7 +686,7 @@ export class CastPage {
     const open = button('', chip?.state === 'differs' ? `This line differs from the bible; open ${name} to resolve it`
       : `Open ${name} on the Cast page`, () => this.open(id), 'h3cc-chip-open');
     open.append(el('span', 'h3cc-chip-text', chip?.text ?? name));
-    const remove = button('×', `Take ${name} out of this clip's schedule`, () => this.saveSchedule(box.id,
+    const remove = button('×', `Remove ${name} from schedule; prompt text stays in place`, () => this.saveSchedule(box.id,
       scheduleWithout(box.schedule, id)), 'h3cc-chip-remove');
     remove.setAttribute('aria-label', `Remove ${name} from this clip`);
     remove.dataset.key = `schedule-remove-${id}`;
@@ -675,15 +699,16 @@ export class CastPage {
   scheduleAdd(box) {
     const bible = this.editor.state.bible;
     const schedule = scheduleFor(box, bible);
-    const choices = bible.entities.filter((entity) => entity.kind !== 'place' && !schedule.entities.includes(entity.id));
+    const choices = bible.entities.filter((entity) => entity.kind !== 'place' &&
+      (!schedule.entities.includes(entity.id)||!Object.values(box.cast??{}).includes(entity.id)));
     const add = el('select', 'h3ct-select');
     add.dataset.key = 'schedule-add';
     add.title = 'Add a character or prop to who is in this clip';
-    add.setAttribute('aria-label', 'Add to this clip');
-    add.append(option('', 'Add…'), ...choices.map((entity) => option(entity.id, entity.name)));
+    add.setAttribute('aria-label', 'Add from Cast');
+    add.append(option('', 'Add from Cast'), ...choices.map((entity) => option(entity.id, entity.name)));
     add.disabled = this.busy || !choices.length;
     add.addEventListener('change', () => {
-      if (add.value) this.saveSchedule(box.id, {...schedule, entities: [...schedule.entities, add.value]});
+      if (add.value) this.addToClip(box.id,add.value);
     });
     return add;
   }
@@ -696,7 +721,7 @@ export class CastPage {
       .map((entity) => option(entity.id, entity.name)));
     place.value = box.schedule.place ?? '';
     place.disabled = this.busy;
-    place.addEventListener('change', () => this.saveSchedule(box.id, {...box.schedule, place: place.value || null}));
+    place.addEventListener('change', () => place.value?this.addToClip(box.id,place.value):this.saveSchedule(box.id,{...box.schedule,place:null}));
     const node = el('label', 'h3cc-chip-field');
     node.append(el('span', 'h3ct-label', 'Place'), place);
     return node;

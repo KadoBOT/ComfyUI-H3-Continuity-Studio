@@ -16,7 +16,7 @@ import { splitBox, splitTiming } from './h3c_shot_split.mjs?v=0102d402fb3e';
 import { fillReferenceSwitches } from './h3c_reference_switches.mjs?v=e94b5b02e02b';
 import { ReferenceReplacements } from './h3c_reference_replacements.mjs?v=5bbd7867d0e7';
 import { fillPicturePicker, mentionedReferences, referenceChip } from './h3c_reference_pictures.mjs?v=8198307be3fa';
-import { CastPage } from './h3c_cast.mjs?v=6847168b97ab';
+import { CastPage } from './h3c_cast.mjs?v=d526195878b9';
 import { PicturesPanel, highestSlot } from './h3c_pictures.mjs?v=b027b6118abb';
 import { CheckPanel } from './h3c_check.mjs?v=0ba848400498';
 import { BridgePanel, bridgeLine } from './h3c_bridges.mjs?v=dc4fa24d44d3';
@@ -1028,6 +1028,7 @@ export class TimelineEditor {
   // Host calls
 
   load() {
+    this.editRevision=(this.editRevision??0)+1;
     this.replacements.close();
     this.state = model.parseState(this.host.read());
     syncTargets(this.state,this.host.context());
@@ -1066,6 +1067,7 @@ export class TimelineEditor {
   // editor doesn't know: the edit is undone from the node's text instead. Whether the text was written.
   save(text, typing = false) {
     if (!this.readOnly.length) {
+      if(text!==this.host.read())this.editRevision=(this.editRevision??0)+1;
       this.host.write(text, typing);
       return true;
     }
