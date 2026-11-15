@@ -4,6 +4,10 @@ All notable changes to H3 Continuity Studio are recorded here. Versions follow [
 
 ## [Unreleased]
 
+### Fixed
+
+- **Prompt form Advanced switch, tabs and retention markers.** Advanced is on whenever a clip has advanced details; turning it off asks, removes them and keeps them until it is on again (read-only Timelines only show or hide them). Prompt section tabs use the Studio's icon and text tabs again. Reference retention **Relationship** is a choice of the H3 markers, with **Custom…** for other wording.
+
 ## [1.1.0] - 2026-11-15
 
 ### Added
