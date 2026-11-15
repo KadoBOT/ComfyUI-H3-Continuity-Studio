@@ -18,6 +18,14 @@ test('a Basic description field replaces only the selected definition',()=>{
   h.input('<Subject 1> description','Mara in a blue coat.');
   assert.equal(h.stored().boxes[0].prompt,'subject_definitions:\n<Subject 1> is Mara in a blue coat.\n\ncustom_section: Keep this.');
 });
+test('each duplicate Existing text region edits only its own text',()=>{
+  const h=formHarness({prompt:'summary: One.\nsummary: Two.\ndetailed_description:\n[Shot 1] A room.'});
+  h.panel.section='existing';h.panel.render();
+  const areas=findAll(h.panel.root,n=>n.tagName==='TEXTAREA'&&n.getAttribute('aria-label')==='Existing text');
+  assert.deepEqual(areas.map(a=>a.value),['summary: One.','summary: Two.']);
+  areas[1].value='summary: Two, edited.';areas[1].fire('input');
+  assert.equal(h.stored().boxes[0].prompt,'summary: One.\nsummary: Two, edited.\ndetailed_description:\n[Shot 1] A room.');
+});
 test('summary task types are a multiple selection that generates the expected prefix',()=>{
   const h=formHarness({prompt:'summary:\nA pause.'});
   const input=findAll(h.panel.root,n=>n.getAttribute?.('aria-label')==='Task types')[0];

@@ -23,6 +23,12 @@ test('unknown and duplicate sections remain opaque, separate from typed fields',
   assert.match(unknown[1].fields[0].value,/custom_section:/);
   assert.equal(prompts.promptSections(fixtures.duplicate).filter(s=>s.key==='summary').length,0);
 });
+test('prose lines that start with a lowercase word and a colon stay inside their shot',()=>{
+  for(const line of ['note: she is tired','https://example.com/ref']) {
+    const source=`integrated_multimodal_description:\n[Shot 1] A woman walks in.\n${line}\n[Shot 2] At 00:03.000, She sits.\n\noverall_soundscape: Rain.`;
+    assert.deepEqual(prompts.promptShots(source).shots.map(s=>s.value),[`A woman walks in.\n${line}`,'At 00:03.000, She sits.']);
+  }
+});
 test('entry ranges include the label and body but preserve surrounding source',()=>{
   const source=fixtures.partial, field=prompts.promptSections(source)[0].fields[0];
   assert.equal(source.slice(field.entryStart,field.entryEnd),'<Subject 1> is Zoë 😀.');

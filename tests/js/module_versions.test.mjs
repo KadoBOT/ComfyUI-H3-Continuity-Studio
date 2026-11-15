@@ -12,6 +12,14 @@ test('every ?v= tag on an import of a web module is current', () => {
   assert.deepEqual(stamp(root), [], 'run node tools/module_versions.mjs --write');
 });
 
+test('the prompt form modules and their importers carry ?v= tags, so a form change reaches cached browsers', () => {
+  const unversioned = ['h3c_prompt_form.mjs', 'h3c_prompt_fields.mjs', 'h3c_prompt_shots.mjs', 'h3c_timeline_editor.mjs'].flatMap(name =>
+    [...fs.readFileSync(path.join(root, 'web', name), 'utf8').matchAll(/from '(\.\/h3c_[a-z_]+\.mjs)'/g)]
+      .map(match => `${name}: ${match[1]}`)
+      .filter(line => line.includes('h3c_prompt_')));
+  assert.deepEqual(unversioned, []);
+});
+
 test('a change below a module changes the tags of every importer, through import cycles', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'h3c-versions-')), web = path.join(dir, 'web');
   const write = (name, text) => fs.writeFileSync(path.join(web, name), text);

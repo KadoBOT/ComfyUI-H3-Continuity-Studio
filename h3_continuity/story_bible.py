@@ -14,6 +14,8 @@ KINDS = ("character", "place", "prop")
 JOINS = ("continue", "transition", "cut", "new_scene")
 ENTITY_ID = re.compile(r"e[1-9]\d*")
 SECTION = re.compile(r"(?ms)^\s*subject_definitions:\s*(.*?)(?=^\s*\w+:|\Z)")
+# Another lowercase name heads a section when it is snake_case or alone on its line; "note: ..." stays prose.
+HEADER = re.compile(r"(?m)^[ \t]*(summary|[a-z]+_[a-z_]*|[a-z]+(?=:[ \t]*\r?$)):")
 LABEL = re.compile(r"<Subject [1-9]\d*>")
 NOT_WRITTEN = "it isn't written as “<Subject N> is …”"
 REPEATED = "an earlier line in this box has this label"
@@ -591,7 +593,7 @@ def assign(timeline, box_id, entity_id):
     if not description and not pictures:
         raise ValueError('Add a description or picture to this entry in Cast first.')
     text = box['prompt']
-    headers = list(re.finditer(r'(?m)^[ \t]*([a-z][a-z_]*):', text))
+    headers = list(HEADER.finditer(text))
     keys = [h[1] for h in headers]
     if len(keys) != len(set(keys)) or ('detailed_description' in keys and 'integrated_multimodal_description' in keys):
         raise ValueError('Resolve duplicate prompt sections in Raw text before adding Cast.')

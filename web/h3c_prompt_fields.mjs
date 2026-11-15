@@ -1,4 +1,4 @@
-import {promptSections,replacePromptRanges} from './h3c_prompt_sections.mjs';
+import {promptSections,replacePromptRanges} from './h3c_prompt_sections.mjs?v=1f35473e5668';
 
 export const RETENTION_VISUAL=['fully_preserved','partially_preserved','attribute_transfer','weak_reference'];
 export const RETENTION_AUDIO=['fully_copy','partially_copy','reference','weak_reference'];

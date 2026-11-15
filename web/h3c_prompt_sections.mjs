@@ -13,7 +13,8 @@ export function promptSections(source) {
   const matches = (pattern, start = 0, end = source.length) => [...source.slice(start, end).matchAll(pattern)]
     .map((match) => ({ index: start + match.index, text: match[0], label: match[1] }))
     .filter(({ index }) => !dialogue.some((d) => index >= d.index && index < d.index + d[0].length));
-  const headers = matches(/^[ \t]*([a-z][a-z_]*):/gm);
+  // Another lowercase name heads a section when it is snake_case or alone on its line; "note: ..." stays prose.
+  const headers = matches(new RegExp(`^[ \\t]*(${Object.keys(TITLES).join('|')}|[a-z]+_[a-z_]*|[a-z]+(?=:[ \\t]*\\r?$)):`, 'gm'));
   if (!headers.some(h => Object.hasOwn(TITLES,h.label))) return null;
   const counts=new Map();
   for(const h of headers) counts.set(h.label,(counts.get(h.label)??0)+1);

@@ -1,8 +1,8 @@
-import {promptSections,replacePromptRanges} from './h3c_prompt_sections.mjs';
-import {withoutDialogue,readPromptFields,writePromptField} from './h3c_prompt_fields.mjs';
-import {FPS,isFresh,playedFrames} from './h3c_timeline_model.mjs';
-import {layerView} from './h3c_layers.mjs';
-import {acceptedGuideFrames,frameTargets} from './h3c_shot_preview.mjs';
+import {promptSections,replacePromptRanges} from './h3c_prompt_sections.mjs?v=1f35473e5668';
+import {withoutDialogue,readPromptFields,writePromptField} from './h3c_prompt_fields.mjs?v=5cd5e5206375';
+import {FPS,isFresh,playedFrames} from './h3c_timeline_model.mjs?v=1dfc1612e462';
+import {layerView} from './h3c_layers.mjs?v=1dfc1612e462';
+import {acceptedGuideFrames,frameTargets} from './h3c_shot_preview.mjs?v=1dfc1612e462';
 
 export const promptClock=ms=>{
   ms=Math.round(ms);return `${String(Math.floor(ms/60000)).padStart(2,'0')}:${String(Math.floor(ms/1000)%60).padStart(2,'0')}.${String(ms%1000).padStart(3,'0')}`;

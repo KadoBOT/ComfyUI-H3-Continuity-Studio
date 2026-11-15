@@ -3,26 +3,26 @@ import {generationControl,setGenerationControl} from './h3c_generation_archive.m
 // Mounts the H3 Timeline face on H3C_Timeline nodes, edits the Timeline in the Studio, and keeps its status in sync
 // with the server. Browsers may cache the .mjs helpers, so their ?v= tags come from node tools/module_versions.mjs --write.
 import { freshProject } from './h3c_new_project.mjs?v=96adbc29f06d';
-import { saveBeforeNewProject } from './h3c_story_library.mjs?v=511a624674f0';
+import { saveBeforeNewProject } from './h3c_story_library.mjs?v=017d91c2210b';
 import { app } from '../../scripts/app.js';
-import {syncImageOutputs,compileImageOutputs} from './h3c_timeline_images.mjs?v=99b4d58a3b9d';
+import {syncImageOutputs,compileImageOutputs} from './h3c_timeline_images.mjs?v=f276b2ccd8b2';
 import { api } from '../../scripts/api.js';
 import { mountSavedState, autosaveEnabled } from './h3c_saved_state.mjs?v=285cb0ac96bb';
 import {setText} from './h3c_dom.mjs?v=584a9bf55653';
 import { showOwnElement } from './h3c_dom_widget.mjs?v=961e6d7f3bb7';
 import { WATCH_EVENTS, idleWatch, progressText, watchEvent } from './h3c_render_watch.mjs?v=7c8222569836';
 import { DEFAULT_AHEAD, QueueFeed, feedNote, queueAhead } from './h3c_queue_feed.mjs?v=9392f926e4e3';
-import { studio } from './h3c_studio.mjs?v=311deb67e090';
-import { FACE_HEIGHT, TimelineFace } from './h3c_timeline_face.mjs?v=f04cf4c6df21';
-import { TimelineEditor } from './h3c_timeline_editor.mjs?v=d03f5f1a3a56';
-import { referenceFile, referenceSource, referencePools, referenceType, effectiveRefmods, parseState, serialize, unknownFeatures, readOnlyNote } from './h3c_timeline_model.mjs?v=a0c0634a00bf';
-import {referenceImageFile} from './h3c_reference_sources.mjs?v=551a25f87717';
-import { pictureRefs } from './h3c_pictures.mjs?v=b027b6118abb';
-import { voiceRefs } from './h3c_voices.mjs?v=d29fa7d14c4a';
+import { studio } from './h3c_studio.mjs?v=c7c0190f4a9b';
+import { FACE_HEIGHT, TimelineFace } from './h3c_timeline_face.mjs?v=f87ad7bf252b';
+import { TimelineEditor } from './h3c_timeline_editor.mjs?v=12ead6ae2fc7';
+import { referenceFile, referenceSource, referencePools, referenceType, effectiveRefmods, parseState, serialize, unknownFeatures, readOnlyNote } from './h3c_timeline_model.mjs?v=1dfc1612e462';
+import {referenceImageFile} from './h3c_reference_sources.mjs?v=107846e10a11';
+import { pictureRefs } from './h3c_pictures.mjs?v=220c235a7923';
+import { voiceRefs } from './h3c_voices.mjs?v=efb0f83d17e1';
 import {captureRecipe,captureTimelineId,captureStillBody,stillTimelineBody,recipeControls,StillClient,isolateVideoPrompt,videoOutputs,hasVideoOutput as compiledVideoOutput,graphWiring} from './h3c_stills.mjs?v=df999ecd2dcd';
-import {boundarySnapshot} from './h3c_frame_images.mjs?v=fdf500b467a4';
+import {boundarySnapshot} from './h3c_frame_images.mjs?v=89df43d62a40';
 import {stillPromptSource,sameStillPromptSource} from './h3c_still_prompt_preparation.mjs?v=9ea1bfd9b6b5';
-import { TakesClient } from './h3c_takes.mjs?v=0575a0320503';
+import { TakesClient } from './h3c_takes.mjs?v=15deab5acdd6';
 import {ProjectSession, forkProject, parseJSON, projectErrorMessage, stringifyJSON} from './h3c_project.mjs?v=0882b8a6265a';
 import {TimelineHistory, dropReceipts, withLiveReceipts} from './h3c_history.mjs?v=aa0916b99431';
 import {confirmRegeneration} from './h3c_regeneration.mjs?v=44ff3a1a199c';

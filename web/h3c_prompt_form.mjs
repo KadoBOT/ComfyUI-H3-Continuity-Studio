@@ -1,10 +1,8 @@
-import {readPromptFields,writePromptField,SECTION_TITLES,RETENTION_VISUAL,RETENTION_AUDIO,SUMMARY_TASKS,SHOT_FIELDS} from './h3c_prompt_fields.mjs';
-import {promptShots} from './h3c_prompt_sections.mjs';
-import {promptSections,replacePromptRanges} from './h3c_prompt_sections.mjs';
-import {SwitchSection} from './h3c_switch_section.mjs';
-import {MentionLayer} from './h3c_mentions.mjs';
-import {shotTiming,editPromptShot} from './h3c_prompt_shots.mjs';
-import {promptSections as sectionsOf} from './h3c_prompt_sections.mjs';
+import {readPromptFields,writePromptField,SECTION_TITLES,RETENTION_VISUAL,RETENTION_AUDIO,SUMMARY_TASKS,SHOT_FIELDS} from './h3c_prompt_fields.mjs?v=5cd5e5206375';
+import {promptSections,promptShots,replacePromptRanges} from './h3c_prompt_sections.mjs?v=1f35473e5668';
+import {SwitchSection} from './h3c_switch_section.mjs?v=c253500f4908';
+import {MentionLayer} from './h3c_mentions.mjs?v=7d543c4a1ce8';
+import {shotTiming,editPromptShot} from './h3c_prompt_shots.mjs?v=17aa67525854';
 const el=(tag,cls,text)=>{const node=document.createElement(tag);if(cls)node.className=cls;if(text!==undefined)node.textContent=text;return node;};
 const button=(text,action)=>{const node=el('button','h3ct-button',text);node.type='button';node.addEventListener('click',action);return node;};
 let ids=0;
@@ -56,7 +54,7 @@ export class PromptFormPanel {
     const source=this.editor.video().prompt;
     if(source!==this.source||this.drafts.get(key)?.source&&this.drafts.get(key).source!==source){this.draftMessage('The prompt changed. Discard this draft before editing.');return;}
     const parsed=readPromptFields(source,{tags:this.tags()});
-    const entry=index==null?null:parsed.sections.find(s=>s.key===section)?.entries[index];
+    const entry=index==null?null:parsed.sections.filter(s=>s.key===section).flatMap(s=>s.entries)[index];
     const base=this.drafts.get(key)?.value??entry?.value??this.newRows.find(r=>r.key===key)?.value??{};
     const value=patch===null?null:{...base,...(typeof patch==='function'?patch(base):patch)};
     try {
@@ -90,7 +88,7 @@ export class PromptFormPanel {
       if(source!==this.source||this.drafts.get(key)?.source&&this.drafts.get(key).source!==source)throw new Error('The prompt changed. Discard this draft and reopen the field.');
       const trial=editPromptShot(editor.state,editor.selected,change,editor.host.context(),editor.pickedLayer?.()?.id??null);
       const next=editor.pickedLayer?.()?trial.boxes[editor.selected].layers.find(v=>v.id===editor.video().id):trial.boxes[editor.selected];
-      if(change.kind==='append'&&!sectionsOf(next.prompt))next.prompt='integrated_multimodal_description:\n'+next.prompt;
+      if(change.kind==='append'&&!promptSections(next.prompt))next.prompt='integrated_multimodal_description:\n'+next.prompt;
       const previews=editor.video().previews;
       this.drafts.delete(key);this.newShot=false;this.message='';
       editor.video().previews=next.previews;
@@ -294,7 +292,10 @@ export class PromptFormPanel {
       const restored=this.controls.get(key);if(restored){restored.focus?.();if(selection)restored.setSelectionRange?.(...selection);}return;
     }
     let shown=0;
-    for(const section of sections)for(const [index,entry] of section.entries.entries()){this.row(body,section.key,entry,index,section.key+':'+index);shown++;}
+    for(const section of sections) {
+      const entries=sections.filter(s=>s.key===section.key).flatMap(s=>s.entries);
+      for(const entry of section.entries){const index=entries.indexOf(entry);this.row(body,section.key,entry,index,section.key+':'+index);shown++;}
+    }
     for(const draft of this.newRows.filter(r=>r.section===this.section)){this.row(body,draft.section,draft,null,draft.key);shown++;}
     if(!shown)body.append(el('p','h3ct-hint','Empty. Add only the fields this clip needs.'));
     if(this.section==='subject_definitions') {

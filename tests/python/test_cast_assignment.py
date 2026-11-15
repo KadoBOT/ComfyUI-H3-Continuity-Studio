@@ -46,6 +46,13 @@ class CastAssignmentTest(unittest.TestCase):
             if ok:
                 self.assertIn('@image17', result['prompts']['a'])
 
+    def test_plain_prose_with_a_colon_line_stays_the_visual_description(self):
+        doc = cast_timeline()
+        doc['boxes'][0]['prompt'] = 'A quiet room.\nnote: keep the lamp on'
+        result = story_bible.handle({'action': 'assign', 'timeline': doc, 'box': 'a', 'entity': 'e1'})
+        self.assertTrue(result['ok'], result)
+        self.assertTrue(result['prompts']['a'].endswith('\n\ndetailed_description:\nA quiet room.\nnote: keep the lamp on'))
+
     def test_missing_entity_disabled_picture_and_ambiguous_headers_change_nothing(self):
         for patch in ({'entity': 'e99'}, {'disabled_refs': ['image17']}, {'prompt': 'subject_definitions: A\nsubject_definitions: B'}):
             doc = cast_timeline()
