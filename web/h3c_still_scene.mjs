@@ -1,4 +1,4 @@
-import {promptShots} from './h3c_prompt_sections.mjs?v=b58f04f78a75';
+import {promptShots} from './h3c_prompt_sections.mjs?v=1f35473e5668';
 const sameTarget=(a,b)=>a?.kind===b?.kind&&a?.shot===b?.shot;
 const sameFile=(a,b)=>a&&b&&['filename','subfolder','type'].every(key=>a[key]===b[key]);
 export function sceneStart(state,index){while(index>0&&!state.boxes[index].new_scene&&state.boxes[index].join?.kind!=='new_scene')index--;return state.boxes[index]?.id;}

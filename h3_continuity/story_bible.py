@@ -1,10 +1,12 @@
 """The Story bible: a Timeline's characters, places and props, their looks over time, and the subject lines they give.
 
 The bible is the Timeline's top-level "bible" object; each box's "cast" maps its subject labels to entity ids. Only
-`apply` and `recompile` change prompts: `apply` for boxes whose prompt is still what their source compiled to and
-for subjects whose line is still what the bible gave them, and `recompile` only for the boxes it is asked for.
+`apply`, `recompile` and `assign` change prompts: `apply` for boxes whose prompt is still what their source compiled
+to and for subjects whose line is still what the bible gave them, `recompile` only for the boxes it is asked for, and
+`assign` by adding one entity's subject line to one box.
 Nothing here calls a model."""
 import copy
+import json
 import re
 
 from . import story_edits, story_fast, timeline as rules
@@ -13,6 +15,8 @@ KINDS = ("character", "place", "prop")
 JOINS = ("continue", "transition", "cut", "new_scene")
 ENTITY_ID = re.compile(r"e[1-9]\d*")
 SECTION = re.compile(r"(?ms)^\s*subject_definitions:\s*(.*?)(?=^\s*\w+:|\Z)")
+# Another lowercase name heads a section when it is snake_case or alone on its line; "note: ..." stays prose.
+HEADER = re.compile(r"(?m)^[ \t]*(summary|[a-z]+_[a-z_]*|[a-z]+(?=:[ \t]*\r?$)):")
 LABEL = re.compile(r"<Subject [1-9]\d*>")
 NOT_WRITTEN = "it isn't written as “<Subject N> is …”"
 REPEATED = "an earlier line in this box has this label"
@@ -570,13 +574,76 @@ def apply(timeline, bible, links=None, force=(), merged=None):
             "reworded": reworded, "notes": notes}
 
 
+def assign(timeline, box_id, entity_id):
+    """A deterministic proposal adding one bible identity; the caller applies all three changes atomically."""
+    items = boxes(timeline)
+    known = {item['id']: item for item in entities(timeline.get('bible'))}
+    index = next((i for i, box in enumerate(items) if box['id'] == box_id), None)
+    if index is None or entity_id not in known:
+        raise ValueError('Choose an existing clip and Cast entity.')
+    box, entity = items[index], known[entity_id]
+    found = subject_lines(box['prompt'])
+    for label, target in (box.get('cast') or {}).items():
+        if target == entity_id and label in found:
+            return {'prompts': {}, 'casts': {}, 'schedules': {}, 'subject': label, 'changed': False}
+    ids = [item['id'] for item in items]
+    pictures = pictures_at(entity, ids, index)
+    if any(slot in timeline.get('disabled_refs', []) for slot in pictures):
+        raise ValueError('Enable this Cast entry’s pictures before adding it to the clip.')
+    description = wording(entity, ids, index).strip()
+    if not description and not pictures:
+        raise ValueError('Add a description or picture to this entry in Cast first.')
+    text = box['prompt']
+    headers = list(HEADER.finditer(text))
+    keys = [h[1] for h in headers]
+    if len(keys) != len(set(keys)) or ('detailed_description' in keys and 'integrated_multimodal_description' in keys):
+        raise ValueError('Resolve duplicate prompt sections in Raw text before adding Cast.')
+    used = ' '.join([timeline.get('prompt', ''), text, *(box.get('cast') or {})])
+    number = max([int(n) for n in re.findall(r'<Subject ([1-9]\d*)>', used)] or [0]) + 1
+    label = f'<Subject {number}>'
+    definition = line(label, description or entity['name'], pictures)
+    if 'subject_definitions' in keys:
+        header = headers[keys.index('subject_definitions')]
+        end = headers[keys.index('subject_definitions') + 1].start() if keys.index('subject_definitions') + 1 < len(headers) else len(text)
+        at = len(text[:end].rstrip())
+        text = text[:at] + '\n' + definition + text[at:]
+    else:
+        if 'integrated_multimodal_description' in keys:
+            header = headers[keys.index('integrated_multimodal_description')]
+            text = text[:header.start(1)] + 'detailed_description' + text[header.end(1):]
+        elif not headers and text.strip():
+            text = 'detailed_description:\n' + text
+        text = 'subject_definitions:\n' + definition + ('\n\n' + text if text else '')
+    cast = {**(box.get('cast') or {}), label: entity_id}
+    if box.get('schedule'):
+        schedule = copy.deepcopy(box['schedule'])
+    else:
+        linked = [known[target] for target in (box.get('cast') or {}).values() if target in known]
+        schedule = {'entities': list(dict.fromkeys(e['id'] for e in linked if e['kind'] != 'place')),
+                    'place': next((e['id'] for e in linked if e['kind'] == 'place'), None)}
+    if entity['kind'] == 'place':
+        schedule['place'] = entity_id
+    elif entity_id not in schedule['entities']:
+        schedule['entities'].append(entity_id)
+    trial = copy.deepcopy(timeline)
+    trial['boxes'][index]['prompt'] = text
+    slots = rules.box_slots(rules.parse(json.dumps(trial)), index)
+    if ((slots.mode == 'ref2va' and len(slots.image_inputs) > rules.MAX_REF_IMAGES)
+            or len(slots.audio_inputs) > rules.MAX_REF_AUDIOS or len(slots.video_inputs) > rules.MAX_REF_VIDEOS):
+        raise ValueError('Adding this Cast entry exceeds H3’s reference limit.')
+    return {'prompts': {box_id: text}, 'casts': {box_id: cast}, 'schedules': {box_id: schedule},
+            'subject': label, 'changed': True}
+
+
 def handle(body):
     """The answer to a bible request: {"ok": True, **result} or {"ok": False, "error": message}."""
     try:
         if not isinstance(body, dict):
             raise ValueError("The request must be a JSON object.")
         action, timeline = body.get("action"), body.get("timeline")
-        if action == "build":
+        if action == "assign":
+            result = assign(timeline, body.get('box'), body.get('entity'))
+        elif action == "build":
             result = build(timeline, body.get("plan"))
         elif action == "link":
             result = link(timeline, body.get("plan"), body.get("boxes"))
@@ -587,7 +654,7 @@ def handle(body):
         elif action == "recompile":
             result = recompile(timeline, body.get("boxes"))
         else:
-            raise ValueError(f"Unknown bible action {action!r}; use build, link, apply, status or recompile.")
+            raise ValueError(f"Unknown bible action {action!r}; use build, link, apply, status, recompile or assign.")
     except ValueError as error:
         return {"ok": False, "error": str(error)}
     return {"ok": True, **result}

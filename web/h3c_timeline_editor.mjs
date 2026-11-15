@@ -4,26 +4,27 @@ import {Pins, SwitchSection} from './h3c_switch_section.mjs?v=c253500f4908';
 import * as tracks from './h3c_tracks.mjs';
 // The H3 Timeline editor: a track of boxes, the selected box and the shared prompt.
 // Plain DOM without ComfyUI imports; the host object connects it to the node.
-import { MentionCard, MentionLayer } from './h3c_mentions.mjs?v=286999590c40';
-import { promptSections, promptShots, writePromptSections } from './h3c_prompt_sections.mjs?v=b58f04f78a75';
-import * as model from './h3c_timeline_model.mjs?v=448aca934518';
-import * as videoLayers from './h3c_layers.mjs?v=448aca934518';
+import { MentionCard, MentionLayer } from './h3c_mentions.mjs?v=7d543c4a1ce8';
+import { promptSections, promptShots, writePromptSections } from './h3c_prompt_sections.mjs?v=1f35473e5668';
+import {PromptFormPanel} from './h3c_prompt_form.mjs?v=0e788579cdbc';
+import * as model from './h3c_timeline_model.mjs?v=1dfc1612e462';
+import * as videoLayers from './h3c_layers.mjs?v=1dfc1612e462';
 import {audioSourceLocked} from './h3c_audio_windows.mjs?v=cdefbd77b246';
-import { AudioLanes } from './h3c_audio_lanes.mjs?v=afba3ccda1aa';
-import { shotFrames, frameTargets, syncTargets, acceptedGuideFrames, endpointGuide, endpointReference, adoptEndpointGuides } from './h3c_shot_preview.mjs?v=448aca934518';
-import {FrameImages, targetLabel, imageDrop} from './h3c_frame_images.mjs?v=b708fa777517';
-import { splitBox, splitTiming } from './h3c_shot_split.mjs?v=b431e6b9a29c';
+import { AudioLanes } from './h3c_audio_lanes.mjs?v=2c8422417f0a';
+import { shotFrames, frameTargets, syncTargets, acceptedGuideFrames, endpointGuide, endpointReference, adoptEndpointGuides } from './h3c_shot_preview.mjs?v=1dfc1612e462';
+import {FrameImages, targetLabel, imageDrop} from './h3c_frame_images.mjs?v=89df43d62a40';
+import { splitBox, splitTiming } from './h3c_shot_split.mjs?v=d147aa313f65';
 import { fillReferenceSwitches } from './h3c_reference_switches.mjs?v=e94b5b02e02b';
-import { ReferenceReplacements } from './h3c_reference_replacements.mjs?v=1cebdefbcad2';
+import { ReferenceReplacements } from './h3c_reference_replacements.mjs?v=00c628e63671';
 import { fillPicturePicker, mentionedReferences, referenceChip } from './h3c_reference_pictures.mjs?v=8198307be3fa';
-import { CastPage } from './h3c_cast.mjs?v=2a49f312dd43';
-import { PicturesPanel, highestSlot } from './h3c_pictures.mjs?v=460ff883e76e';
+import { CastPage } from './h3c_cast.mjs?v=249175267d59';
+import { PicturesPanel, highestSlot } from './h3c_pictures.mjs?v=220c235a7923';
 import { CheckPanel } from './h3c_check.mjs?v=0ba848400498';
-import { BridgePanel, bridgeLine } from './h3c_bridges.mjs?v=8af3e67c92e7';
-import { DialoguePanel } from './h3c_dialogue.mjs?v=45b8c5f4bb7c';
+import { BridgePanel, bridgeLine } from './h3c_bridges.mjs?v=a8d5483a8299';
+import { DialoguePanel } from './h3c_dialogue.mjs?v=0c9058202c42';
 import { ChainSettings } from './h3c_chain_settings.mjs?v=9f2d4061a6d6';
 import { exportedVideo } from './h3c_partial_video.mjs?v=201bf0f48645';
-import { MAX_TAKES, TakesPanel, followNote, renderLabel } from './h3c_takes.mjs?v=dac8103cf8fb';
+import { MAX_TAKES, TakesPanel, followNote, renderLabel } from './h3c_takes.mjs?v=15deab5acdd6';
 import { drawsSame, replaceChanged, setText, showImages } from './h3c_dom.mjs?v=584a9bf55653';
 
 const STYLE_ID = 'h3ct-style';
@@ -543,16 +544,18 @@ export class TimelineEditor {
     this.promptEl.placeholder = 'What happens in this clip. Mention references as @image1 or @audio1.';
     this.promptEl.addEventListener('input', () => {
       this.video().prompt = this.promptEl.value;
-      this.sectionsButton.disabled = !promptSections(this.promptEl.value);
+      this.sectionsButton.disabled = false;
       this.typed();
     });
     this.promptEl.addEventListener('focus', () => { this.activePromptEl = this.promptEl; });
     const promptTabs = el('div', 'h3ct-prompt-tabs');
     this.sectionsButton = button('Sections', 'Edit subjects, shots and sound separately', () => {
+      if(this.promptDraftsReady?.()===false)return;
       this.rawPrompt = false;
       this.renderPrompt();
     });
     this.rawButton = button('Raw text', 'Edit the complete H3 prompt', () => {
+      if(this.promptDraftsReady?.()===false)return;
       this.rawPrompt = true;
       this.renderPrompt();
     });
@@ -874,6 +877,7 @@ export class TimelineEditor {
   }
 
   pick(id) {
+    if(this.promptDraftsReady?.()===false)return;
     this.picked = id === this.box()?.id ? null : id;
     this.renderTrack();
     this.renderPanel();
@@ -910,6 +914,7 @@ export class TimelineEditor {
   }
 
   destroy() {
+    this.promptForm?.destroy();
     clearTimeout(this.typingTimer);
     this.frameImages.destroy();
     this.replacements.destroy();
@@ -1028,6 +1033,8 @@ export class TimelineEditor {
   // Host calls
 
   load() {
+    this.editRevision=(this.editRevision??0)+1;
+    if(this.promptForm?.hasDrafts())this.promptForm.discardDrafts('Unsaved fields were discarded because the project or history changed.');
     this.replacements.close();
     this.state = model.parseState(this.host.read());
     syncTargets(this.state,this.host.context());
@@ -1066,6 +1073,7 @@ export class TimelineEditor {
   // editor doesn't know: the edit is undone from the node's text instead. Whether the text was written.
   save(text, typing = false) {
     if (!this.readOnly.length) {
+      this.editRevision=(this.editRevision??0)+1;
       this.host.write(text, typing);
       return true;
     }
@@ -1126,6 +1134,15 @@ export class TimelineEditor {
     this.cast.changed();
   }
 
+  applyPrompt(source,next,{structural=false}={}) {
+    if(this.readOnly.length||this.video()?.prompt!==source)return false;
+    if(next===source)return true;
+    this.video().prompt=next;
+    if(this.promptEl)this.promptEl.value=next;
+    if(structural){this.host.undoStep?.();this.commit();this.host.undoStep?.();}else this.typed();
+    return true;
+  }
+
   // A key typed into a text field: the Timeline text follows every key, and the rest of commit(), with the edit's
   // place in the undo history, waits for a pause.
   typed() {
@@ -1147,6 +1164,7 @@ export class TimelineEditor {
   }
 
   select(index) {
+    if(index!==this.selected&&this.promptDraftsReady?.()===false)return;
     if (this.selected !== index) {
       this.selectedShot = 1;
       this.picked = null;
@@ -1160,6 +1178,7 @@ export class TimelineEditor {
   }
 
   addBox() {
+    if(this.promptDraftsReady?.()===false)return;
     if(tracks.enabled(this.state))return this.trackEditor.addClip();
     this.selected = model.addBox(this.state, this.host.context());
     this.commit();
@@ -1169,6 +1188,7 @@ export class TimelineEditor {
   // Moves the selected clip. A Continue clip that lands after a clip with several videos must become a Cut, so that
   // is asked first.
   move(delta) {
+    if(this.promptDraftsReady?.()===false)return;
     if(tracks.enabled(this.state))return this.trackEditor.move(delta);
     const context = this.host.context(), trial = model.parseState(model.serialize(this.state));
     model.moveBox(trial, this.selected, delta, context);
@@ -1181,6 +1201,7 @@ export class TimelineEditor {
   }
 
   duplicate() {
+    if(this.promptDraftsReady?.()===false)return;
     if(tracks.enabled(this.state))return this.trackEditor.duplicate();
     this.selected = model.duplicateBox(this.state, this.selected, this.host.context());
     this.commit();
@@ -1188,6 +1209,7 @@ export class TimelineEditor {
   }
 
   remove() {
+    if(this.promptDraftsReady?.()===false)return;
     const videos = 1 + (this.box()?.layers?.length ?? 0);
     if (videos > 1 && !globalThis.confirm?.(`Delete clip ${this.selected + 1} and its ${videos} videos?`)) return;
     if(tracks.enabled(this.state))return this.trackEditor.removeClip();
@@ -1198,12 +1220,14 @@ export class TimelineEditor {
   }
 
   async queue() {
+    if(this.promptDraftsReady?.()===false)return;
     await this.host.refresh?.();
     const remaining = this.remaining();
     if (remaining > 0) await this.submit(remaining);
   }
 
   async queueNext() {
+    if(this.promptDraftsReady?.()===false)return;
     await this.host.refresh?.();
     if (this.remaining() > 0) await this.submit(1);
   }
@@ -1211,6 +1235,7 @@ export class TimelineEditor {
   // Queues takes using the selected clip's seed mode; stop if its identity or position changes.
   async queueBox(count = 1) {
     const outcome = {requested:count, queued:0, remaining:count, retryable:false};
+    if(this.promptDraftsReady?.()===false)return outcome;
     if (!this.box() || this.readOnly.length || this.queuing || this.queueBatch || this.seedInput?.validity?.valid === false) return outcome;
     const index = this.selected, id = this.box().id, layer = this.pickedLayer()?.id ?? null;
     const same = () => this.state.boxes[index]?.id === id && this.box()?.id === id
@@ -1263,6 +1288,7 @@ export class TimelineEditor {
   // Whether the run was queued: false while another is being queued, or when queueing failed.
   // `layer` asks for one of a clip's other videos instead of a box or bridge; it keeps its own seed.
   async submit(count, box, bridge, receipt, layer = null) {
+    if(this.promptDraftsReady?.()===false)return false;
     if (this.readOnly.length || this.queuing || (bridge == null && this.seedInput?.validity?.valid === false)) return false;
     this.queuing = true;
     this.renderHead();
@@ -1289,6 +1315,8 @@ export class TimelineEditor {
       this.renderPanelInfo();
     }
   }
+
+  promptDraftsReady() {return this.promptForm?.canLeave()??true;}
 
   insert(text) {
     const area = this.activePromptEl ?? this.promptEl;
@@ -1332,6 +1360,7 @@ export class TimelineEditor {
   }
 
   resizeStart(event, index) {
+    if(this.promptDraftsReady?.()===false)return;
     if (event.button !== 0) return;
     event.preventDefault();
     event.stopPropagation();
@@ -2285,7 +2314,7 @@ export class TimelineEditor {
     this.card.hide();
     for (const marks of this.sectionMarks) marks.destroy();
     this.sectionMarks = [];
-    this.structureEl.replaceChildren();
+    if(!this.promptForm)this.structureEl.replaceChildren();
     // Keep still controls connected so a refresh cannot cancel a mouse click or blur an edit.
     for(const child of [...this.previewsEl.children]) if(child!==this.frameImages.root) child.remove();
     const shots = shotFrames(this.state, this.selected, this.host.context());
@@ -2315,10 +2344,9 @@ export class TimelineEditor {
     const box = this.video();
     const source = box.prompt;
     const sections = promptSections(source);
-    const structured = !!sections && !this.rawPrompt;
-    this.sectionsButton.disabled = !sections;
-    this.sectionsButton.title = sections ? 'Edit subjects, shots and sound separately'
-      : 'Sections are available for a complete H3 prompt. You can keep writing in raw text.';
+    const structured = !this.rawPrompt;
+    this.sectionsButton.disabled = false;
+    this.sectionsButton.title = 'Edit optional subjects, shots and sound fields';
     this.sectionsButton.setAttribute('aria-pressed', String(structured));
     this.rawButton.setAttribute('aria-pressed', String(!structured));
     this.structureEl.hidden = !structured;
@@ -2328,93 +2356,9 @@ export class TimelineEditor {
     this.promptMarks.render();
     if (!structured) return;
 
-    const tabs = el('div', 'h3ct-section-tabs');
-    tabs.setAttribute('role', 'tablist');
-    tabs.setAttribute('aria-label', 'Prompt sections');
-    this.structureEl.append(tabs);
-    const views = [];
-    if (!sections.some((section) => section.key === this.promptSection)) this.promptSection = sections[0].key;
-    const show = (key) => {
-      this.promptSection = key;
-      for (const {tab, block, section} of views) {
-        const selected = section.key === key;
-        tab.setAttribute('aria-selected', String(selected));
-        tab.tabIndex = selected ? 0 : -1;
-        block.root.hidden = !selected;
-      }
-      for (const marks of this.sectionMarks) marks.render();
-    };
-    tabs.addEventListener('keydown', (event) => {
-      if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
-      event.preventDefault();
-      const index = views.findIndex((view) => view.section.key === this.promptSection);
-      const next = event.key === 'Home' ? 0 : event.key === 'End' ? views.length - 1
-        : (index + (event.key === 'ArrowRight' ? 1 : -1) + views.length) % views.length;
-      show(views[next].section.key);
-      views[next].tab.focus();
-    });
-
-    for (const section of sections) {
-      // On while any of its fields has words; off empties them, kept here until it comes back on.
-      const key = `prompt:${box.id}:${section.key}`;
-      const block = new SwitchSection(section.title, {className: `h3ct-section ${section.key}`, onToggle: (on) => {
-        if (this.readOnly.length || this.video() !== box) return;
-        this.pins.set(key, on);
-        const kept = this.stash.get(key);
-        if (on && !kept) return this.renderPrompt();
-        if (on) section.fields.forEach((part, index) => { part.value = kept[index] ?? part.value; });
-        else {
-          this.stash.set(key, section.fields.map((part) => part.value));
-          for (const part of section.fields) part.value = '';
-        }
-        if (on) this.stash.delete(key);
-        box.prompt = writePromptSections(source, sections);
-        this.commit();
-      }});
-      block.pin = key;
-      block.head.title = section.key;
-      const numbered = section.fields.filter((part) => /^[<@\[]/.test(part.label));
-      const fields = el('div', 'h3ct-section-fields');
-      for (const part of section.fields) {
-        const label = el('div', 'h3ct-prompt-field');
-        const named = part.label !== section.title;
-        if (named) label.append(el('span', `h3ct-entry-label${/^[<@\[]/.test(part.label) ? ' numbered' : ''}`, part.label));
-        const area = el('textarea', 'h3ct-text');
-        area.setAttribute('aria-label', named ? `${section.title}: ${part.label}` : section.title);
-        area.value = part.value;
-        area.rows = Math.min(8, Math.max(2, Math.ceil(part.value.length / 85), part.value.split('\n').length));
-        area.addEventListener('focus', () => { this.activePromptEl = area; });
-        area.addEventListener('input', () => {
-          if (!area.isConnected || this.video() !== box) return;
-          part.value = area.value;
-          if (!section.fields.some((item) => item.value.trim())) this.pins.set(key, true);
-          box.prompt = writePromptSections(source, sections);
-          this.promptEl.value = box.prompt;
-          this.typed();
-        });
-        const marks = new MentionLayer(area, this.mentionHooks());
-        this.sectionMarks.push(marks);
-        label.append(marks.root);
-        fields.append(label);
-        if (this.activePromptEl === this.promptEl || part.label === '[Shot 1]') this.activePromptEl = area;
-      }
-      block.body.append(fields);
-      const filled = section.fields.some((part) => part.value.trim());
-      block.titleEl.textContent = 'Include in prompt';
-      block.set(filled || this.pins.has(key), {disabled: this.readOnly.length > 0,
-        title: filled ? `Turn off to clear ${section.title}; turning it on again brings the text back`
-          : `${section.title} is empty`});
-      const tab = button('', `${section.title}${filled ? '' : ' · empty'}`, () => show(section.key), 'h3ct-section-tab');
-      tab.setAttribute('role', 'tab');
-      tab.classList.toggle('empty', !filled);
-      tab.append(el('span', null, section.title), el('span', 'h3ct-tab-count', numbered.length ? String(numbered.length) : ''));
-      block.root.setAttribute('role', 'tabpanel');
-      block.root.setAttribute('aria-label', section.title);
-      tabs.append(tab);
-      views.push({tab, block, section});
-      this.structureEl.append(block.root);
-    }
-    show(this.promptSection);
+    this.promptForm ??= new PromptFormPanel(this);
+    if(this.promptForm.root.parentNode!==this.structureEl)this.structureEl.append(this.promptForm.root);
+    this.promptForm.render();
   }
 
   async editStory(edit) {
@@ -2534,6 +2478,7 @@ export class TimelineEditor {
       for (const {target, movieFrame} of targets) {
         const label = targetLabel(target), name = target.kind === 'shot' ? `shot:${target.shot}` : target.kind;
         const mark = button('', `Clip ${index+1}, ${label}, movie frame ${movieFrame}`, () => {
+          if(this.promptDraftsReady?.()===false)return;
           this.selected=index;this.selectedShot=target.shot??1;
           this.frameImages.open(box.id,target);this.setTab('still');this.renderTrack();this.renderPanel();
           this.trackEl.dispatchEvent(new CustomEvent('h3c-show-page',{bubbles:true,detail:{page:'box'}}));
@@ -2611,6 +2556,7 @@ export class TimelineEditor {
     const row = el('div', 'h3ct-row');
     if (shot.shot === shotFrames(this.state, this.selected, this.host.context())[0].shot) return row;
     const split = button(`Split before Shot ${shot.shot}`, '', () => {
+      if(this.promptDraftsReady?.()===false)return;
       try {
         const timing = splitBox(this.state, this.selected, shot.shot, this.host.context());
         for (const changed of this.state.boxes.slice(this.selected)) this.statusById.delete(changed.id);

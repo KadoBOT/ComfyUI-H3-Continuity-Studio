@@ -1,6 +1,6 @@
 ---
 name: h3-continuity-references
-description: Use when writing an H3 Timeline box's prompt or deciding what H3 sees in that box. That covers native prompt sections and [Shot N] stages, the t2va/flf2va/ref2va mode rule, @image/@video/@audio mentions, connected references and Timeline pictures from image17 up, first and last frames, timed Shot guides, still candidates and scene anchors, RefMods and FLF2VA with cached RefMods, appearance plates, and replacing or disabling references. Part of the H3 Continuity pack; read h3-continuity-video first.
+description: Use when writing an H3 Timeline box's prompt or deciding what H3 sees in that box. That covers native prompt sections (complete or partial) and timed [Shot N] stages, the definition, retention, dialogue and cue-line syntax the Studio's Sections form edits, the t2va/flf2va/ref2va mode rule, @image/@video/@audio mentions, connected references and Timeline pictures from image17 up, first and last frames, timed Shot guides, still candidates and scene anchors, RefMods and FLF2VA with cached RefMods, appearance plates, and replacing or disabling references. Part of the H3 Continuity pack; read h3-continuity-video first.
 ---
 
 # Prompts, references and guides
@@ -49,8 +49,52 @@ audio references alone do not rule out `flf2va`.
 - `ref2va` prompts have six sections: `subject_definitions:`, `summary:`,
   `retention_analysis:`, `detailed_description:`, `overall_soundscape:` and
   `non_diegetic_music:`. Read the `ref` guide for each section's contract and the
-  `base` guide for the others. Both are MiniMax's guides, installed optionally on
+  `  base` guide for the others. Both are MiniMax's guides, installed optionally on
   the host.
+- A box's `prompt` is the only saved prompt content, and H3 receives it as
+  written. It may hold just the sections it needs (for example only
+  `subject_definitions:` and `detailed_description:`). The Studio's Sections form
+  edits any recognized subset, never adds empty sections or `N/A`, and keeps
+  everything else (unknown `snake_case:` sections, duplicated headers, unfamiliar
+  wording) as Existing text. Write fields in the forms below so a person can edit
+  them there.
+- `[Shot 1]` has no timestamp. Each later `[Shot N]` starts `At MM:SS.mmm,` and
+  those starts must increase, land on distinct frames and stay inside the box's
+  played length. In a continuing box the timestamp is on H3's clock, which includes
+  the carried frames: native seconds = playback seconds + carried frames / 24. A
+  stage whose time falls inside the replay is left as written. After the time,
+  `the camera cuts to a new shot.` or `the view continues without a cut.` marks
+  the transition; other wording is kept as custom.
+- Field syntax the Studio reads and writes:
+  - Definition: `<Subject 1> is Mara in a blue coat; appearance reference: @image17`
+    (zero or more `; <role> reference: @slot` sources). A standalone picture,
+    video or audio definition uses its stable slot, `@image17 is the opening frame.`
+  - Summary: `[keyframe completion + reference generation] One paragraph.` The
+    bracketed task types are optional.
+  - Retention: `<Subject 1> (appears in [Shot 1], [Shot 3]): fully_preserved -
+    Her coat stays blue.` or `@image18 ([Shot 1] first frame): weak_reference -
+    …`. Visual markers are `fully_preserved`, `partially_preserved`,
+    `attribute_transfer` and `weak_reference`. Audio markers are `fully_copy`,
+    `partially_copy`, `reference` and `weak_reference`. Other markers are kept but
+    flagged as outside H3's vocabulary.
+  - Typed dialogue (the box's `dialogue` is `manual`):
+    `<Subject 1> (S1), quietly, says: <d>[English] Hello.</d>`, with `sings` or
+    `says in an off-screen voiceover` (followed by `while the corresponding
+    on-screen characters' lips remain completely closed.`). Speaker IDs like `S1`
+    stay stable across shots.
+- Optional detail cues are plain lines inside a shot, after its description, one
+  per line start (outside `<d>`): `Style:`, `Composition:`, `Action:` (or `Action 1:`,
+  `Action 2:`…), `Camera movement:`, `Camera speed:`, `Camera amplitude:`,
+  `Dialogue:`, `Scene sound:` and, behind the form's Advanced switch, `Initial state:`,
+  `Trigger:`, `Contact:`, `Reaction:`, `Shot size:`, `Camera position:`,
+  `Camera direction:`, `Camera subject:`, `Focus:`, `Effect N trigger:`,
+  `Effect N:`, `Effect N motion:`, `Effect N response:`, `Physical response:`,
+  `Lighting:`, `Light direction:`, `Colour and contrast:`, `Reflections:`,
+  `Atmosphere:`, `Materials:`, `Depth of field:`, `Gaze:`, `Expression:`,
+  `Breathing:`, `Posture:`, `Hands:`, `Continuity:`, `Recovery:` and
+  `End state:`. A value runs until the next cue (the Studio indents its
+  continuation lines two spaces). A repeated cue is left as plain text. Cues are a Studio editing convention, not an H3 format
+  requirement; use them only where they help.
 - Dialogue and sung words go in `<d>…</d>`. Visible on-screen text is timed text
   (see `h3-continuity-sound`), never `<d>`.
 - Give each distinct action or view its own `[Shot N]` with time to play. A turn, a

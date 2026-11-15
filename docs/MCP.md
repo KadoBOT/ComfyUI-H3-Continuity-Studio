@@ -51,7 +51,7 @@ Each domain tool has a finite `action` enum, `target`, `arguments_json` (default
 | `check` | `boxes?`; continuity/colour review of rendered clips. |
 | `still_prompts` | `instructions?`, `source?` and generator-specific conversion options from the still-prompt preparation contract. Keeps manually edited prompt state. |
 | `templates` / `hosts` | No arguments; reads templates or configured host names without retrieving keys. |
-| `bible` | `action:build|link|apply|status|recompile`, plus `plan?`, `bible?`, `links?`, `boxes?`, `force?`, `merged?`. Returns transformed Timeline data, no save. |
+| `bible` | `action:build|link|apply|status|recompile`, plus `plan?`, `bible?`, `links?`, `boxes?`, `force?`, `merged?`; or `action:assign` with `box` and `entity` to add one Cast entity to one box as its next `<Subject N>`, returning `prompts`, `casts`, `schedules`, `subject` and `changed`. Returns transformed Timeline data, no save. |
 | `taken` | `job:<retained Story handle>`; acknowledges only after a finished proposal is retained locally. Does not apply it. |
 
 Write/rewrite/feedback/check/still_prompts require an executable snapshot, explicit Story node, revision and request key. Poll the returned `job`. Story polls return `result_available` and `data_json` containing the retained result; apply chosen content using `h3_save_project`. A lost start reply uses `current?recover=true` only with matching request attribution; an unrelated current job is never adopted. Story execution omits the browser's save-on-start workflow argument. Writer recovery/check files may be created by the existing host lifecycle; authored Timeline data is unchanged.

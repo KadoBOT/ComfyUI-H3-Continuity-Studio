@@ -154,7 +154,8 @@ later box.
 - Long boxes up to 991 frames with H3 Context Windows, merging a continuing chain
   into one box, and refining a rendered chain with H3 Join Chain
   (`h3-continuity-timing`).
-- Native prompt sections and `[Shot N]` stages, the shared prompt, and the
+- Native prompt sections (complete or partial), timed `[Shot N]` stages, the field
+  and cue-line syntax the Studio's Sections form edits, the shared prompt, and the
   effective-prompt inspection (`h3-continuity-references`).
 - Connected references (images, videos, video audio, audio), Timeline pictures,
   enabling, disabling and replacing references, and the `image_N` outputs
@@ -166,7 +167,7 @@ later box.
 - Audio lanes, `in_full_video`, voice clips, timed text and lettering contracts
   (`h3-continuity-sound`).
 - H3 Story writing, rewriting and feedback, templates, idea images, the bible,
-  looks, schedules, pins, the continuity check and drift (`h3-continuity-story`).
+  adding a Cast entity to a box, looks, schedules, pins, the continuity check and drift (`h3-continuity-story`).
 - Timeline API v1, the graph-preparation route, receipts, held jobs, artifacts,
   takes, attached or forked workflow export, and project and generation export
   (`h3-continuity-api`).

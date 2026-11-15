@@ -94,3 +94,9 @@ Each Cast change, **Build bible** included, is one step in the Studio's [editing
 ## Prepare references
 
 The optional **Prepare references** section creates reviewable image candidates for characters, scheduled looks, locations and arbitrary objects with a native still generator. See [First and last frames](../build/frame-guides.md#optional-reusable-images-for-cast).
+
+## Add an entry to a clip
+
+In the selected clip's Prompt tab, choose Add from Cast under In this clip. It inserts the next unused Subject using the entry's look and pictures at this clip, links it to Cast, and updates the schedule as one undo step. Adding an already linked entry does not duplicate it. Place uses the same insertion for locations. Adding a picture can change the clip's H3 reference mode; missing, disabled or excessive references must be fixed first.
+
+Remove from schedule leaves the prompt text in place. Subject text and its Cast link can be edited separately in Sections. Cast bindings belong to the main video when a clip has alternate videos; adding Cast opens that video's prompt.

@@ -82,6 +82,7 @@ export class TrackEditor {
   if(!document.getElementById('h3ct-track-editor-style')){const style=el('style');style.id='h3ct-track-editor-style';style.textContent=CSS;document.head.append(style);}
  }
  mutate(operation) {
+  if(this.editor.promptDraftsReady?.()===false)return false;
   if(this.editor.readOnly.length)return false;
   const state=structuredClone(this.editor.state),id=this.editor.box()?.id,bridged=bridgeEnds(state);
   try{const selected=operation(state);tracks.validate(state);
