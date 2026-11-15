@@ -10,16 +10,53 @@ CATEGORIES = ('cast', 'locations', 'props')
 ROLES = ('identity', 'appearance', 'location', 'prop', 'scene_layout')
 HASH = re.compile(r'[a-f0-9]{64}')
 NO_TEXT = 'The image contains no text, letters or numbers.'
-CHARACTER_SHEET = ('A character reference sheet on a plain ivory background{look}. Left: a large close-up of the face or head, '
-                   'seen from the front. Right: the full body from head to feet in a relaxed neutral stance, seen from the front. '
-                   'Even, soft light; no scenery, props or other characters. ' + NO_TEXT + '\nCharacter: ')
+CHARACTER_SHEET = (
+    'A 16:9 landscape character reference sheet{look}. Clean ivory background, six equal-width vertical columns separated by thin rules and generous gutters. The sheet is purely visual, with blank ivory margins and unmarked panels.\n'
+    '\n'
+    'FACE RULE\n'
+    'The face appears exactly once on the entire sheet: in the headshot in columns 1-2. That headshot shows the head only, with NO shoulders, NO chest, NO torso, NO arms and NO clothing. Columns 3, 4, 5 and 6 contain NO head, NO face and NO hair. Every body figure is cut off at the base of the neck by the top edge of its panel; the head lies outside the frame, above the panel edge.\n'
+    '\n'
+    'LAYOUT\n'
+    'Columns 1-2 (merged): one tight headshot of the face, floating in the vertical center of the panel like a cut-out head study. It runs from the top of the head to just below the chin, ending in a short stretch of upper neck that fades into the ivory. Plain empty ivory fills the panel above and below the head. This is the ONLY head and the ONLY face on the sheet.\n'
+    'Column 3: front body view, neck-down only.\n'
+    'Column 4: true 90-degree profile body view, neck-down only, facing left, showing the left side.\n'
+    'Column 5: back body view, neck-down only.\n'
+    'Column 6: relaxed standing body view, neck-down only.\n'
+    '\n'
+    'Each of the four body panels is framed from the collarbone down to the floor. The figure fills the panel height, with the shoulders touching the top edge, so there is no room above the shoulders for a head. Each panel shows shoulders, torso, arms, hands, legs and feet only. All four figures share one scale and one floor baseline, with clear ivory space around every hand and foot.\n'
+    '\n'
+    'FACE (columns 1-2 only, head only)\n'
+    'An extreme close-up of the face, front-facing, filling the width of the panel, in soft even studio light, gaze to camera. Take every facial feature, skin, eyes, hair and expression from the character description below. The image ends just under the chin: only bare upper neck, then ivory.\n'
+    '\n'
+    'BODY (columns 3-6 only)\n'
+    'The same body in every body panel, with the build, proportions, skin and outfit from the character description below. Hands open and relaxed with five fingers each.\n'
+    '\n'
+    'TURNAROUND (columns 3-5, faceless, neck-down)\n'
+    'Neutral standing pose in all three views: arms held slightly away from the torso, legs slightly apart, feet flat on the floor. In the profile view the near arm hangs slightly forward and the far leg is a half-step back, so both arms and both legs can be seen. The same outfit and carried items in all three. Flat, even studio lighting on ivory. No head, face or hair in any of these three panels.\n'
+    '\n'
+    'RELAXED VIEW (column 6, faceless, neck-down)\n'
+    'The same body in the same outfit, cut off at the base of the neck by the top edge of the panel, standing relaxed with the weight on one leg and both arms loose at the sides, hands visible. Flat, even studio lighting on ivory. No head, face or hair in this panel.\n'
+    '\n'
+    'FINAL CHECK\n'
+    'Columns 1-2: a head-only close-up, ending under the chin, with no shoulders, body or clothing. Columns 3-6: four neck-down body views with no head, no face and no hair. No extra portraits, busts or head studies. Same body, same proportions, same scale throughout.\n'
+    + NO_TEXT + '\nCharacter: ')
 LOCATION_GRID = ('A location reference sheet: one image divided into a grid of 2 rows and 2 columns by thin ivory gutters, '
                  'showing the same place from four clearly different camera positions: in row 1, column 1, a wide establishing '
                  'view from the front; in row 1, column 2, the reverse view from the opposite side, looking back the other way; '
                  'in row 2, column 1, a low ground-level view from one side; in row 2, column 2, a high view looking down on the '
-                 'whole place. No two panels repeat the same viewpoint. All four panels show one moment: the same time of day, '
+                 'whole place. If the place has an interior (a booth, stall, room, building or vehicle you can step into), one of '
+                 'the four panels, row 2, column 2, instead shows that interior from the inside, with its fittings, surfaces and '
+                 'the way in visible; otherwise row 2, column 2 stays the high view. No two panels repeat the same viewpoint. '
+                 'All four panels show one moment: the same time of day, '
                  'lighting, layout and materials. The location is empty: '
                  'no people, characters, animals or creatures appear in any panel. ' + NO_TEXT + '\nLocation: ')
+OBJECT_GRID = ('An object reference sheet: one image on a plain ivory background, divided into a grid of 2 rows and 2 columns by '
+               'thin rules and generous gutters, showing the same single object from four clearly different angles, each panel '
+               'floating alone in blank ivory: in row 1, column 1, a front view; in row 1, column 2, a true side profile view; '
+               'in row 2, column 1, a back view; in row 2, column 2, a three-quarter view from slightly above. Only the object '
+               'appears: no hands, people, scenery, table, shadows or other props. The object keeps the same size, shape, '
+               'colours, materials, wear and markings in every panel, with an equal scale and clear ivory space around it. '
+               'Flat, even studio lighting. ' + NO_TEXT + '\nObject: ')
 PEOPLE = re.compile(r'\b(characters?|people|persons?|figures?|actors?|crowds?)\b', re.I)
 
 
@@ -280,7 +317,9 @@ def prepare(body):
                 prompt = CHARACTER_SHEET.format(look=' of the same character as the identity reference, wearing the '
                                                 'appearance described below')+prompt
             elif row['category']=='cast':
-                prompt = CHARACTER_SHEET.format(look='')+prompt
+                prompt = CHARACTER_SHEET.format(look=' for the character described below')+prompt
+            elif row['category']=='props':
+                prompt = OBJECT_GRID+prompt
         style = _style(document, row)
         if style:
             prompt += '\nVisual style: '+style
