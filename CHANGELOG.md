@@ -9,6 +9,16 @@ All notable changes to H3 Continuity Studio are recorded here. Versions follow [
 - **Scene maps per clip.** A clip's **Scene map** switch adds a top-down plan with the camera and characters, edited on its own page with **Opening** and **End** tabs. Fresh T2VA and Ref2VA clips get the map in words on their first shot; Ref2VA clips can also send the map picture as a storyboard reference. Pixel still recipes get the map as a 1 MP reference, with the end layout for Last stills. A continuing clip starts where the previous clip's map ended and keeps its own copy if the link breaks. Markers can be linked to Cast entries. Projects with a map switched on require `scene-map-1`; older versions open them read-only.
 - **H3 Scene Map node.** Draws a map from a picture for still generators in a graph, with a line of text that describes it.
 
+## [1.0.1] - 2026-11-15
+
+### Changed
+
+- **Cast, location and prop reference sheets.** A character sheet is a six-column landscape sheet with one head-only close-up and four neck-down body views, so the face is drawn once. A location grid swaps its high view for an interior view when the place has an inside. Props get a 2x2 ivory sheet of the object alone from four angles.
+
+### Fixed
+
+- **Choosing a finished still candidate in Shots.** Candidates now sit directly under the image instead of below the prompt summary and seed controls, the image carries a **Use as guide** button when it previews a candidate, and a finished generation announces its new candidates and scrolls them into view.
+
 ## [1.0.0] - 2026-11-14
 
 The first stable release. Projects saved with 0.x open as one video track with their original timing and video stacks, without rerendering. Older versions open projects that use several tracks read-only.

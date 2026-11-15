@@ -14,13 +14,13 @@ import { WATCH_EVENTS, idleWatch, progressText, watchEvent } from './h3c_render_
 import { DEFAULT_AHEAD, QueueFeed, feedNote, queueAhead } from './h3c_queue_feed.mjs?v=9392f926e4e3';
 import { studio } from './h3c_studio.mjs?v=a10f80eb9864';
 import { FACE_HEIGHT, TimelineFace } from './h3c_timeline_face.mjs?v=da3c2784b5ea';
-import { TimelineEditor } from './h3c_timeline_editor.mjs?v=102f047a4a38';
+import { TimelineEditor } from './h3c_timeline_editor.mjs?v=6b9e2fc4e9fc';
 import { referenceFile, referenceSource, referencePools, referenceType, effectiveRefmods, parseState, serialize, unknownFeatures, readOnlyNote } from './h3c_timeline_model.mjs?v=5070c7d0834c';
 import {referenceImageFile} from './h3c_reference_sources.mjs?v=24e5526a84b7';
 import { pictureRefs } from './h3c_pictures.mjs?v=f1d097a04705';
 import { voiceRefs } from './h3c_voices.mjs?v=be586adb7994';
 import {captureRecipe,captureTimelineId,captureStillBody,stillTimelineBody,recipeControls,StillClient,isolateVideoPrompt,videoOutputs,hasVideoOutput as compiledVideoOutput,graphWiring} from './h3c_stills.mjs?v=1686910ae268';
-import {boundarySnapshot} from './h3c_frame_images.mjs?v=8caffbab50c5';
+import {boundarySnapshot} from './h3c_frame_images.mjs?v=0206a1f3168b';
 import {stillPromptSource,sameStillPromptSource} from './h3c_still_prompt_preparation.mjs?v=9ea1bfd9b6b5';
 import { TakesClient } from './h3c_takes.mjs?v=b114733460bb';
 import {ProjectSession, forkProject, parseJSON, projectErrorMessage, stringifyJSON} from './h3c_project.mjs?v=0882b8a6265a';

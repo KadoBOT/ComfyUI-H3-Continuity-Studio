@@ -12,7 +12,7 @@ import * as videoLayers from './h3c_layers.mjs?v=5070c7d0834c';
 import {audioSourceLocked} from './h3c_audio_windows.mjs?v=cdefbd77b246';
 import { AudioLanes } from './h3c_audio_lanes.mjs?v=3302eeddfbae';
 import { shotFrames, frameTargets, syncTargets, acceptedGuideFrames, endpointGuide, endpointReference, adoptEndpointGuides } from './h3c_shot_preview.mjs?v=5070c7d0834c';
-import {FrameImages, targetLabel, imageDrop} from './h3c_frame_images.mjs?v=8caffbab50c5';
+import {FrameImages, targetLabel, imageDrop} from './h3c_frame_images.mjs?v=0206a1f3168b';
 import { splitBox, splitTiming } from './h3c_shot_split.mjs?v=df3966ec1d8a';
 import { fillReferenceSwitches } from './h3c_reference_switches.mjs?v=e94b5b02e02b';
 import { ReferenceReplacements } from './h3c_reference_replacements.mjs?v=1fc6f6d2c2ce';
@@ -269,6 +269,10 @@ const CSS = `
 .h3ct-image-details > summary:focus-visible { outline: 2px solid #8fbcff; }
 .h3ct-image-details > .h3ct-field, .h3ct-image-details > .h3ct-row { margin: 6px 0; }
 .h3ct-image-details p { white-space: pre-wrap; overflow-wrap: anywhere; }
+/* Candidates sit directly under the image, so keep the image modest while there are some to choose from. */
+.h3ct-has-candidates .h3ct-image-hero .h3ct-image-thumbnail img { max-height: 170px; }
+.h3ct-candidate-picker { display: flex; flex-direction: column; gap: 6px; }
+.h3ct-candidate-picker[hidden] { display: none; }
 .h3ct-candidates { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; }
 .h3ct-candidate { display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: 6px; border: 1px solid #465066; border-radius: 4px; }
 .h3ct-candidate > strong { font-size: 12px; }

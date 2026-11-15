@@ -95,8 +95,9 @@ Projects saved with earlier guide splits keep their boxes, prompts, guides and j
 
 The **Prepare references** section on the [Cast page](../story/cast.md) creates reviewable candidates for characters, scheduled appearances, locations and props before you generate First, Last or Shot images. The three generation switches start off and are independent.
 
-- **Characters and looks** become a character sheet on a plain ivory background: a close-up of the face on the left and the full body on the right.
-- **Locations** become one image split into 2 rows and 2 columns, showing the same empty place from four camera positions. No people or animals are drawn in.
+- **Characters and looks** become a landscape character sheet on a plain ivory background with six columns. The face appears once, as a head-only close-up in the first two columns; the other four columns are neck-down body views (front, profile, back and relaxed) so no second face competes with it.
+- **Locations** become one image split into 2 rows and 2 columns, showing the same empty place from four camera positions. If the place has an interior, such as a food stall booth, one of the four is a view from the inside. No people or animals are drawn in.
+- **Props** become one image split into 2 rows and 2 columns on a plain ivory background, showing only the object from four angles (front, side, back and three-quarter).
 - The Story style goes along, minus sentences that name another character. Location sheets also leave out style sentences about characters or people, so a line such as "orange belongs only to her jacket" no longer paints that character into every picture.
 
 !!! warning "Experimental geometry"

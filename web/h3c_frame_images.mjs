@@ -132,8 +132,11 @@ export class FrameImages {
     this.candidateTitle=el('strong',null,'h3ct-candidate-title');
     this.candidateHint=el('p','Candidates stay separate until you choose Use as guide.','h3ct-hint');
     const head=el('div',null,'h3ct-row h3ct-image-head');head.append(this.titleEl);
-    this.root.append(head,this.acceptedEl,actions,this.noteEl,this.guideSourceEl,this.boundaryHintEl,this.endingEl,this.additionalReferencesEl,this.promptSummary,
-      this.candidateTitle,this.candidatesEl,this.candidateHint,this.seedSection.root,this.recoveryEl);
+    // Candidates sit right under the image so a finished generation can be chosen without scrolling past the prompt.
+    this.candidatePicker=el('div',null,'h3ct-candidate-picker');this.candidatePicker.append(this.candidateTitle,this.candidatesEl,this.candidateHint);
+    this.root.append(head,this.acceptedEl,this.candidatePicker,actions,this.noteEl,this.guideSourceEl,this.boundaryHintEl,this.endingEl,this.additionalReferencesEl,this.promptSummary,
+      this.seedSection.root,this.recoveryEl);
+    this.candidateCounts=new Map();
   }
   note(text) {
     this.noteEl.textContent=text;
@@ -321,6 +324,8 @@ export class FrameImages {
     if(preview||reference?.preview) {
       this.acceptedEl.append(this.image(preview,reference?`Frame @${reference.name}`:guide?(frameMode?'Accepted frame':'Accepted guide'):'Candidate',reference?.preview));
       const caption=el('div',null,'h3ct-row');caption.append(el('span',reference?`Frame in use · @${reference.name} · Change in Settings`:guide?(frameMode?'Frame in use':'Guide in use'):'Candidate preview',guide||reference?'h3ct-guide-status':'h3ct-hint'));
+      const previewed=!guide&&!reference?saved?.images?.[0]:null;
+      if(previewed){const use=button('Use as guide',()=>this.accept(previewed.file,{candidate:previewed}));use.classList.add('h3ct-primary');caption.append(use);}
       if(guide) caption.append(button(frameMode?'Remove frame':'Remove guide',()=>this.removeGuide()),button('Use as scene anchor',()=>this.useSceneAnchor(guide)));
       this.acceptedEl.append(caption);
     } else {
@@ -337,9 +342,18 @@ export class FrameImages {
       const choose=button('Use selected scene anchor',()=>{if(select.value==='')throw Error('Choose an accepted scene anchor.');return this.useAcceptedAnchor(structuredClone(anchors[Number(select.value)]));});
       const row=el('div',null,'h3ct-row');row.append(select,choose);this.acceptedEl.append(row);
     }
-    this.candidateTitle.textContent=`Candidates · ${saved?.images?.length??0}`;
-    this.candidateTitle.hidden=!(saved?.images?.length);
-    this.candidateHint.hidden=!(saved?.images?.length);
+    const count=saved?.images?.length??0,countKey=`${this.boxId}:${key(this.target)}`,before=this.candidateCounts.get(countKey);
+    this.candidateCounts.set(countKey,count);
+    this.root.classList.toggle('h3ct-has-candidates',count>0);
+    this.candidateTitle.textContent=`Candidates · ${count} · choose one to use as the guide`;
+    this.candidatePicker.hidden=!count;
+    this.candidateTitle.hidden=!count;
+    this.candidateHint.hidden=!count;
+    if(before!==undefined&&count>before) {
+      // A generation just finished: say so and bring the new candidates into view.
+      this.note(`${count-before} new candidate${count-before===1?'':'s'} ready. Choose Use as guide on the one you want.`);
+      queueMicrotask(()=>this.candidatePicker.scrollIntoView?.({block:'nearest',behavior:'smooth'}));
+    }
     for (const [index,candidate] of (saved?.images ?? []).entries()) {
       const card=el('article',null,'h3ct-candidate');
       const use=button('Use as guide',()=>this.accept(candidate.file,{candidate}));use.classList.add('h3ct-primary');
