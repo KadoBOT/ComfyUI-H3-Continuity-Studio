@@ -41,7 +41,7 @@ export function readPromptFields(source,{tags=[]}={}) {
       return entryOf(source,part,'summary',{taskTypes:prefix?prefix[1].split(/\s*\+\s*/):[],text:prefix?part.value.slice(prefix[0].length):part.value});
     }
     const shot=/^\[Shot (\d+)\]$/.exec(part.label);
-    return entryOf(source,part,shot?'narrative':'existing',{text:part.value},shot?Number(shot[1]):null);
+    return entryOf(source,part,shot?'narrative':'existing',{text:shot?part.value.replace(/^At \d+:[0-5]\d\.\d{3},\s*/i,''):part.value},shot?Number(shot[1]):null);
   })}));
   return {source,sections,problems:[]};
 }
@@ -91,7 +91,8 @@ export function writePromptField(source,edit,{tags=[]}={}) {
     if(kind==='narrative') {
       // Existing shot labels and their original boundary remain owned by the shot editor.
       const label=/^\[Shot \d+\]\s*/.exec(entry.range.before);
-      if(label)text=label[0]+text;
+      const clock=/^At \d+:[0-5]\d\.\d{3},\s*/i.exec(entry.range.before.slice(label?.[0].length??0));
+      if(label)text=label[0]+(clock?.[0]??'')+text;
     }
     return replacePromptRanges(source,[{...entry.range,text}]);
   }

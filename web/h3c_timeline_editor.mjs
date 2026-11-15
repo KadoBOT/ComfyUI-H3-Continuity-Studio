@@ -550,10 +550,12 @@ export class TimelineEditor {
     this.promptEl.addEventListener('focus', () => { this.activePromptEl = this.promptEl; });
     const promptTabs = el('div', 'h3ct-prompt-tabs');
     this.sectionsButton = button('Sections', 'Edit subjects, shots and sound separately', () => {
+      if(this.promptDraftsReady?.()===false)return;
       this.rawPrompt = false;
       this.renderPrompt();
     });
     this.rawButton = button('Raw text', 'Edit the complete H3 prompt', () => {
+      if(this.promptDraftsReady?.()===false)return;
       this.rawPrompt = true;
       this.renderPrompt();
     });
@@ -875,6 +877,7 @@ export class TimelineEditor {
   }
 
   pick(id) {
+    if(this.promptDraftsReady?.()===false)return;
     this.picked = id === this.box()?.id ? null : id;
     this.renderTrack();
     this.renderPanel();
@@ -1031,6 +1034,7 @@ export class TimelineEditor {
 
   load() {
     this.editRevision=(this.editRevision??0)+1;
+    if(this.promptForm?.hasDrafts())this.promptForm.discardDrafts('Unsaved fields were discarded because the project or history changed.');
     this.replacements.close();
     this.state = model.parseState(this.host.read());
     syncTargets(this.state,this.host.context());
@@ -1160,6 +1164,7 @@ export class TimelineEditor {
   }
 
   select(index) {
+    if(index!==this.selected&&this.promptDraftsReady?.()===false)return;
     if (this.selected !== index) {
       this.selectedShot = 1;
       this.picked = null;
@@ -1173,6 +1178,7 @@ export class TimelineEditor {
   }
 
   addBox() {
+    if(this.promptDraftsReady?.()===false)return;
     if(tracks.enabled(this.state))return this.trackEditor.addClip();
     this.selected = model.addBox(this.state, this.host.context());
     this.commit();
@@ -1182,6 +1188,7 @@ export class TimelineEditor {
   // Moves the selected clip. A Continue clip that lands after a clip with several videos must become a Cut, so that
   // is asked first.
   move(delta) {
+    if(this.promptDraftsReady?.()===false)return;
     if(tracks.enabled(this.state))return this.trackEditor.move(delta);
     const context = this.host.context(), trial = model.parseState(model.serialize(this.state));
     model.moveBox(trial, this.selected, delta, context);
@@ -1194,6 +1201,7 @@ export class TimelineEditor {
   }
 
   duplicate() {
+    if(this.promptDraftsReady?.()===false)return;
     if(tracks.enabled(this.state))return this.trackEditor.duplicate();
     this.selected = model.duplicateBox(this.state, this.selected, this.host.context());
     this.commit();
@@ -1201,6 +1209,7 @@ export class TimelineEditor {
   }
 
   remove() {
+    if(this.promptDraftsReady?.()===false)return;
     const videos = 1 + (this.box()?.layers?.length ?? 0);
     if (videos > 1 && !globalThis.confirm?.(`Delete clip ${this.selected + 1} and its ${videos} videos?`)) return;
     if(tracks.enabled(this.state))return this.trackEditor.removeClip();
@@ -1211,12 +1220,14 @@ export class TimelineEditor {
   }
 
   async queue() {
+    if(this.promptDraftsReady?.()===false)return;
     await this.host.refresh?.();
     const remaining = this.remaining();
     if (remaining > 0) await this.submit(remaining);
   }
 
   async queueNext() {
+    if(this.promptDraftsReady?.()===false)return;
     await this.host.refresh?.();
     if (this.remaining() > 0) await this.submit(1);
   }
@@ -1224,6 +1235,7 @@ export class TimelineEditor {
   // Queues takes using the selected clip's seed mode; stop if its identity or position changes.
   async queueBox(count = 1) {
     const outcome = {requested:count, queued:0, remaining:count, retryable:false};
+    if(this.promptDraftsReady?.()===false)return outcome;
     if (!this.box() || this.readOnly.length || this.queuing || this.queueBatch || this.seedInput?.validity?.valid === false) return outcome;
     const index = this.selected, id = this.box().id, layer = this.pickedLayer()?.id ?? null;
     const same = () => this.state.boxes[index]?.id === id && this.box()?.id === id
@@ -1276,6 +1288,7 @@ export class TimelineEditor {
   // Whether the run was queued: false while another is being queued, or when queueing failed.
   // `layer` asks for one of a clip's other videos instead of a box or bridge; it keeps its own seed.
   async submit(count, box, bridge, receipt, layer = null) {
+    if(this.promptDraftsReady?.()===false)return false;
     if (this.readOnly.length || this.queuing || (bridge == null && this.seedInput?.validity?.valid === false)) return false;
     this.queuing = true;
     this.renderHead();
@@ -1302,6 +1315,8 @@ export class TimelineEditor {
       this.renderPanelInfo();
     }
   }
+
+  promptDraftsReady() {return this.promptForm?.canLeave()??true;}
 
   insert(text) {
     const area = this.activePromptEl ?? this.promptEl;
@@ -1345,6 +1360,7 @@ export class TimelineEditor {
   }
 
   resizeStart(event, index) {
+    if(this.promptDraftsReady?.()===false)return;
     if (event.button !== 0) return;
     event.preventDefault();
     event.stopPropagation();
@@ -2462,6 +2478,7 @@ export class TimelineEditor {
       for (const {target, movieFrame} of targets) {
         const label = targetLabel(target), name = target.kind === 'shot' ? `shot:${target.shot}` : target.kind;
         const mark = button('', `Clip ${index+1}, ${label}, movie frame ${movieFrame}`, () => {
+          if(this.promptDraftsReady?.()===false)return;
           this.selected=index;this.selectedShot=target.shot??1;
           this.frameImages.open(box.id,target);this.setTab('still');this.renderTrack();this.renderPanel();
           this.trackEl.dispatchEvent(new CustomEvent('h3c-show-page',{bubbles:true,detail:{page:'box'}}));
@@ -2539,6 +2556,7 @@ export class TimelineEditor {
     const row = el('div', 'h3ct-row');
     if (shot.shot === shotFrames(this.state, this.selected, this.host.context())[0].shot) return row;
     const split = button(`Split before Shot ${shot.shot}`, '', () => {
+      if(this.promptDraftsReady?.()===false)return;
       try {
         const timing = splitBox(this.state, this.selected, shot.shot, this.host.context());
         for (const changed of this.state.boxes.slice(this.selected)) this.statusById.delete(changed.id);

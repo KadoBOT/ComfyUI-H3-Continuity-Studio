@@ -14,7 +14,7 @@ import { WATCH_EVENTS, idleWatch, progressText, watchEvent } from './h3c_render_
 import { DEFAULT_AHEAD, QueueFeed, feedNote, queueAhead } from './h3c_queue_feed.mjs?v=9392f926e4e3';
 import { studio } from './h3c_studio.mjs?v=311deb67e090';
 import { FACE_HEIGHT, TimelineFace } from './h3c_timeline_face.mjs?v=f04cf4c6df21';
-import { TimelineEditor } from './h3c_timeline_editor.mjs?v=3884268a91ae';
+import { TimelineEditor } from './h3c_timeline_editor.mjs?v=e6f9b2565ae5';
 import { referenceFile, referenceSource, referencePools, referenceType, effectiveRefmods, parseState, serialize, unknownFeatures, readOnlyNote } from './h3c_timeline_model.mjs?v=a0c0634a00bf';
 import {referenceImageFile} from './h3c_reference_sources.mjs?v=551a25f87717';
 import { pictureRefs } from './h3c_pictures.mjs?v=b027b6118abb';
@@ -832,6 +832,7 @@ export class TimelineHost {
   }
 
   async generateStill(request) {
+    if(this.editor?.promptDraftsReady?.()===false)throw new Error('Finish or discard the unsaved prompt fields before generating.');
     const receipt=await this.stillClient.generate(request);
     this.recoverStills();return receipt;
   }
@@ -1041,6 +1042,7 @@ export class TimelineHost {
 
   // `layer` renders one of a clip's other videos by its id instead of a box or bridge.
   async queue(count, box, bridge, receipt, layer = null) {
+    if(this.editor?.promptDraftsReady?.()===false)throw new Error('Finish or discard the unsaved prompt fields before generating.');
     if (this.feed) throw new Error('A Render is still queueing runs. Press Stop first, or wait for it to finish.');
     if (this.project && layer != null) throw new Error("Managed jobs can't render a clip's other videos yet. "
       + 'Render this Timeline from its node in ComfyUI.');

@@ -18,6 +18,6 @@ export function formHarness({prompt=''}) {
   const panel=new PromptFormPanel(editor);editor.promptForm=panel;panel.render();
   return {panel,editor,history,queued:()=>queued,stored:()=>structuredClone(editor.state),input(label,value){
     const node=findAll(panel.root,n=>n.getAttribute?.('aria-label')===label)[0];
-    if(!node)throw new Error(`No field ${label}`);node.value=value;node.fire('input');
+    if(!node)throw new Error(`No field ${label}`);node.value=value;node.fire('input');if(node.tagName!=='TEXTAREA')node.fire('change');
   }};
 }

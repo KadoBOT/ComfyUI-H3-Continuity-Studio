@@ -25,3 +25,28 @@ test('summary task types are a multiple selection that generates the expected pr
   input.options[0].selected=true;input.options[1].selected=true;input.fire('change');
   assert.equal(h.stored().boxes[0].prompt,'summary:\n[keyframe completion + reference generation] A pause.');
 });
+test('invalid shot starts stay local and prevent navigation and generation until discarded',async()=>{
+  const prompt='integrated_multimodal_description:\n[Shot 1] A room.\n[Shot 2] At 00:02.000, the camera cuts to a doorway.';
+  const h=formHarness({prompt});h.editor.state.boxes.push({...h.editor.state.boxes[0],id:'b'});
+  h.input('Shot 2 start (seconds)','-1');
+  assert.equal(h.stored().boxes[0].prompt,prompt);assert.equal(h.panel.canLeave(),false);
+  h.editor.select(1);assert.equal(h.editor.selected,0);
+  await h.editor.queueBox(1);assert.equal(h.queued(),0);
+  h.panel.render();assert.equal(findAll(h.panel.root,n=>n.getAttribute?.('aria-label')==='Shot 2 start (seconds)')[0].value,'-1');
+  h.panel.discardDrafts();assert.equal(h.panel.canLeave(),true);assert.equal(h.stored().boxes[0].prompt,prompt);
+});
+test('later starts serialize clean seconds while Shot 1 never has a timestamp input',()=>{
+  const h=formHarness({prompt:'integrated_multimodal_description:\n[Shot 1] A room.\n[Shot 2] At 00:02.000, the camera cuts to a doorway.'});
+  assert.equal(findAll(h.panel.root,n=>n.getAttribute?.('aria-label')==='Shot 1 start (seconds)').length,0);
+  h.input('Shot 2 start (seconds)','2.5');
+  assert.match(h.stored().boxes[0].prompt,/At 00:02\.500,/);assert.equal(h.panel.hasDrafts(),false);
+});
+test('a project or history reload explicitly discards an incompatible structural draft',()=>{
+  const prompt='integrated_multimodal_description:\n[Shot 1] A room.\n[Shot 2] At 00:02.000, the camera cuts to a doorway.';
+  const h=formHarness({prompt});const saved=JSON.stringify(h.stored());
+  h.input('Shot 2 start (seconds)','-1');
+  h.editor.host.read=()=>saved;h.editor.replacements={close(){}};h.editor.cast={changed(){}};h.editor.render=()=>h.panel.render();
+  h.editor.load();
+  assert.equal(h.panel.hasDrafts(),false);assert.equal(h.stored().boxes[0].prompt,prompt);
+  assert.match(h.panel.root.textContent,/discarded.*history/i);
+});
