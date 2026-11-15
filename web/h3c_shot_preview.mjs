@@ -1,7 +1,7 @@
-import { promptShots } from './h3c_prompt_sections.mjs?v=b58f04f78a75';
-import { isFresh, globalFrame, lookAt, assemblePrompt, referenceEnabled } from './h3c_timeline_model.mjs?v=448aca934518';
+import { promptShots } from './h3c_prompt_sections.mjs?v=83b24a6e4d74';
+import { isFresh, globalFrame, lookAt, assemblePrompt, referenceEnabled } from './h3c_timeline_model.mjs?v=a0c0634a00bf';
 
-import {framePrompt} from './h3c_still_scene.mjs?v=1ca16919a3f9';
+import {framePrompt} from './h3c_still_scene.mjs?v=1b462c5a7bd1';
 import {preparedStillPrompt} from './h3c_still_prompt_preparation.mjs?v=9ea1bfd9b6b5';
 
 const SHOT = /^\[Shot (\d+)\]$/i;
