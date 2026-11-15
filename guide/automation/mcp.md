@@ -22,6 +22,17 @@ uv run --project "/opt/Continuity Studio/mcp_adapter" h3c-mcp --studio-url http:
 
 `--check` prints one JSON diagnostic with the host version, skill/profile counts and render readiness. It queues no work. Ordinary server mode reserves stdout for MCP and sends diagnostics to stderr. The first uv launch installs dependencies; run the check before registering the server.
 
+To run a single tool without registering the server, for scripts or to try a request, pass `--call` with the tool name and `--arguments` with its arguments. Arguments can be a JSON object, `@file` or `-` for standard input:
+
+```powershell
+'{"kind":"native"}' | uv run --project "C:\AI Tools\Continuity Studio\mcp_adapter" h3c-mcp --studio-url http://127.0.0.1:8188 --call h3_list_projects --arguments -
+uv run --project "C:\AI Tools\Continuity Studio\mcp_adapter" h3c-mcp --call h3_get_project --arguments "@C:\My Projects\target.json"
+```
+
+Piping or a file avoids shell quoting differences; Windows PowerShell 5.1 strips the inner quotes from inline JSON.
+
+The tool's result is printed as one JSON line. Arguments are validated as an MCP client's would be. On failure, an `{"ok":false,"error":...}` diagnostic goes to stderr with exit code 1. Each call is independent: keep revisions, request keys and job handles yourself, and use the same `--state-dir` for job tools.
+
 An isolated venv is an alternative, including for machines without uv:
 
 ```powershell

@@ -146,6 +146,7 @@ without applying it. Cancel is scoped to that Story job.
 
 `h3_library` covers saved story versions, display names, deletion and named
 checkpoints. Checkpoints keep their pinned media and cannot be edited; restore
-returns an independent editable copy. Generation export/import verifies local
+returns an independent editable copy. `duplicate` copies a story with its renders
+under a new `title`, optionally from a corrected Timeline. Generation export/import verifies local
 installation media rather than embedding files or replaying old jobs. Browser
 Undo/Redo (including Undo last Write) is separate from saved revisions.

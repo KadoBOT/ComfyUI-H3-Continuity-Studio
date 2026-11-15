@@ -16,8 +16,12 @@ the client cannot activate extension skills. Filesystem installation remains
 available through `skills/install.py`.
 
 1. `h3_list_projects` selects managed IDs or saved native graph/Timeline/Story
-   identities. `h3_get_project` returns the full `document_json` string and
-   revision. Preserve exact uint64 seeds and unknown metadata when parsing it.
+   identities; native library rows carry the story `title` and `sequence`.
+   `h3_get_project` returns the full `document_json` string and revision.
+   Preserve exact uint64 seeds and unknown metadata when parsing it. A non-empty
+   `unsupported_features` means this host cannot read the Timeline: saves fail
+   and the Studio opens it read-only. Make an editable copy with `h3_library`
+   `duplicate` and a corrected `timeline_json` rather than editing the source.
 2. Save a complete authored replacement using `h3_save_project` and the returned
    revision. Reread conflicts; never automatically merge or force around busy,
    checkpoint or render-ownership guards. There is no browser synchronization.
@@ -36,9 +40,11 @@ available through `skills/install.py`.
    using a deliberate save/acceptance under the current project revision.
    Late results remain retrievable without replacing newer authored state.
 6. `h3_takes` lists/uses takes, rates native takes and previews scoped deletion
-   before applying it. `h3_library` handles saved versions/checkpoints and
-   generation history/transfer. Archives verify installation files and never
-   replay jobs. `h3_inspect` covers status, metadata, references and node schemas.
+   before applying it. `h3_library` handles saved versions/checkpoints, titled
+   duplicates and generation history/transfer. Archives verify installation files
+   and never replay jobs. `h3_inspect` covers status, metadata, references, node
+   schemas and `prompt_fields`, which reads a prompt as the Sections form does.
+   `python -m h3c_mcp --call TOOL --arguments JSON` runs one tool without a client.
 
 Uploads read adapter-local allowed roots and send original bytes; managed artifact
 downloads verify immutable hash/size. Native file descriptors refer to the host.

@@ -59,6 +59,23 @@ class NativeProjectsTest(unittest.TestCase):
         self.assertEqual(context['name'], 'native-study')
         self.assertEqual(context['workflow']['ui']['id'], 'graph-a')
 
+    def test_read_reports_timeline_features_this_host_cannot_read(self):
+        story_library.save('graph-a', '1', self.ui, 'native-study')
+        self.assertEqual(projects.read(self.target)['unsupported_features'], [])
+        line = json.loads(self.ui['nodes'][1]['widgets_values'][1])
+        line['requires'] = ['future-feature-9', 'timeline-tracks-1']
+        self.ui['nodes'][1]['widgets_values'][1] = json.dumps(line)
+        story_library.save('graph-a', '1', self.ui, 'native-study', library_revision=1)
+        self.assertEqual(projects.read(self.target)['unsupported_features'], ['future-feature-9'])
+
+    def test_listed_library_projects_carry_their_title_and_sequence(self):
+        self.ui['nodes'][0]['widgets_values'][0] = json.dumps({'title': 'A study in rain', 'timeline': '2'})
+        story_library.save('graph-a', '1', self.ui, 'native-study')
+        row = next(r for r in projects.list_projects()['projects'] if r['target']['graph'] == 'graph-a')
+        self.assertEqual((row['title'], row['sequence']), ('A study in rain', 'native-study'))
+        self.assertRegex(row['library_id'], '^[a-f0-9]{64}$')
+        self.assertNotIn('checkpoint_name', row)
+
     def test_registration_and_edits_update_execution_inputs(self):
         before = self.registered()
         self.assertTrue(before['execution_ready'])

@@ -116,7 +116,7 @@ def _control(workflow, node, name):
         name = 'value'
 
 
-def _clone(graph, story, workflow, sequence):
+def _clone(graph, story, workflow, sequence, title=None, timeline_text=None):
     # Use a new library identity before saving anything: never flush/overlay a divergent tab's local content.
     workflow = copy.deepcopy(workflow)
     workflow.setdefault('extra', {})['h3c_story_id'] = graph
@@ -150,11 +150,14 @@ def _clone(graph, story, workflow, sequence):
             values, index = _control(workflow, source, name)
             fields[name] = values[index]
     state['timeline'] = str(target['id'])
+    if title is not None:
+        state['title'] = title
     fields['state'] = json.dumps(state, ensure_ascii=False)
     # Existing interchange verifies/copies native files and remaps embedded media descriptors. No hardlinks:
     # regenerating or deleting a take must never change a checkpoint's bytes.
     with nodes.SEQUENCE_LOCK:
-        archive = generations.export_generation({'name': sequence, 'timeline': line_values[line_index], 'story': fields})
+        line = line_values[line_index] if timeline_text is None else timeline_text
+        archive = generations.export_generation({'name': sequence, 'timeline': line, 'story': fields})
         result = generations.import_generation(archive, str(uuid.uuid4()))
         _retarget_renders(archive, result)
     workflow = generations._remap(workflow, sequence, result['sequence'])
@@ -201,6 +204,25 @@ def save(graph, story, workflow, sequence, name):
         value.update(checkpoint_name=name, source_graph=graph)
         saved_state.write('library', identity, 'library', value)
     return result
+
+
+def duplicate(graph, story, workflow, sequence, title=None, timeline_text=None):
+    """An editable library copy with its own renders; timeline_text replaces the Timeline the copy starts from."""
+    if title is not None and (not isinstance(title, str) or not 1 <= len(title.strip()) <= 120):
+        raise ValueError('Give the copy a title of 1–120 characters.')
+    if timeline_text is not None:
+        if not isinstance(timeline_text, str):
+            raise ValueError('The replacement Timeline must be JSON text.')
+        timeline.parse(timeline_text)
+    if not isinstance(workflow, dict) or (workflow.get('extra', {}).get('h3c_story_id') or workflow.get('id')) != graph:
+        raise ValueError('The copy needs its original workflow identity.')
+    identity, copied, folder = _clone(graph, story, workflow, sequence, title and title.strip(), timeline_text)
+    result = story_library.save(identity, story, copied, folder)
+    fields = story_library._fields(copied)
+    node = next(node for node in copied['nodes']
+                if node['type'] == 'H3C_Timeline' and node.get('properties', {}).get('h3c_fork_sequence') == folder)
+    return dict(id=result['id'], graph=identity, story=str(story), timeline_node=str(node['id']), sequence=folder,
+                title=fields.get((str(story), 'state'), {}).get('title') or 'Untitled story')
 
 
 def restore(identity):

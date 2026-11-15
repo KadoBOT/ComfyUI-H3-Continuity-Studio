@@ -68,6 +68,32 @@ class DomainTest(unittest.TestCase):
                 if action == 'delete_preview':
                     self.assertFalse(json.loads(self.host.requests[-1]['body'])['apply'])
 
+    def test_duplicate_copies_the_saved_story_and_returns_the_copy_target(self):
+        copy = {'id': 'f' * 64, 'graph': 'copy', 'story': '1', 'timeline_node': '2', 'sequence': 'generation_x', 'title': 'Copy'}
+        self.route('POST', '/h3c/stories/duplicate', copy)
+        line = {'version': 1, 'boxes': [], 'requires': []}
+        result = self.tools.h3_library('duplicate', self.target, json.dumps({'title': 'Copy', 'timeline_json': line}), self.rev)
+        body = json.loads(self.host.requests[-1]['body'])
+        self.assertEqual(body, {'graph': 'g', 'story': '1', 'workflow': {'nodes': []}, 'sequence': 'native',
+                                'title': 'Copy', 'timeline_json': json.dumps(line, separators=(',', ':'))})
+        self.assertEqual(result['target'], {'kind': 'native', 'graph': 'copy', 'timeline_node': '2', 'story_node': '1'})
+        self.assertEqual(json.loads(result['data_json']), copy)
+        with self.assertRaisesRegex(StudioError, 'arguments'):
+            self.tools.h3_library('duplicate', self.target, '{"name":"Copy"}', self.rev)
+
+    def test_prompt_fields_read_a_given_prompt_or_a_saved_box(self):
+        self.route('POST', '/h3c/prompts/fields', {'summary': {'shots': 1}})
+        tags = [{'tag': '<Picture 1>', 'name': 'image1'}]
+        self.tools.h3_inspect('prompt_fields', self.target, json.dumps({'prompt': '[Shot 1] A.', 'tags': tags}))
+        self.assertEqual(json.loads(self.host.requests[-1]['body']), {'prompt': '[Shot 1] A.', 'tags': tags})
+        self.assertFalse(any(r['path'] == '/h3c/agent/projects/context' for r in self.host.requests))
+        result = self.tools.h3_inspect('prompt_fields', self.target, '{"box":"a","layer":"v2"}', self.rev)
+        body = json.loads(self.host.requests[-1]['body'])
+        self.assertEqual(body, {'timeline': '{"version":1,"boxes":[]}', 'box': 'a', 'layer': 'v2'})
+        self.assertEqual(json.loads(result['data_json']), {'summary': {'shots': 1}})
+        with self.assertRaisesRegex(StudioError, 'prompt'):
+            self.tools.h3_inspect('prompt_fields', self.target, '{"box":"a","name":"x"}', self.rev)
+
     def test_managed_take_cleanup_cannot_use_native_route(self):
         target = Target(kind='managed', id='p')
         for action in ('delete_preview', 'delete_apply', 'rate'):

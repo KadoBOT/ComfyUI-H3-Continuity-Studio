@@ -6,7 +6,7 @@ import json
 from aiohttp import web
 from .timeline_api.contracts import APIError
 
-from . import reference_assets, saved_state, story_library, story_names, story_bible, story_job, story_keys, story_templates, refmods, audio_tracks, takes, stills, timeline_prepare as preparation
+from . import prompt_fields, reference_assets, saved_state, story_library, story_names, story_bible, story_job, story_keys, story_templates, refmods, audio_tracks, takes, stills, timeline_prepare as preparation
 
 STATUS_ROUTE = "/h3c/timeline/status"
 REGENERATION_ROUTE = "/h3c/timeline/regeneration"
@@ -76,6 +76,24 @@ async def story_checkpoint_restore(request):
             raise ValueError('Wait for Story writing and rendering to finish before opening a checkpoint.')
         return web.json_response(await asyncio.to_thread(story_library.restore_checkpoint, body['id']))
     except (ValueError, OSError, KeyError, TypeError, APIError) as error:
+        return web.json_response({'error': str(error)}, status=400)
+
+
+async def story_duplicate(request):
+    try:
+        body = await _object(request) or {}
+        if story_job.JOBS.busy('') or story_job.JOBS.comfy.busy():
+            raise ValueError('Wait for Story writing and rendering to finish before duplicating a story.')
+        return web.json_response(await asyncio.to_thread(story_library.duplicate, body['graph'], body['story'], body['workflow'],
+                                                         body['sequence'], body.get('title'), body.get('timeline_json')))
+    except (ValueError, OSError, KeyError, TypeError, APIError) as error:
+        return web.json_response({'error': str(error)}, status=400)
+
+
+async def prompt_field_view(request):
+    try:
+        return web.json_response(prompt_fields.request(await _object(request) or {}))
+    except (ValueError, TypeError) as error:
         return web.json_response({'error': str(error)}, status=400)
 
 
@@ -446,6 +464,8 @@ def register():
     routes.post('/h3c/stories')(story_library_save)
     routes.post('/h3c/stories/checkpoint')(story_checkpoint_save)
     routes.post('/h3c/stories/restore')(story_checkpoint_restore)
+    routes.post('/h3c/stories/duplicate')(story_duplicate)
+    routes.post('/h3c/prompts/fields')(prompt_field_view)
     routes.post('/h3c/stories/delete')(story_library_delete)
     routes.post('/h3c/stories/rename')(story_library_rename)
     from .timeline_api import routes as project_routes

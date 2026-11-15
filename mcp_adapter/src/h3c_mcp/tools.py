@@ -246,9 +246,11 @@ class StudioTools:
             body['apply'] = action == 'delete_apply'
         return self._answer(self._post('/h3c/timeline/takes' + routes[action], body))
 
-    def h3_library(self, action: Literal['list', 'load', 'rename', 'delete', 'checkpoint', 'restore', 'generation_start', 'generation_history', 'generation_export', 'generation_preflight', 'generation_import'],
+    def h3_library(self, action: Literal['list', 'load', 'rename', 'delete', 'checkpoint', 'restore', 'duplicate', 'generation_start', 'generation_history', 'generation_export', 'generation_preflight', 'generation_import'],
                    target: Target, arguments_json: str = '{}', expected_revision: dict[str, StrictInt] | None = None) -> dict[str, Any]:
         """Native library: list; load/delete/restore {id}; rename {key,name}; checkpoint {name} uses saved UI.
+        Duplicate {title?,timeline_json?} copies the saved story and its renders into an editable story, optionally from a
+        corrected Timeline (e.g. dropping requires this host cannot read), and returns the copy's target; the source is unchanged.
         Generation start/history/export use saved context; export {references?}; preflight/import {archive,request_id?}.
         Start/import/restore return a new identity; explicitly register/save it before editing. Archives verify host-local media.
         """
@@ -257,6 +259,16 @@ class StudioTools:
         args = _object(arguments_json)
         if action in ('list', 'load'):
             return self._answer(self.client.json('/h3c/stories' + ('?' + urlencode({'id': args['id']}) if action == 'load' else '')))
+        if action == 'duplicate':
+            if not set(args) <= {'title', 'timeline_json'} or not target.story_node:
+                raise StudioError('Duplicate a target with its story_node, using only title and timeline_json arguments.', code='invalid_arguments')
+            if isinstance(args.get('timeline_json'), dict):
+                args['timeline_json'] = encoded(args['timeline_json']).decode()
+            context, _ = self._domain(target, expected_revision, {})
+            data = self._post('/h3c/stories/duplicate', dict(graph=target.graph, story=target.story_node,
+                              workflow=context['workflow']['ui'], sequence=context['name'], **args))
+            copy = Target(kind='native', graph=data['graph'], timeline_node=data['timeline_node'], story_node=data['story'])
+            return {'target': copy.wire(), **self._answer(data)}
         routes = {'rename': '/h3c/stories/rename', 'delete': '/h3c/stories/delete', 'checkpoint': '/h3c/stories/checkpoint',
                   'restore': '/h3c/stories/restore', **{f'generation_{a}': f'/h3c/generations/{a}' for a in ('start', 'history', 'export', 'preflight', 'import')}}
         if action not in routes:
@@ -273,13 +285,22 @@ class StudioTools:
                 body['story'] = {key.removeprefix(str(target.story_node) + '/'): value for key, value in context['fields'].items() if key.startswith(str(target.story_node) + '/')}
         return self._answer(self._post(routes[action], body))
 
-    def h3_inspect(self, action: Literal['status', 'regeneration', 'audio', 'image_description', 'refmods', 'nodes'], target: Target,
+    def h3_inspect(self, action: Literal['status', 'regeneration', 'audio', 'image_description', 'refmods', 'nodes', 'prompt_fields'], target: Target,
                    arguments_json: str = '{}', expected_revision: dict[str, StrictInt] | None = None) -> dict[str, Any]:
         """Status may materialize native previews; regeneration {box} only preflights. Audio {file}; image_description
         {action:read|resolve|edit|clear|regenerate|clear_all,...} uses existing provider/cache. Nodes {node?} gives schema;
-        refmods lists installed references. Browser playback, beat analysis, layout and Undo remain browser features.
+        refmods lists installed references. prompt_fields {prompt,tags?} or saved {box,layer?,tags?} reads a prompt as the
+        Studio's Sections form does: typed entries with ranges, plus counts of shots, cues, advanced cues, dialogue and
+        unstructured text. Browser playback, beat analysis, layout and Undo remain browser features.
         """
         args = _object(arguments_json)
+        if action == 'prompt_fields':
+            if not set(args) <= {'prompt', 'tags', 'box', 'layer'} or ('prompt' in args) == ('box' in args):
+                raise StudioError('Give either a prompt or a saved box (with optional layer), plus optional tags.', code='invalid_arguments')
+            if 'box' in args:
+                _, body = self._domain(target, expected_revision, args)
+                args = {key: body[key] for key in ('timeline', *args)}
+            return self._answer(self._post('/h3c/prompts/fields', args))
         if action == 'nodes':
             return self._answer(self.client.json('/object_info' + ('/' + quote(args['node'], safe='') if 'node' in args else '')))
         if action == 'refmods':

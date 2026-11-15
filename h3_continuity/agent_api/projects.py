@@ -182,12 +182,19 @@ def _document(target, ui, record):
     return result
 
 
+def unsupported_features(line):
+    requires = line.get('requires') if isinstance(line, dict) else None
+    return [item for item in requires if item not in timeline.REQUIRES] if isinstance(requires, list) else []
+
+
 def read(target):
     with saved_state.LOCK:
         target, record, library, ui, _, revision = _current(target)
         api, reason = _execution(record, ui)
-        return dict(target=target, revision=revision, document_json=_json(_document(target, ui, record)),
+        document = _document(target, ui, record)
+        return dict(target=target, revision=revision, document_json=_json(document),
                     execution_ready=api is not None, execution_error=reason, checkpoint=bool(library.get('checkpoint_name')),
+                    unsupported_features=unsupported_features(document['timeline']),
                     capabilities={'saved_edit': not bool(library.get('checkpoint_name')), 'execution': api is not None})
 
 
@@ -425,7 +432,7 @@ def list_projects(cursor=None, limit=50):
     offset = int(cursor or 0)
     if offset < 0:
         raise APIError('invalid_request', 'Invalid native project cursor.')
-    targets = {}
+    targets, details = {}, {}
     root = _path('catalog').parent
     for path in root.glob('*.json'):
         record = json.loads(path.read_text(encoding='utf-8'))
@@ -433,6 +440,8 @@ def list_projects(cursor=None, limit=50):
         targets[(target['graph'], target['timeline_node'])] = target
     for row in story_library.listing():
         library = story_library.load(row['id'])
+        details[library['graph']] = {'library_id': row['id'], 'title': row.get('title') or '', 'sequence': row.get('sequence') or '',
+                                     **({'checkpoint_name': row['checkpoint_name']} if row.get('checkpoint_name') else {})}
         for node in library['workflow']['nodes']:
             if node.get('type') == 'H3C_Timeline':
                 target = dict(kind='native', graph=library['graph'], timeline_node=str(node['id']), story_node=library['story'])
@@ -443,7 +452,8 @@ def list_projects(cursor=None, limit=50):
             continue
         try:
             view = read(target)
-            rows.append(dict(target=target, revision=view['revision'], execution_ready=view['execution_ready'], checkpoint=view['checkpoint']))
+            rows.append(dict(target=target, revision=view['revision'], execution_ready=view['execution_ready'], checkpoint=view['checkpoint'],
+                             **details.get(target['graph'], {})))
         except APIError as error:
             if error.code != 'managed_target':
                 raise

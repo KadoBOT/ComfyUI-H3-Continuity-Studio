@@ -34,6 +34,11 @@ def save_checkpoint(graph, story, workflow, sequence, name):
     return save(graph, story, workflow, sequence, name)
 
 
+def duplicate(graph, story, workflow, sequence, title=None, timeline_text=None):
+    from .story_checkpoints import duplicate
+    return duplicate(graph, story, workflow, sequence, title, timeline_text)
+
+
 def restore_checkpoint(identity):
     from .story_checkpoints import restore
     return restore(identity)
