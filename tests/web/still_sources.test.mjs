@@ -126,3 +126,26 @@ test('finished candidates are chosen right under the image, not below the prompt
   const caption = frames.acceptedEl.children.at(-1);
   assert.ok(caption.children.some(child => child.textContent === 'Use as guide'), 'the previewed candidate can be used from the image itself');
 });
+
+test('the saved ending of the clip before waits for edits to pause, and is not read for a clip left meanwhile', async () => {
+  const {frames, editor} = panel();
+  editor.state.boxes.push({id: 'b', frames: 96, prompt: 'B.'});
+  const read = [];
+  let release;
+  frames.host.readBoundary = async id => {read.push(id);return null;};
+  frames.host.stillsSettled = () => new Promise(resolve => {release = resolve;});
+  frames.host.touchStills = () => {};
+  Object.assign(frames, {boxId: 'b', target: {kind: 'first'}});
+  const stayed = frames.showEnding();
+  await Promise.resolve();
+  assert.deepEqual(read, []);
+  release();
+  await stayed;
+  assert.deepEqual(read, ['b']);
+  const left = frames.showEnding();
+  await Promise.resolve();
+  frames.boxId = 'a';
+  release();
+  await left;
+  assert.deepEqual(read, ['b'], 'the clip was left before the pause');
+});

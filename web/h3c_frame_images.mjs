@@ -167,6 +167,7 @@ export class FrameImages {
     this.promptEl.value=this.prompt();this.autoPrompt=this.promptEl.value;this.saveField('still_prompt',this.promptEl.value);
   }
   open(boxId,target) {
+    this.host.touchStills?.();
     if (target.kind==='shot'&&target.shot===1) target={kind:'first'};
     const moved=this.boxId!==boxId||key(this.target)!==key(target);
     this.boxId=boxId;this.target=structuredClone(target);
@@ -488,7 +489,11 @@ export class FrameImages {
     this.endingEl.replaceChildren();
     if (this.target.kind!=='first'||!this.host.readBoundary
       || this.editor.state.boxes.findIndex(box=>box.id===this.boxId)<1) return;
-    const boxId=this.boxId, boundary=await this.host.readBoundary(boxId);
+    const boxId=this.boxId;
+    // Reading the boundary asks the server for the Timeline's status and two clips' takes, so it waits like the sources do.
+    await this.host.stillsSettled?.();
+    if (this.boxId!==boxId||this.target.kind!=='first') return;
+    const boundary=await this.host.readBoundary(boxId);
     if (this.boxId!==boxId||this.target.kind!=='first'||!boundary?.ending) return;
     const file=boundary.ending.file;
     this.endingEl.append(this.image(file,'Verified predecessor ending'),button('Use saved predecessor ending',()=>this.accept(file,{boxId,target:{kind:'first'},reuseEnding:true})));
