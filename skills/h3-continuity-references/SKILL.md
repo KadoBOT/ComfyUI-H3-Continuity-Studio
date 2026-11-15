@@ -83,9 +83,9 @@ audio references alone do not rule out `flf2va`.
     on-screen characters' lips remain completely closed.`). Speaker IDs like `S1`
     stay stable across shots.
 - Optional detail cues are plain lines inside a shot, after its description, one
-  per line start (outside `<d>`): `Composition:`, `Action:` (or `Action 1:`,
+  per line start (outside `<d>`): `Style:`, `Composition:`, `Action:` (or `Action 1:`,
   `Action 2:`…), `Camera movement:`, `Camera speed:`, `Camera amplitude:`,
-  `Dialogue:`, `Scene sound:` and, in Advanced mode, `Initial state:`,
+  `Dialogue:`, `Scene sound:` and, behind the form's Advanced switch, `Initial state:`,
   `Trigger:`, `Contact:`, `Reaction:`, `Shot size:`, `Camera position:`,
   `Camera direction:`, `Camera subject:`, `Focus:`, `Effect N trigger:`,
   `Effect N:`, `Effect N motion:`, `Effect N response:`, `Physical response:`,

@@ -8,7 +8,7 @@ Each clip has its own prompt. Open a clip and use the **Prompt** tab in the righ
 
 Sections provides optional definition, reference-retention, shot and sound fields. Add only what the clip needs; empty fields add no prompt text. Raw text remains the saved prompt, and unfamiliar wording stays editable as **Existing text**.
 
-Choose **Advanced mode** to reveal additional action, camera, effects, lighting, acting and continuity fields. Add details one at a time; suggestions accept your own wording. These fields produce readable cue lines inside each shot, not another prompt format. Switching back to Basic keeps filled advanced details under **Details present**. Clear a field to remove its contribution.
+Turn on the **Advanced** switch to show additional action, camera, effects, lighting, acting and continuity fields. Add details one at a time; suggestions accept your own wording. These fields produce readable cue lines inside each shot, not another prompt format. While the switch is off, those fields are hidden but their text stays in the prompt; the switch counts them, for example **3 hidden**. Clear a field to remove its contribution. The switch and the section tabs also work on a read-only Timeline, so you can read every field there.
 
 Shot 1 has no timestamp. Later shots accept playback seconds and format the native timestamp automatically. Starts must increase and fit the clip. Continuing clips also show their replay offset. A changed start applies on leaving the field, pressing Enter or **Apply start**; invalid input stays unsaved until corrected or discarded. A timing change that would move an accepted guide is refused until you remove or reassign that guide.
 

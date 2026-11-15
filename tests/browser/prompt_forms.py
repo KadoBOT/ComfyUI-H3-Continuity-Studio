@@ -91,9 +91,16 @@ def run(page, width, height):
     page.goto('https://h3c.test/fixture')
     page.wait_for_function('window.ready===true')
     page.evaluate("studio.setInspectorVisible(true); if(innerWidth<900)studio.setMobilePage('clip')")
+    switch = page.locator('.h3pf > legend [role=switch]')
+
+    def advanced(on):
+        if (switch.get_attribute('aria-checked') == 'true') != on:
+            switch.click()
+        assert switch.get_attribute('aria-checked') == ('true' if on else 'false')
+
     before = page.evaluate('stored()')
-    page.get_by_role('checkbox', name='Advanced mode', exact=True).check()
-    page.get_by_role('checkbox', name='Advanced mode', exact=True).uncheck()
+    advanced(True)
+    advanced(False)
     page.get_by_role('button', name='Raw text', exact=True).click()
     page.get_by_role('button', name='Sections', exact=True).click()
     assert page.evaluate('stored()') == before
@@ -131,7 +138,7 @@ def run(page, width, height):
     start = page.get_by_label('Shot 2 start (seconds)', exact=True)
     start.fill('3.125')
     start.dispatch_event('change')
-    page.get_by_role('checkbox', name='Advanced mode', exact=True).check()
+    advanced(True)
     page.get_by_label('Shot 2 add detail', exact=True).select_option('camera_movement')
     camera = page.get_by_label('Shot 2 Camera movement', exact=True)
     camera.press_sequentially('A slow spiral around her left shoulder', delay=1)
@@ -139,9 +146,11 @@ def run(page, width, height):
     page.get_by_label('Shot 2 add detail', exact=True).select_option('lighting')
     page.get_by_label('Shot 2 Lighting', exact=True).fill('Warm side light')
     advanced_prompt = page.evaluate('doc().boxes[0].prompt')
-    page.get_by_role('checkbox', name='Advanced mode', exact=True).uncheck()
+    advanced(False)
     assert page.evaluate('doc().boxes[0].prompt') == advanced_prompt
-    assert page.get_by_text('Details present (1)', exact=True).is_visible()
+    assert page.get_by_label('Shot 2 Lighting', exact=True).count() == 0
+    assert page.get_by_label('Shot 2 Camera movement', exact=True).is_visible()
+    assert '1 hidden' in switch.inner_text()
     page.get_by_role('button', name='Use typed dialogue', exact=True).click()
     shot_two = page.locator('section[aria-label="Shot 2"]')
     shot_two.get_by_role('button', name='Add dialogue', exact=True).click()
@@ -166,7 +175,7 @@ def run(page, width, height):
     assert page.evaluate('doc().boxes[0].previews[0].frame') == 75
     assert 'guide' in page.locator('.h3pf-error').inner_text().lower()
     page.get_by_role('button', name='Discard draft', exact=True).click()
-    page.get_by_role('checkbox', name='Advanced mode', exact=True).check()
+    advanced(True)
     page.screenshot(path=str(OUT / f'prompt-forms-{width}.png'))
     assert page.evaluate('document.documentElement.scrollWidth<=innerWidth')
     page.evaluate('addAlternate()')
@@ -183,8 +192,15 @@ def run(page, width, height):
     rest = page.evaluate('doc().boxes.slice(1).map(b=>b.prompt)')
     page.get_by_label('Shot 1 description', exact=True).fill('One edited clip in a long Timeline.')
     assert page.evaluate('doc().boxes.slice(1).map(b=>b.prompt)') == rest
-    page.evaluate("const value=doc();value.requires=['future-prompt-99'];value.future={kept:true};host.write(JSON.stringify(value));reload()")
+    page.evaluate("const value=doc();value.boxes[0].prompt=value.boxes[0].prompt.replace('\\n\\noverall_soundscape','\\nLighting: Low amber light\\n\\noverall_soundscape');value.requires=['future-prompt-99'];value.future={kept:true};host.write(JSON.stringify(value));reload()")
     readonly = page.evaluate('stored()')
+    page.locator('.h3pf').get_by_role('tab', name='Shots', exact=True).click()
+    assert page.get_by_label('Shot 1 description', exact=True).is_disabled()
+    advanced(False)
+    assert page.get_by_label('Shot 1 Lighting', exact=True).count() == 0
+    advanced(True)
+    assert page.get_by_label('Shot 1 Lighting', exact=True).input_value() == 'Low amber light'
+    assert page.evaluate('stored()') == readonly
     page.evaluate("editor.applyPrompt(editor.video().prompt,'BAD',{structural:true});editor.cast.addToClip(editor.box().id,'e1')")
     assert page.evaluate('stored()') == readonly
     assert page.evaluate('queued.length===0 && apiLeaks===0')

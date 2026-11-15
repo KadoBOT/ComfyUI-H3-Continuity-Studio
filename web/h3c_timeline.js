@@ -14,7 +14,7 @@ import { WATCH_EVENTS, idleWatch, progressText, watchEvent } from './h3c_render_
 import { DEFAULT_AHEAD, QueueFeed, feedNote, queueAhead } from './h3c_queue_feed.mjs?v=9392f926e4e3';
 import { studio } from './h3c_studio.mjs?v=c7c0190f4a9b';
 import { FACE_HEIGHT, TimelineFace } from './h3c_timeline_face.mjs?v=f87ad7bf252b';
-import { TimelineEditor } from './h3c_timeline_editor.mjs?v=12ead6ae2fc7';
+import { TimelineEditor } from './h3c_timeline_editor.mjs?v=831591242cee';
 import { referenceFile, referenceSource, referencePools, referenceType, effectiveRefmods, parseState, serialize, unknownFeatures, readOnlyNote } from './h3c_timeline_model.mjs?v=1dfc1612e462';
 import {referenceImageFile} from './h3c_reference_sources.mjs?v=107846e10a11';
 import { pictureRefs } from './h3c_pictures.mjs?v=220c235a7923';

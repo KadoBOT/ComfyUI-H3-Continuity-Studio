@@ -62,4 +62,4 @@ Structured prompt forms (real Studio/editor/history at desktop and phone sizes):
 uv run --with playwright python tests/browser/prompt_forms.py
 ```
 
-This isolated fixture routes this checkout's modules locally and mocks Bible, storage and queue responses. It checks Cast insertion, optional/custom fields, Basic/Advanced and Raw/Sections switching, shot times, draft and guide guards, manual dialogue, history, reload, alternate videos, read-only projects and edits in an 88-clip Timeline. It never contacts ComfyUI, starts a server, mutates a live workflow or generates media. Screenshots go to `.tmp/prompt-forms-*.png`.
+This isolated fixture routes this checkout's modules locally and mocks Bible, storage and queue responses. It checks Cast insertion, optional/custom fields, the Advanced switch (including on read-only projects), Raw/Sections switching, shot times, draft and guide guards, manual dialogue, history, reload, alternate videos, read-only projects and edits in an 88-clip Timeline. It never contacts ComfyUI, starts a server, mutates a live workflow or generates media. Screenshots go to `.tmp/prompt-forms-*.png`.

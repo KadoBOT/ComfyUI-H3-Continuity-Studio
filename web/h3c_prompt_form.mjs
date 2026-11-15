@@ -9,7 +9,7 @@ let ids=0;
 const style=()=>{
   if(document.getElementById('h3pf-style'))return;
   const node=el('style');node.id='h3pf-style';node.textContent=`
-.h3pf{border:0;padding:0;margin:0;min-width:0}.h3pf [hidden]{display:none!important}
+.h3pf{border:0;padding:0;margin:0;min-width:0}.h3pf [hidden]{display:none!important}.h3pf>legend{width:100%;padding:0;margin:0 0 8px}
 .h3pf-tabs{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:12px}.h3pf-tabs [aria-selected=true]{border-color:#809fcc;background:#293545}
 .h3pf-row{padding:10px 0;border-bottom:1px solid #343a46;min-width:0}.h3pf-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(150px,100%),1fr));gap:8px}
 .h3pf-field{display:flex;flex-direction:column;gap:4px;margin:6px 0;min-width:0}.h3pf-field>span{font-size:12px;color:var(--h3b-muted,#aab2bf)}
@@ -23,7 +23,7 @@ export class PromptFormPanel {
   constructor(editor) {
     style();this.editor=editor;this.root=el('fieldset','h3pf');this.drafts=new Map();this.newRows=[];this.marks=[];
     this.section=null;this.controls=new Map();this.serial=++ids;this.message='';this.sectionStash=new Map();
-    this.advanced=false;this.newDetails=new Map();this.openDetails=new Set();
+    this.advanced=false;this.newDetails=new Map();
   }
   tags(){return this.editor.pickedInfo?.().tags??[];}
   hasDrafts(){return this.drafts.size>0;}
@@ -145,18 +145,10 @@ export class PromptFormPanel {
     const existing=entries.filter(e=>e.shot===shot&&e.kind==='cue');
     const pending=[...this.newDetails.entries()].filter(([id,item])=>id.startsWith(this.editor.video().id+':')&&item.shot===shot
       &&!existing.some(e=>e.value.key===item.value.key&&e.value.index===item.value.index));
-    const extras=existing.filter(e=>SHOT_FIELDS.find(f=>f.key===e.value.key)?.advanced);
-    let advanced=parent;
-    if(!this.advanced&&(extras.length||pending.some(([,e])=>SHOT_FIELDS.find(f=>f.key===e.value.key)?.advanced))) {
-      const details=el('details');details.open=this.openDetails.has(shot);details.append(el('summary',null,`Details present (${extras.length})`));
-      details.addEventListener('toggle',()=>{if(details.open)this.openDetails.add(shot);else this.openDetails.delete(shot);});
-      parent.append(details);advanced=details;
-    }
     const show=(value,entry,index,key)=>{
-      const field=SHOT_FIELDS.find(f=>f.key===value.key);if(!field)return;
-      const root=field.advanced&&!this.advanced?advanced:parent;
+      const field=SHOT_FIELDS.find(f=>f.key===value.key);if(!field||field.advanced&&!this.advanced)return;
       const label=`Shot ${shot} ${field.prefix.replace(' N',' '+value.index)}${field.repeatable&&value.index?' '+value.index:''}`;
-      this.field(root,label,value.text,text=>{
+      this.field(parent,label,value.text,text=>{
         this.edit(this.section,index,key,'cue',{...value,text});
       },{area:!field.suggestions.length,suggestions:field.suggestions.length?field.suggestions:null});
     };
@@ -265,9 +257,12 @@ export class PromptFormPanel {
         const at=keys.indexOf(this.section),next=event.key==='Home'?0:event.key==='End'?keys.length-1:(at+(event.key==='ArrowRight'?1:-1)+keys.length)%keys.length;
         if(this.canLeave()){this.section=keys[next];this.render();}});tabs.append(tab);
     }
-    this.root.append(tabs);
-    const mode=el('label','h3pf-actions'),toggle=el('input');toggle.type='checkbox';toggle.checked=this.advanced;toggle.setAttribute('aria-label','Advanced mode');
-    toggle.addEventListener('change',()=>{this.advanced=toggle.checked;this.render();});mode.append(toggle,el('span',null,'Advanced mode'));this.root.append(mode);
+    // In the fieldset's legend so a read-only Timeline, which disables the fieldset, can still browse sections and details.
+    const legend=el('legend'),advanced=new SwitchSection('Advanced',{onToggle:on=>{this.advanced=on;this.render();}});
+    const hidden=parsed.sections.flatMap(s=>s.entries).filter(e=>e.kind==='cue'&&SHOT_FIELDS.find(f=>f.key===e.value.key)?.advanced).length;
+    advanced.body.hidden=true;advanced.head.dataset.key='Advanced';this.controls.set('Advanced',advanced.head);
+    advanced.set(this.advanced,{state:!this.advanced&&hidden?`${hidden} hidden`:''});
+    legend.append(advanced.root,tabs);this.root.append(legend);
     this.note=el('p','h3pf-error',this.message);this.note.setAttribute('role','status');this.root.append(this.note);
     this.discardButton=button('Discard draft',()=>this.discardDrafts());this.discardButton.hidden=!this.hasDrafts();this.root.append(this.discardButton);
     let body=el('div');body.setAttribute('role','tabpanel');body.setAttribute('aria-label',SECTION_TITLES[this.section]??'Existing text');this.root.append(body);

@@ -58,14 +58,25 @@ test('a project or history reload explicitly discards an incompatible structural
   assert.equal(h.panel.hasDrafts(),false);assert.equal(h.stored().boxes[0].prompt,prompt);
   assert.match(h.panel.root.textContent,/discarded.*history/i);
 });
-test('Advanced visibility never changes native text or history and populated details remain discoverable',()=>{
-  const prompt='integrated_multimodal_description:\n[Shot 1] A room.\nLighting: Warm window light';
+test('the Advanced switch shows advanced fields only while on, counts hidden ones and never changes text or history',()=>{
+  const prompt='integrated_multimodal_description:\n[Shot 1] A room.\nComposition: Wide shot\nLighting: Warm window light\nGaze: Down at the floor';
   const h=formHarness({prompt});
-  let toggle=findAll(h.panel.root,n=>n.getAttribute?.('aria-label')==='Advanced mode')[0];assert.ok(toggle);
-  toggle.checked=true;toggle.fire('change');
-  toggle=findAll(h.panel.root,n=>n.getAttribute?.('aria-label')==='Advanced mode')[0];toggle.checked=false;toggle.fire('change');
+  const advanced=()=>findAll(h.panel.root,n=>n.getAttribute?.('role')==='switch'&&/^Advanced/.test(n.textContent))[0];
+  const field=label=>findAll(h.panel.root,n=>n.getAttribute?.('aria-label')===label)[0];
+  assert.ok(advanced());assert.equal(advanced().getAttribute('aria-checked'),'false');
+  const legend=advanced().parentNode.parentNode;
+  assert.equal(legend.tagName,'LEGEND');assert.equal(legend.parentNode,h.panel.root);
+  assert.equal(h.panel.root.childNodes.find(n=>n.tagName==='LEGEND'),legend);
+  assert.ok(field('Shot 1 Composition'));assert.equal(field('Shot 1 Lighting'),undefined);assert.equal(field('Shot 1 Gaze'),undefined);
+  assert.doesNotMatch(h.panel.root.textContent,/Details present/);assert.match(advanced().textContent,/2 hidden/);
+  assert.equal(field('Shot 1 add detail').options.some(o=>o.value==='atmosphere'),false);
+  advanced().click();
+  assert.equal(advanced().getAttribute('aria-checked'),'true');
+  assert.ok(field('Shot 1 Lighting'));assert.ok(field('Shot 1 Gaze'));
+  assert.equal(field('Shot 1 add detail').options.some(o=>o.value==='atmosphere'),true);
+  advanced().click();
+  assert.equal(field('Shot 1 Lighting'),undefined);
   assert.equal(h.stored().boxes[0].prompt,prompt);assert.equal(h.history.entries.length,1);
-  assert.match(h.panel.root.textContent,/Details present/);
 });
 test('manual dialogue is an explicit choice and never duplicates recording-owned lines',()=>{
   const prompt='integrated_multimodal_description:\n[Shot 1] She waits.';
