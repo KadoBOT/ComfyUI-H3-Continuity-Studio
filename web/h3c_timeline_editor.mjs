@@ -1067,7 +1067,7 @@ export class TimelineEditor {
   // editor doesn't know: the edit is undone from the node's text instead. Whether the text was written.
   save(text, typing = false) {
     if (!this.readOnly.length) {
-      if(text!==this.host.read())this.editRevision=(this.editRevision??0)+1;
+      this.editRevision=(this.editRevision??0)+1;
       this.host.write(text, typing);
       return true;
     }
