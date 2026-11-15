@@ -4,6 +4,8 @@ All notable changes to H3 Continuity Studio are recorded here. Versions follow [
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-11-15
+
 ### Added
 
 - **Cast assignment and structured prompt forms.** Add from Cast creates the next Subject from the bible as one undo step. Sections offers optional reference, retention, shot, camera and dialogue fields, playback-second shot starts, and an Advanced switch for extra creative details (hidden while off, readable on read-only Timelines). Custom wording and existing prompt text remain authoritative, with draft and accepted-guide guards.
