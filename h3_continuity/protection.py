@@ -4,7 +4,7 @@ import copy
 
 import torch
 
-from . import store, timeline, timing
+from . import latents, store, timeline, timing
 
 METHOD = 'h3c-continuity-protection-v1'
 WHO = 'H3 Continuity Protection'
@@ -72,3 +72,34 @@ def load_anchors(segment):
                       capstone_suppressed=reason)
     _current_source(segment, descriptor)
     return front, back, descriptor
+
+
+def prepare_latent(latent, segment, front):
+    if (segment.protection_source or {}).get('context_noise'):
+        raise ValueError(f'{WHO}: turn off the old Context noise control before using sampler-level protection.')
+    video, audio = latents.split_h3_latent(latent, WHO)
+    count = timing.tokens_for_frames(segment.context_frames)
+    if tuple(front.shape) != (1, 24, 1, *video.shape[3:]) or count >= video.shape[2]:
+        raise ValueError(f'{WHO}: anchor or carried length does not match this latent.')
+    masks = latent.get('noise_mask')
+    if not getattr(masks, 'is_nested', False) or len(masks.tensors) != 2:
+        raise ValueError(f'{WHO}: expected the native Timeline AV noise mask.')
+    vm, am = masks.tensors
+    try:
+        vm = torch.broadcast_to(vm, video.shape)
+    except RuntimeError:
+        raise ValueError(f'{WHO}: incompatible video mask shape.') from None
+    expected = torch.ones_like(vm)
+    expected[:, :, :count] = 0
+    if segment.ending_video is not None:
+        expected[:, :, -segment.ending_video.shape[2]:] = 0
+    if not torch.equal(vm, expected):
+        raise ValueError(f'{WHO}: an incompatible mask already edits the carried or free video.')
+    originals = video[:, :, :count].clone()
+    video = video.clone()
+    video[:, :, :1] = front.to(video)
+    vm = vm.clone()
+    vm[:, :, 1:count] = torch.linspace(1, 0, count - 1, device=vm.device, dtype=vm.dtype).view(1,1,-1,1,1)
+    from comfy.nested_tensor import NestedTensor
+    prepared = dict(latent, samples=NestedTensor((video, audio)), noise_mask=NestedTensor((vm, am)))
+    return prepared, originals
