@@ -115,10 +115,11 @@ def run(page, width, height):
     page.get_by_role('tab', name='Reference retention', exact=True).click()
     page.get_by_role('button', name='Add retention', exact=True).click()
     page.get_by_label('Reference', exact=True).select_option('<Subject 1>')
-    page.get_by_label('Relationship', exact=True).fill('fully_preserved')
+    page.get_by_label('Relationship', exact=True).select_option('fully_preserved')
     page.get_by_label('Appears in shots', exact=True).select_option('1')
     page.get_by_label('Retention details', exact=True).fill('Her face and coat remain unchanged.')
     assert page.evaluate("doc().boxes[0].prompt.includes('<Subject 1> (appears in [Shot 1]): fully_preserved - Her face and coat remain unchanged.')")
+    page.locator('.h3pf').screenshot(path=str(OUT / f'prompt-forms-retention-{width}.png'))
     page.locator('.h3pf').get_by_role('tab', name='Shots', exact=True).click()
     page.get_by_role('button', name='Add shot', exact=True).click()
     new_start = page.get_by_label('New shot start (seconds)', exact=True)
@@ -146,11 +147,16 @@ def run(page, width, height):
     page.get_by_label('Shot 2 add detail', exact=True).select_option('lighting')
     page.get_by_label('Shot 2 Lighting', exact=True).fill('Warm side light')
     advanced_prompt = page.evaluate('doc().boxes[0].prompt')
+    page.evaluate('reload()')
+    assert switch.get_attribute('aria-checked') == 'true'
+    page.once('dialog', lambda dialog: dialog.accept())
     advanced(False)
-    assert page.evaluate('doc().boxes[0].prompt') == advanced_prompt
+    assert page.evaluate('doc().boxes[0].prompt') == advanced_prompt.replace('\nLighting: Warm side light', '')
     assert page.get_by_label('Shot 2 Lighting', exact=True).count() == 0
     assert page.get_by_label('Shot 2 Camera movement', exact=True).is_visible()
-    assert '1 hidden' in switch.inner_text()
+    advanced(True)
+    assert page.evaluate('doc().boxes[0].prompt') == advanced_prompt
+    assert page.get_by_label('Shot 2 Lighting', exact=True).input_value() == 'Warm side light'
     page.get_by_role('button', name='Use typed dialogue', exact=True).click()
     shot_two = page.locator('section[aria-label="Shot 2"]')
     shot_two.get_by_role('button', name='Add dialogue', exact=True).click()
@@ -196,8 +202,10 @@ def run(page, width, height):
     readonly = page.evaluate('stored()')
     page.locator('.h3pf').get_by_role('tab', name='Shots', exact=True).click()
     assert page.get_by_label('Shot 1 description', exact=True).is_disabled()
+    assert switch.get_attribute('aria-checked') == 'true'
     advanced(False)
     assert page.get_by_label('Shot 1 Lighting', exact=True).count() == 0
+    assert '1 hidden' in switch.inner_text()
     advanced(True)
     assert page.get_by_label('Shot 1 Lighting', exact=True).input_value() == 'Low amber light'
     assert page.evaluate('stored()') == readonly

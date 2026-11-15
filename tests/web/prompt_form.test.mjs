@@ -58,25 +58,78 @@ test('a project or history reload explicitly discards an incompatible structural
   assert.equal(h.panel.hasDrafts(),false);assert.equal(h.stored().boxes[0].prompt,prompt);
   assert.match(h.panel.root.textContent,/discarded.*history/i);
 });
-test('the Advanced switch shows advanced fields only while on, counts hidden ones and never changes text or history',()=>{
+const advancedSwitch=h=>findAll(h.panel.root,n=>n.getAttribute?.('role')==='switch'&&/^Advanced/.test(n.textContent))[0];
+const formField=(h,label)=>findAll(h.panel.root,n=>n.getAttribute?.('aria-label')===label)[0];
+test('Advanced is on while the clip has advanced details; off removes them after confirming until it is on again',()=>{
   const prompt='integrated_multimodal_description:\n[Shot 1] A room.\nComposition: Wide shot\nLighting: Warm window light\nGaze: Down at the floor';
-  const h=formHarness({prompt});
-  const advanced=()=>findAll(h.panel.root,n=>n.getAttribute?.('role')==='switch'&&/^Advanced/.test(n.textContent))[0];
-  const field=label=>findAll(h.panel.root,n=>n.getAttribute?.('aria-label')===label)[0];
-  assert.ok(advanced());assert.equal(advanced().getAttribute('aria-checked'),'false');
+  const h=formHarness({prompt}),advanced=()=>advancedSwitch(h),field=label=>formField(h,label);
   const legend=advanced().parentNode.parentNode;
-  assert.equal(legend.tagName,'LEGEND');assert.equal(legend.parentNode,h.panel.root);
-  assert.equal(h.panel.root.childNodes.find(n=>n.tagName==='LEGEND'),legend);
-  assert.ok(field('Shot 1 Composition'));assert.equal(field('Shot 1 Lighting'),undefined);assert.equal(field('Shot 1 Gaze'),undefined);
-  assert.doesNotMatch(h.panel.root.textContent,/Details present/);assert.match(advanced().textContent,/2 hidden/);
-  assert.equal(field('Shot 1 add detail').options.some(o=>o.value==='atmosphere'),false);
-  advanced().click();
+  assert.equal(legend.tagName,'LEGEND');assert.equal(h.panel.root.childNodes.find(n=>n.tagName==='LEGEND'),legend);
   assert.equal(advanced().getAttribute('aria-checked'),'true');
   assert.ok(field('Shot 1 Lighting'));assert.ok(field('Shot 1 Gaze'));
-  assert.equal(field('Shot 1 add detail').options.some(o=>o.value==='atmosphere'),true);
+  const asked=[];globalThis.confirm=message=>{asked.push(message);return false;};
   advanced().click();
-  assert.equal(field('Shot 1 Lighting'),undefined);
-  assert.equal(h.stored().boxes[0].prompt,prompt);assert.equal(h.history.entries.length,1);
+  assert.equal(advanced().getAttribute('aria-checked'),'true');assert.equal(h.stored().boxes[0].prompt,prompt);
+  assert.match(asked[0],/Lighting, Gaze/);
+  globalThis.confirm=()=>true;
+  advanced().click();
+  assert.equal(advanced().getAttribute('aria-checked'),'false');
+  assert.equal(h.stored().boxes[0].prompt,'integrated_multimodal_description:\n[Shot 1] A room.\nComposition: Wide shot');
+  assert.equal(field('Shot 1 Lighting'),undefined);assert.ok(field('Shot 1 Composition'));
+  assert.equal(field('Shot 1 add detail').options.some(o=>o.value==='atmosphere'),false);
+  advanced().click();
+  assert.equal(h.stored().boxes[0].prompt,prompt);assert.ok(field('Shot 1 Lighting'));
+  assert.equal(h.history.entries.length,3);
+  delete globalThis.confirm;
+});
+test('Advanced brings removed details back into their shot after other edits, and an empty clip turns it on without changing text',()=>{
+  const prompt='integrated_multimodal_description:\n[Shot 1] A room.\nComposition: Wide shot\nLighting: Warm window light';
+  const h=formHarness({prompt}),advanced=()=>advancedSwitch(h),field=label=>formField(h,label);
+  globalThis.confirm=()=>true;
+  advanced().click();h.input('Shot 1 Composition','Close-up');advanced().click();
+  assert.equal(h.stored().boxes[0].prompt,'integrated_multimodal_description:\n[Shot 1] A room.\nComposition: Close-up\nLighting: Warm window light');
+  delete globalThis.confirm;
+  const basic=formHarness({prompt:'integrated_multimodal_description:\n[Shot 1] A room.'});
+  assert.equal(advancedSwitch(basic).getAttribute('aria-checked'),'false');
+  advancedSwitch(basic).click();
+  assert.equal(advancedSwitch(basic).getAttribute('aria-checked'),'true');
+  assert.equal(formField(basic,'Shot 1 add detail').options.some(o=>o.value==='atmosphere'),true);
+  advancedSwitch(basic).click();
+  assert.equal(advancedSwitch(basic).getAttribute('aria-checked'),'false');
+  assert.equal(basic.stored().boxes[0].prompt,'integrated_multimodal_description:\n[Shot 1] A room.');assert.equal(basic.history.entries.length,1);
+});
+test('on a read-only Timeline Advanced only shows or hides details and never changes the prompt',()=>{
+  const prompt='integrated_multimodal_description:\n[Shot 1] A room.\nLighting: Warm window light';
+  const h=formHarness({prompt});Object.defineProperty(h.editor,'readOnly',{value:['scene-map-1']});h.panel.render();
+  assert.equal(advancedSwitch(h).getAttribute('aria-checked'),'true');assert.ok(formField(h,'Shot 1 Lighting'));
+  advancedSwitch(h).click();
+  assert.equal(advancedSwitch(h).getAttribute('aria-checked'),'false');assert.equal(formField(h,'Shot 1 Lighting'),undefined);
+  assert.match(advancedSwitch(h).textContent,/1 hidden/);assert.equal(h.stored().boxes[0].prompt,prompt);
+});
+test('retention relationship is a choice of H3 markers with a Custom option that keeps imported markers',()=>{
+  const h=formHarness({prompt:'subject_definitions:\n<Subject 1> is a woman.\n\nretention_analysis:\n<Subject 1> (appears in [Shot 1]): close_enough - Keeps the coat.\n\ndetailed_description:\n[Shot 1] A room.'});
+  h.panel.section='retention_analysis';h.panel.render();
+  const field=label=>formField(h,label),prompt=()=>h.stored().boxes[0].prompt;
+  assert.equal(field('Relationship').tagName,'SELECT');
+  assert.deepEqual(field('Relationship').options.map(o=>o.value).slice(1),['fully_preserved','partially_preserved','attribute_transfer','weak_reference','__custom']);
+  assert.equal(field('Relationship').value,'__custom');assert.equal(field('Custom relationship').value,'close_enough');
+  h.input('Relationship','partially_preserved');
+  assert.match(prompt(),/\): partially_preserved - Keeps the coat\./);assert.equal(field('Custom relationship'),undefined);
+  h.input('Relationship','__custom');
+  assert.equal(field('Relationship').value,'__custom');assert.equal(field('Custom relationship').value,'');
+  h.input('Custom relationship','newly_generated');
+  assert.match(prompt(),/\): newly_generated - Keeps the coat\./);
+});
+test('prompt section tabs are icon and text tabs in the Studio section tab style',()=>{
+  const h=formHarness({prompt:'integrated_multimodal_description:\n[Shot 1] A room.'});
+  const list=findAll(h.panel.root,n=>n.getAttribute?.('role')==='tablist')[0];
+  assert.match(list.className,/h3ct-section-tabs/);
+  const tabs=findAll(list,n=>n.getAttribute?.('role')==='tab');
+  assert.ok(tabs.length>=6);
+  for(const tab of tabs) {
+    assert.equal(tab.childNodes[0].tagName.toLowerCase(),'svg');
+    assert.equal(tab.childNodes[1].className,'h3ci-caption');assert.ok(tab.childNodes[1].textContent);
+  }
 });
 test('manual dialogue is an explicit choice and never duplicates recording-owned lines',()=>{
   const prompt='integrated_multimodal_description:\n[Shot 1] She waits.';

@@ -3,14 +3,17 @@ import {promptSections,promptShots,replacePromptRanges} from './h3c_prompt_secti
 import {SwitchSection} from './h3c_switch_section.mjs?v=c253500f4908';
 import {MentionLayer} from './h3c_mentions.mjs?v=7d543c4a1ce8';
 import {shotTiming,editPromptShot} from './h3c_prompt_shots.mjs?v=17aa67525854';
+import {decorateIcon} from './h3c_icons.mjs?v=53ef18502c79';
 const el=(tag,cls,text)=>{const node=document.createElement(tag);if(cls)node.className=cls;if(text!==undefined)node.textContent=text;return node;};
 const button=(text,action)=>{const node=el('button','h3ct-button',text);node.type='button';node.addEventListener('click',action);return node;};
+const SECTION_ICONS={subject_definitions:'cast',summary:'story',retention_analysis:'refs',integrated_multimodal_description:'shots',
+  detailed_description:'shots',overall_soundscape:'sound',non_diegetic_music:'audio'};
 let ids=0;
 const style=()=>{
   if(document.getElementById('h3pf-style'))return;
   const node=el('style');node.id='h3pf-style';node.textContent=`
 .h3pf{border:0;padding:0;margin:0;min-width:0}.h3pf [hidden]{display:none!important}.h3pf>legend{width:100%;padding:0;margin:0 0 8px}
-.h3pf-tabs{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:12px}.h3pf-tabs [aria-selected=true]{border-color:#809fcc;background:#293545}
+.h3pf-tabs{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:12px}.h3pf-tabs [aria-selected=true]{border-color:#809fcc;background:#293545}.h3pf-tabs .empty>.h3ci-caption{opacity:.6}
 .h3pf-row{padding:10px 0;border-bottom:1px solid #343a46;min-width:0}.h3pf-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(150px,100%),1fr));gap:8px}
 .h3pf-field{display:flex;flex-direction:column;gap:4px;margin:6px 0;min-width:0}.h3pf-field>span{font-size:12px;color:var(--h3b-muted,#aab2bf)}
 .h3pf :is(input,select,textarea){box-sizing:border-box;width:100%;min-width:0;max-width:100%}.h3pf textarea{resize:vertical}
@@ -23,7 +26,47 @@ export class PromptFormPanel {
   constructor(editor) {
     style();this.editor=editor;this.root=el('fieldset','h3pf');this.drafts=new Map();this.newRows=[];this.marks=[];
     this.section=null;this.controls=new Map();this.serial=++ids;this.message='';this.sectionStash=new Map();
-    this.advanced=false;this.newDetails=new Map();
+    this.advanced=false;this.newDetails=new Map();this.advancedPins=new Map();this.advancedKept=new Map();this.customRelationships=new Set();
+  }
+  // As the Studio's Story Advanced: on while the clip has advanced details or after the user turns it on; off removes
+  // them from the prompt, kept until it comes back on. A read-only Timeline only shows or hides them.
+  toggleAdvanced(on,cues) {
+    const video=this.editor.video(),id=video.id;
+    if(this.editor.readOnly?.length){this.advancedPins.set(id,on);this.render();return;}
+    if(on) {
+      this.advancedPins.set(id,true);
+      const kept=this.advancedKept.get(id);this.advancedKept.delete(id);
+      if(kept)this.restoreAdvanced(video,kept);
+      this.render();return;
+    }
+    if(!this.canLeave())return;
+    if(cues.length) {
+      const names=[...new Set(cues.map(({entry})=>SHOT_FIELDS.find(f=>f.key===entry.value.key).prefix.replace(' N','')))].join(', ');
+      if(!globalThis.confirm?.(`Remove ${names} from this clip's prompt? Turning Advanced on again brings them back.`)){this.render();return;}
+      const source=video.prompt;
+      const next=replacePromptRanges(source,cues.map(({entry})=>{
+        const start=entry.range.start-(source[entry.range.start-1]==='\n'?1:0);
+        return {start,end:entry.range.end,before:source.slice(start,entry.range.end),text:''};
+      }));
+      if(this.editor.applyPrompt(source,next,{structural:true})===false){this.message='This prompt is read-only or changed.';this.render();return;}
+      this.advancedKept.set(id,{before:source,after:next,cues:cues.map(({section,entry})=>({section,shot:entry.shot,value:entry.value}))});
+      this.source=next;
+    }
+    this.advancedPins.delete(id);
+    for(const [key,item] of this.newDetails)if(key.startsWith(id+':')&&SHOT_FIELDS.find(f=>f.key===item.value.key)?.advanced)this.newDetails.delete(key);
+    this.render();
+  }
+  restoreAdvanced(video,kept) {
+    const source=video.prompt;let next=kept.before,lost=0;
+    if(source!==kept.after) {
+      next=source;
+      for(const cue of kept.cues) {
+        try{next=writePromptField(next,{expectedSource:next,section:cue.section,kind:'cue',shot:cue.shot,entry:null,value:cue.value},{tags:this.tags()});}
+        catch{lost++;}
+      }
+    }
+    if(next!==source&&this.editor.applyPrompt(source,next,{structural:true})!==false)this.source=next;
+    this.message=lost?`${lost} advanced detail${lost===1?'':'s'} could not be restored because ${lost===1?'its shot is':'their shots are'} gone.`:'';
   }
   tags(){return this.editor.pickedInfo?.().tags??[];}
   hasDrafts(){return this.drafts.size>0;}
@@ -149,6 +192,7 @@ export class PromptFormPanel {
       const field=SHOT_FIELDS.find(f=>f.key===value.key);if(!field||field.advanced&&!this.advanced)return;
       const label=`Shot ${shot} ${field.prefix.replace(' N',' '+value.index)}${field.repeatable&&value.index?' '+value.index:''}`;
       this.field(parent,label,value.text,text=>{
+        if(field.advanced)this.advancedPins.set(this.editor.video().id,true);
         this.edit(this.section,index,key,'cue',{...value,text});
       },{area:!field.suggestions.length,suggestions:field.suggestions.length?field.suggestions:null});
     };
@@ -223,8 +267,15 @@ export class PromptFormPanel {
       this.field(row,'Appears in shots',value.shots,shots=>edit({shots}),{options:numbers.map(n=>[n,`Shot ${n}`]),multiple:true});
       this.field(row,'Reference role or scope',value.scope,scope=>edit({scope}),{suggestions:['first frame','keyframe','last frame','composition','storyboard','cut and pacing structure']});
       const markers=/^@(?:audio|video_audio)/.test(value.target)?RETENTION_AUDIO:RETENTION_VISUAL;
-      this.field(row,'Relationship',value.relationship,relationship=>edit({relationship}),{suggestions:markers});
-      if(value.relationship&&!markers.includes(value.relationship))row.append(el('small','h3ct-hint','Custom relationship; outside the expected H3 vocabulary.'));
+      const custom=this.customRelationships.has(key)||!!value.relationship&&!markers.includes(value.relationship);
+      this.field(row,'Relationship',custom?'__custom':value.relationship,relationship=>{
+        if(relationship==='__custom'){this.customRelationships.add(key);this.render();return;}
+        this.customRelationships.delete(key);edit({relationship});if(custom)this.render();
+      },{options:[...markers.map(m=>[m,m[0].toUpperCase()+m.slice(1).replaceAll('_',' ')]),['__custom','Custom…']]});
+      if(custom) {
+        this.field(row,'Custom relationship',markers.includes(value.relationship)?'':value.relationship,relationship=>edit({relationship}));
+        row.append(el('small','h3ct-hint','Outside the expected H3 vocabulary; written as typed.'));
+      }
       this.field(row,'Retention details',value.detail,detail=>edit({detail}),{area:true});
     } else if(kind==='summary') {
       this.field(row,'Task types',value.taskTypes??[],chosen=>this.edit(section,index,key,kind,current=>({taskTypes:[...chosen,...current.taskTypes.filter(t=>!SUMMARY_TASKS.includes(t))]})),{options:SUMMARY_TASKS,multiple:true});
@@ -242,15 +293,19 @@ export class PromptFormPanel {
     const selection=key&&typeof active.selectionStart==='number'?[active.selectionStart,active.selectionEnd]:null;
     this.source=video.prompt;this.root.disabled=!!this.editor.readOnly?.length;this.controls.clear();this.root.replaceChildren();
     const parsed=readPromptFields(this.source,{tags:this.tags()});
+    const cues=parsed.sections.flatMap(s=>s.entries.map(entry=>({section:s.key,entry})))
+      .filter(({entry})=>entry.kind==='cue'&&SHOT_FIELDS.find(f=>f.key===entry.value.key)?.advanced&&entry.value.text.trim());
+    const pin=this.advancedPins.get(video.id);
+    this.advanced=this.editor.readOnly?.length&&pin!==undefined?pin:cues.length>0||pin===true;
     const visual=parsed.sections.some(s=>s.key==='detailed_description')?'detailed_description':'integrated_multimodal_description';
     const keys=['subject_definitions','summary','retention_analysis',visual,'overall_soundscape','non_diegetic_music'];
     if(parsed.sections.some(s=>s.key==='existing'||s.key==='alignment'))keys.push('existing');
     this.section??=parsed.sections[0]?.key??visual;if(this.section==='alignment')this.section='existing';
     if(!keys.includes(this.section))this.section=visual;
-    const tabs=el('div','h3pf-tabs');tabs.setAttribute('role','tablist');tabs.setAttribute('aria-label','Prompt sections');
+    const tabs=el('div','h3pf-tabs h3ct-section-tabs');tabs.setAttribute('role','tablist');tabs.setAttribute('aria-label','Prompt sections');
     for(const name of keys) {
-      const tab=button(SECTION_TITLES[name]??'Existing text',()=>{if(!this.canLeave())return;this.section=name;this.render();});
-      tab.setAttribute('title',SECTION_TITLES[name]??'Existing text');
+      const tab=button('',()=>{if(!this.canLeave())return;this.section=name;this.render();});
+      decorateIcon(tab,SECTION_ICONS[name]??'text',SECTION_TITLES[name]??'Existing text',{text:true});
       tab.classList.toggle('empty',!parsed.sections.filter(s=>s.key===name).some(s=>s.entries.some(e=>e.range.before.trim())));
       tab.setAttribute('role','tab');tab.setAttribute('aria-selected',String(name===this.section));tab.tabIndex=name===this.section?0:-1;
       tab.addEventListener('keydown',event=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;event.preventDefault();
@@ -258,10 +313,9 @@ export class PromptFormPanel {
         if(this.canLeave()){this.section=keys[next];this.render();}});tabs.append(tab);
     }
     // In the fieldset's legend so a read-only Timeline, which disables the fieldset, can still browse sections and details.
-    const legend=el('legend'),advanced=new SwitchSection('Advanced',{onToggle:on=>{this.advanced=on;this.render();}});
-    const hidden=parsed.sections.flatMap(s=>s.entries).filter(e=>e.kind==='cue'&&SHOT_FIELDS.find(f=>f.key===e.value.key)?.advanced).length;
+    const legend=el('legend'),advanced=new SwitchSection('Advanced',{onToggle:on=>this.toggleAdvanced(on,cues)});
     advanced.body.hidden=true;advanced.head.dataset.key='Advanced';this.controls.set('Advanced',advanced.head);
-    advanced.set(this.advanced,{state:!this.advanced&&hidden?`${hidden} hidden`:''});
+    advanced.set(this.advanced,{state:!this.advanced&&cues.length?`${cues.length} hidden`:''});
     legend.append(advanced.root,tabs);this.root.append(legend);
     this.note=el('p','h3pf-error',this.message);this.note.setAttribute('role','status');this.root.append(this.note);
     this.discardButton=button('Discard draft',()=>this.discardDrafts());this.discardButton.hidden=!this.hasDrafts();this.root.append(this.discardButton);
