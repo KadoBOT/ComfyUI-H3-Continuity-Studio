@@ -1,116 +1,68 @@
-# MCP adapter implementation
+# Continuity protection execution
 
-**Status:** MCP implementation complete
-**Current Phase:** Phase 15: durable renders and stories
+**Status:** DP0 passing; DP1 active, Native execution approved; DP2 not started
+**Current Phase:** Phase 23: Continuity degradation protection
+
+Historical Phase20 watch-through blockers remain in the original parent roadmap at D:/development/rambrogi/work/ComfyUI-H3-Continuity-Studio/docs/roadmap-discipline/. They are preserved and outside this execution.
 
 ## Phase Ledgers
 
-- [MCP tools and skills](phases/2026-11-08-mcp-tools-skills.md)
+- [Continuity degradation protection](phases/2026-11-15-degradation-protection.md)
 
 ## Recovery State
 
 ```json
 {
   "version": 1,
-  "revision": 135,
-  "phase": "Phase 15: durable renders and stories",
+  "revision": 2,
+  "phase": "Phase 23: Continuity degradation protection",
   "active_features": [
-    "MCP2"
+    "DP1"
   ],
-  "focus_feature": "MCP2",
-  "goal": "Create and merge the MCP PR, publish v0.20.0 and fast-forward development and installed ComfyUI H3 Continuity checkouts while preserving local work.",
-  "done_when": "PR merged; release/tag verified at merged main; development and installed ComfyUI checkout HEADs fast-forwarded with local changes preserved.",
-  "last_completed": "Recovered clean ce4cf5a implementation and user authorization for PR/merge/release/update. origin/main now includes v0.19.6/0.19.7 fixes.",
-  "in_progress": "Merge origin/main in progress; sole CHANGELOG conflict resolved by retaining MCP release and both intervening releases. Preparing local-edit backups and fresh release gates.",
+  "focus_feature": "DP1",
+  "goal": "Implement the approved native continuity-protection node and preserve both sampler output paths",
+  "done_when": "All five approved tasks, CPU suites, docs and independent final branch review pass; DP2 visual comparison remains separately authorized",
+  "last_completed": "Approved design/plan/Native execution and source-based clips29-30 diagnosis in local base 1dd03ed",
+  "in_progress": "Isolated feat/continuity-protection initialized; no product implementation yet",
   "next": {
-    "action": "Verify merged tree, commit/push release preparation and create/link PR.",
-    "reason": "User authorized full integration and release; latest main must be retained."
+    "action": "Initialize SDD ledger, run CPU baseline and start Task 1 source provenance tests",
+    "reason": "User approved all five tasks and Native execution; isolate from parent changes"
   },
   "files": [
     {
-      "path": "docs/roadmap-discipline/phases/2026-11-08-mcp-tools-skills.md",
-      "state": "MCP0 and MCP1 passing; review fixes and client limits recorded"
+      "state": "Approved five-task plan",
+      "path": "docs/superpowers/plans/2026-11-15-degradation-protection.md"
     },
     {
-      "path": "docs/superpowers/plans/2026-11-08-mcp-tools-skills.md",
-      "state": "All eight tasks and final review/fix gate checked"
+      "state": "Approved spec",
+      "path": "docs/superpowers/specs/2026-11-15-degradation-protection-design.md"
     },
     {
-      "path": "docs/superpowers/specs/2026-11-08-mcp-tools-skills-design.md",
-      "state": "Approved implemented design"
-    },
-    {
-      "path": "docs/MCP.md",
-      "state": "Complete tool/action and client compatibility reference"
-    },
-    {
-      "path": "guide/automation/mcp.md",
-      "state": "Published installation and troubleshooting instructions"
+      "state": "Read-only generated camera reset diagnosis; not a protection fix",
+      "path": "docs/research/2026-11-15-orbit29-30.md"
     }
   ],
   "repository": {
-    "branch": "feat/mcp-adapter",
-    "head": "ce4cf5a7f46e",
+    "branch": "feat/continuity-protection",
+    "head": "1dd03eda6535",
     "dirty": [
-      "CHANGELOG.md",
-      "h3_continuity/generations.py",
-      "h3_continuity/timeline.py",
-      "tests/README.md",
-      "tests/browser/saved_story_attachment.py",
-      "tests/js/continuity_keys.test.mjs",
-      "tests/js/durable_stories.test.mjs",
-      "tests/js/emit_shot_split.mjs",
-      "tests/js/history.test.mjs",
-      "tests/js/saved_story_project.test.mjs",
-      "tests/js/saved_story_recovery.test.mjs",
-      "tests/js/shot_split.test.mjs",
-      "tests/js/story_library_groups.test.mjs",
-      "tests/js/take_marks.test.mjs",
-      "tests/test_preview_targets.py",
-      "tests/test_story_checkpoints.py",
-      "web/h3c_audio_lanes.mjs",
-      "web/h3c_bridges.mjs",
-      "web/h3c_cast.mjs",
-      "web/h3c_dialogue.mjs",
-      "web/h3c_frame_images.mjs",
-      "web/h3c_generation_archive.mjs",
-      "web/h3c_history.mjs",
-      "web/h3c_mentions.mjs",
-      "web/h3c_pictures.mjs",
-      "web/h3c_project.mjs",
-      "web/h3c_reference_preparation.mjs",
-      "web/h3c_reference_replacements.mjs",
-      "web/h3c_reference_sources.mjs",
-      "web/h3c_shot_preview.mjs",
-      "web/h3c_shot_split.mjs",
-      "web/h3c_story.js",
-      "web/h3c_story_library.mjs",
-      "web/h3c_story_model.mjs",
-      "web/h3c_studio.mjs",
-      "web/h3c_takes.mjs",
-      "web/h3c_timed_text.mjs",
-      "web/h3c_timeline.js",
-      "web/h3c_timeline_editor.mjs",
-      "web/h3c_timeline_face.mjs",
-      "web/h3c_timeline_images.mjs",
-      "web/h3c_timeline_model.mjs",
-      "web/h3c_voices.mjs"
+      "docs/roadmap-discipline/readiness-checklist.md"
     ],
-    "dirty_hash": "ec77df0332ee74dacb32fa1c9b933a510abb6661bb201a33c16d6d39680f9cb0"
+    "dirty_hash": "47379c312c1b82668f2463cefc7472d6802b85ed1fa045e86acc8693949c7a7b"
   },
   "verification": {
-    "required": "Fresh host/adapter/docs checks; merged GitHub PR; v0.20.0 tag/release at merged main; development and ComfyUI checkout ancestry/status and local-edit preservation",
-    "last_run": "Task4 red5 missing-server failures; red1 invalid catalog regression; green20 adapter tests using SDK in-memory and real stdio transport.",
+    "required": "approved-design implementation plan; focused CPU regression checks; full suite; strict docs; diff check",
+    "last_run": "Parent research and plan validation",
     "status": "not_run",
-    "detail": "New release scope; implementation prior67 adapter/229JS/393Python evidence remains, merged tree gates pending."
+    "detail": "Baseline and implementation tests not yet run in isolated checkout"
   },
   "blockers": [],
   "reload": [
     "docs/roadmap-discipline/features.md",
-    "docs/roadmap-discipline/phases/2026-11-08-mcp-tools-skills.md",
-    "docs/superpowers/specs/2026-11-08-mcp-tools-skills-design.md",
-    "docs/superpowers/plans/2026-11-08-mcp-tools-skills.md",
-    "docs/research/2026-11-08-mcp-capability-audit.md"
+    "docs/roadmap-discipline/phases/2026-11-15-degradation-protection.md",
+    "docs/superpowers/specs/2026-11-15-degradation-protection-design.md",
+    "docs/superpowers/plans/2026-11-15-degradation-protection.md",
+    "docs/research/2026-11-15-orbit29-30.md"
   ]
 }
 ```
