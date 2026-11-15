@@ -9,17 +9,17 @@
 // ?v= tags come from node tools/module_versions.mjs --write, so cached .mjs files cannot mix frontend versions.
 import { app } from '../../scripts/app.js';
 import { api } from '../../scripts/api.js';
-import { mountSavedState, AUTOSAVE_SETTING, autosaveEnabled } from './h3c_saved_state.mjs?v=285cb0ac96bb';
+import { mountSavedState, AUTOSAVE_SETTING, autosaveEnabled, userBusy } from './h3c_saved_state.mjs?v=633682c759bb';
 import { migrateStoryDescriptionInputs, migrateSerializedStoryDescriptionInputs } from './h3c_story_inputs.mjs?v=46d6a455ab9a';
 import { showOwnElement } from './h3c_dom_widget.mjs?v=961e6d7f3bb7';
 import * as story from './h3c_story_model.mjs?v=f498e4660a19';
 import { StoryPanel } from './h3c_story_panel.mjs?v=790aad382bc2';
-import { StoryLibrary, isWiringConflict, saveBeforeNewProject, savedStoryContent, recoverSavedStoryContent, independentStoryContent } from './h3c_story_library.mjs?v=017d91c2210b';
+import { StoryLibrary, isWiringConflict, saveBeforeNewProject, savedStoryContent, recoverSavedStoryContent, independentStoryContent } from './h3c_story_library.mjs?v=2d0984ea641c';
 import { exportStory, importStory, downloadStory } from './h3c_story_archive.mjs?v=b07a438d2dc4';
 import { parseState, serialize, unknownFeatures, readOnlyNote } from './h3c_timeline_model.mjs?v=1dfc1612e462';
 
-import {exportGeneration,importGeneration,downloadGeneration,generationControl,setGenerationControl} from './h3c_generation_archive.mjs?v=af87cc689b79';
-import {captureRecipe,hasVideoOutput as compiledVideoOutput} from './h3c_stills.mjs?v=df999ecd2dcd';
+import {exportGeneration,importGeneration,downloadGeneration,generationControl,setGenerationControl} from './h3c_generation_archive.mjs?v=cc8f0dd38e59';
+import {captureRecipe,hasVideoOutput as compiledVideoOutput} from './h3c_stills.mjs?v=91783cbcec22';
 import {parseJSON,stringifyJSON} from './h3c_project.mjs?v=0882b8a6265a';
 
 const NODE_TYPE = 'H3C_Story';
@@ -169,7 +169,8 @@ export class StoryHost {
       },
       revision: () => structuredClone(this.node.graph.serialize()),
     });
-    this.libraryTimer=setInterval(()=>this.saveLibrary().catch(error=>this.panel.say(error.message,true)),5000);
+    // Saving serializes the workflow twice and sends all of it, so it waits for a pause in typing.
+    this.libraryTimer=setInterval(()=>{if(!userBusy())this.saveLibrary().catch(error=>this.panel.say(error.message,true));},5000);
     for (const widget of node.widgets ?? []) this.chain(widget, () => {
       this.saved.changed(); panel.refreshSettings(); this.syncTemplateWidget();
     });

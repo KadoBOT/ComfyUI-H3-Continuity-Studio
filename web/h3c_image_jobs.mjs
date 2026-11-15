@@ -23,16 +23,19 @@ export class ImageJobClient {
     } catch(error) {receipt.state='unknown';receipt.error=error.message;}
     try {return await this.save(receipt,context);} finally {this.active.delete(receipt.prompt_id);}
   }
+  // Resolves to how many receipts the server changed.
   async recover() {
     if(this.recovering) return this.recovering;
     this.recovering=this.readResults();
-    try {await this.recovering;} finally {this.recovering=null;}
+    try {return await this.recovering;} finally {this.recovering=null;}
   }
   async readResults() {
     const context=this.context?.();
     const receipts=structuredClone(this.receipts()??[]);
+    let changed=0;
     for(const receipt of receipts) {
       if(terminal.has(receipt.state) || this.active.has(receipt.prompt_id)) continue;
+      const before=JSON.stringify(receipt);
       try {
         const result=await this.request(this.resultPath,receipt);
         if(!result.ok) {receipt.state='unknown';receipt.error=result.error;}
@@ -44,7 +47,12 @@ export class ImageJobClient {
       } catch(error) {receipt.state='unknown';receipt.error=error.message;}
       const current=this.receipts()?.find(item=>item.request_id===receipt.request_id&&item.prompt_id===receipt.prompt_id);
       if(context!==this.context?.()||!current||current.historical||terminal.has(current.state))continue;
-      await this.save(receipt,context);
+      // A request the server has nothing new about stays as it is: saving it again would rewrite and reload the whole
+      // Timeline each time it is checked, which is after every edit.
+      if(JSON.stringify(receipt)===before)continue;
+      await this.save(receipt,context,{recovered:true});
+      changed++;
     }
+    return changed;
   }
 }

@@ -1,30 +1,30 @@
-import {ReferenceClient,applyReferenceApproval,requiredAssets,preparationOf} from './h3c_reference_preparation.mjs?v=6d2f9a937e6a';
-import {generationControl,setGenerationControl} from './h3c_generation_archive.mjs?v=af87cc689b79';
+import {ReferenceClient,applyReferenceApproval,requiredAssets,preparationOf} from './h3c_reference_preparation.mjs?v=5ae76a0edff0';
+import {generationControl,setGenerationControl} from './h3c_generation_archive.mjs?v=cc8f0dd38e59';
 // Mounts the H3 Timeline face on H3C_Timeline nodes, edits the Timeline in the Studio, and keeps its status in sync
 // with the server. Browsers may cache the .mjs helpers, so their ?v= tags come from node tools/module_versions.mjs --write.
 import { freshProject } from './h3c_new_project.mjs?v=96adbc29f06d';
-import { saveBeforeNewProject } from './h3c_story_library.mjs?v=017d91c2210b';
+import { saveBeforeNewProject } from './h3c_story_library.mjs?v=2d0984ea641c';
 import { app } from '../../scripts/app.js';
 import {syncImageOutputs,compileImageOutputs} from './h3c_timeline_images.mjs?v=f276b2ccd8b2';
 import { api } from '../../scripts/api.js';
-import { mountSavedState, autosaveEnabled } from './h3c_saved_state.mjs?v=285cb0ac96bb';
+import { mountSavedState, autosaveEnabled, AUTOSAVE_IDLE_MS, AUTOSAVE_OFF, userBusy, releaseUser } from './h3c_saved_state.mjs?v=633682c759bb';
 import {setText} from './h3c_dom.mjs?v=584a9bf55653';
 import { showOwnElement } from './h3c_dom_widget.mjs?v=961e6d7f3bb7';
 import { WATCH_EVENTS, idleWatch, progressText, watchEvent } from './h3c_render_watch.mjs?v=7c8222569836';
 import { DEFAULT_AHEAD, QueueFeed, feedNote, queueAhead } from './h3c_queue_feed.mjs?v=9392f926e4e3';
-import { studio } from './h3c_studio.mjs?v=c7c0190f4a9b';
+import { studio } from './h3c_studio.mjs?v=0cfdc40ad356';
 import { FACE_HEIGHT, TimelineFace } from './h3c_timeline_face.mjs?v=f87ad7bf252b';
-import { TimelineEditor } from './h3c_timeline_editor.mjs?v=e980f1849168';
+import { TimelineEditor } from './h3c_timeline_editor.mjs?v=d8b49839a79f';
 import { referenceFile, referenceSource, referencePools, referenceType, effectiveRefmods, parseState, serialize, unknownFeatures, readOnlyNote } from './h3c_timeline_model.mjs?v=1dfc1612e462';
 import {referenceImageFile} from './h3c_reference_sources.mjs?v=107846e10a11';
 import { pictureRefs } from './h3c_pictures.mjs?v=220c235a7923';
 import { voiceRefs } from './h3c_voices.mjs?v=efb0f83d17e1';
-import {captureRecipe,captureTimelineId,captureStillBody,stillTimelineBody,recipeControls,StillClient,isolateVideoPrompt,videoOutputs,hasVideoOutput as compiledVideoOutput,graphWiring} from './h3c_stills.mjs?v=df999ecd2dcd';
-import {boundarySnapshot} from './h3c_frame_images.mjs?v=89df43d62a40';
+import {captureRecipe,captureTimelineId,captureStillBody,stillTimelineBody,recipeControls,StillClient,isolateVideoPrompt,videoOutputs,hasVideoOutput as compiledVideoOutput,graphWiring} from './h3c_stills.mjs?v=91783cbcec22';
+import {boundarySnapshot} from './h3c_frame_images.mjs?v=f1342e7ccbe1';
 import {stillPromptSource,sameStillPromptSource} from './h3c_still_prompt_preparation.mjs?v=9ea1bfd9b6b5';
 import { TakesClient } from './h3c_takes.mjs?v=15deab5acdd6';
 import {ProjectSession, forkProject, parseJSON, projectErrorMessage, stringifyJSON} from './h3c_project.mjs?v=0882b8a6265a';
-import {TimelineHistory, dropReceipts, withLiveReceipts} from './h3c_history.mjs?v=aa0916b99431';
+import {TimelineHistory, dropReceipts, withLiveReceipts} from './h3c_history.mjs?v=e4fece99d8a4';
 import {confirmRegeneration} from './h3c_regeneration.mjs?v=44ff3a1a199c';
 import {startGeneration,useGeneration} from './h3c_generations.mjs?v=2ed8014b9ec0';
 
@@ -34,6 +34,14 @@ const BIBLE_URL = '/h3c/timeline/bible';
 const SETTINGS = ['width', 'height', 'context_frames', 'carry_audio', 'ref_image_size', 'audio_context_frames'];
 const MUTED = 2;
 const BYPASSED = 4;
+// The still panel serializes the workflow (~100 ms on a large one) and asks the server for each clip it opens; it waits
+// until the Timeline has been quiet this long, so an edit or a click through the clips never pays for it.
+const STILL_QUIET_MS = 600;
+// A workflow's video-output answer is reused while its graph keeps the same version, for at most this long (a node muted or
+// bypassed does not change the version).
+const VIDEO_ANSWER_MS = 2000;
+// A still or reference request the server could not report on is asked about again this often; one it is running, every 3 s.
+const UNKNOWN_RECHECK_MS = 30000;
 const QUEUE_AHEAD_SETTING = 'H3C.Timeline.QueueAhead';
 const RUN_ENDS = new Set(['execution_success', 'execution_error', 'execution_interrupted']);
 const mounted = new Set();
@@ -206,6 +214,8 @@ export class TimelineHost {
       referenceReadiness:boxId=>this.referenceReadiness(boxId),
       openReferencePreparation:keys=>this.editor.cast.preparation.open(keys),
       stillSources: (request, options) => this.stillSources(request, options),
+      touchStills: () => this.touch(),
+      stillsSettled: signal => this.settled(signal),
       prepareStill: request => this.prepareStill(request),
       stillControls: () => this.stillControls(),
       prepareStillPrompts: (instructions,onProgress) => this.prepareStillPrompts(instructions,onProgress),
@@ -252,9 +262,9 @@ export class TimelineHost {
     });
     this.editor = editor;
     this.stillClient=new StillClient({context:()=>stringifyJSON([this.node.graph?.id,findWidget(this.node,'name')?.value,this.project?.project?.sequence,!!this.removed]),capture:request=>this.prepareStill(request),read:()=>this.readState(),
-      write:state=>this.writeStillState(state),request:(url,body)=>this.stillRequest(url,body)});
+      write:(state,options)=>this.writeStillState(state,options),request:(url,body)=>this.stillRequest(url,body)});
     this.referenceHost={referenceState:()=>this.readState(),referenceContext:()=>this.referenceContext(),
-      writeReferenceState:state=>this.writeStillState(state),referenceCatalog:()=>this.referenceCatalog(),
+      writeReferenceState:(state,options)=>this.writeStillState(state,options),referenceCatalog:()=>this.referenceCatalog(),
       prepareReference:request=>this.prepareReference(request),request:async(url,body)=>this.stillRequest(url,url==='/h3c/reference-assets/approve'?{...await this.referenceSnapshot(body.timeline),...body}:body),
       referenceChanged:()=>this.editor.cast.preparation?.refresh(),undoStep:recordStep,
       referenceReady:async()=>{await this.saved.ready;if(this.project?.conflict)throw Error('Resolve project edits before approving a reference.');}};
@@ -639,20 +649,24 @@ export class TimelineHost {
     return true;
   }
 
-  async writeStillState(state) {
+  // A request's result read back from the server (`recovered`) is saved as every other edit is, by Autosave; one the user
+  // asked for is saved now.
+  async writeStillState(state,{recovered=false}={}) {
     if(!this.writeTimeline(serialize(state)))throw Error(readOnlyNote(unknownFeatures(this.readState())));
     this.node.setDirtyCanvas?.(true,true);
     this.editor.load();this.saved.changed();
-    await this.saved.flush();
+    if(!recovered)await this.saved.flush();
   }
 
-  // Asked by each Render button on every redraw; reading the graph's wiring is slow on a large workflow, and the graph
-  // can't change before the redraw ends.
+  // Asked by each Render button on every redraw; reading the graph's wiring takes ~15 ms on a large workflow. The answer
+  // stands while the graph's version (bumped by every node or link added, removed or connected) is the same, and for at
+  // most VIDEO_ANSWER_MS; a graph without a version is asked again after each redraw.
   hasVideoOutput() {
-    if(this.videoAnswer===undefined) {
-      this.videoAnswer=this.findVideoOutput();
-      queueMicrotask(()=>{this.videoAnswer=undefined;});
-    }
+    const versions=[app.rootGraph??app.graph,this.node.graph].map(graph=>graph?._version),versioned=versions.every(Number.isFinite),
+      key=versions.join('/'),now=performance.now();
+    if(this.videoAnswer!==undefined&&versioned&&key===this.videoKey&&now-this.videoAt<VIDEO_ANSWER_MS)return this.videoAnswer;
+    this.videoAnswer=this.findVideoOutput();this.videoKey=key;this.videoAt=now;
+    if(!versioned)queueMicrotask(()=>{this.videoAnswer=undefined;});
     return this.videoAnswer;
   }
 
@@ -792,10 +806,11 @@ export class TimelineHost {
     if((state.still_requests??[]).some(pending))this.recoverStills();
   }
   async recoverReferences() {
-    clearTimeout(this.referenceTimer);
+    clearTimeout(this.referenceTimer);this.referenceTimer=null;
     try{await this.referenceClient.recover();}catch(error){const panel=this.editor.cast.preparation;if(panel){panel.message=error.message;panel.render();}}
-    if(!this.removed&&preparationOf(this.readState()).requests.some(r=>!r.historical&&!['complete','failed','cancelled'].includes(r.state)))
-      this.referenceTimer=setTimeout(()=>this.recoverReferences(),3000);
+    const waiting=preparationOf(this.readState()).requests.filter(r=>!r.historical&&!['complete','failed','cancelled'].includes(r.state));
+    if(!this.removed&&waiting.length)
+      this.referenceTimer=setTimeout(()=>this.recoverReferences(),waiting.some(r=>r.state!=='unknown')?3000:UNKNOWN_RECHECK_MS);
   }
   async reuseReferenceScene(key,source) {
     const before=this.widget.value,context=this.referenceContext(),rows=await this.referenceCatalog();
@@ -823,12 +838,47 @@ export class TimelineHost {
 
   // stillControls and stillSources are asked as the Studio draws a clip; the workflow is serialized after that draw shows.
   // A sources load the panel replaced in the meantime (a graph load redraws it once per link) stops there.
-  async stillControls() {
-    await afterPaint();
-    const snapshot=await app.graphToPrompt();
-    const id=captureTimelineId(snapshot,this.node.id,{root:this.node.graph===(app.rootGraph??app.graph)});
-    const recipe=captureRecipe(snapshot,id);
-    return recipe?{...recipeControls(snapshot,recipe),seedScope:recipe.adapter==='pixels'&&!compiledVideoOutput(snapshot,id)?'box':'native'}:null;
+  // The still panel asks as it opens a clip (see STILL_QUIET_MS). Asks made while one waits share its reading.
+  touch() {this.touchedAt=performance.now();}
+
+  // Resolves once nothing has opened a clip in the panel for STILL_QUIET_MS; rejects when `signal` aborts or the node goes.
+  settled(signal) {
+    return new Promise((resolve,reject)=>{
+      const check=()=>{
+        if(signal?.aborted)return reject(signal.reason);
+        if(this.removed)return reject(new DOMException('The Timeline was removed.','AbortError'));
+        const wait=(this.touchedAt??-Infinity)+STILL_QUIET_MS-performance.now();
+        if(wait>0)setTimeout(check,wait);else resolve();
+      };
+      check();
+    });
+  }
+
+  // What stillTimelineBody finds in the compiled workflow, read from the node when its name, text and context frames are its own
+  // widgets on an active node of the root graph, which the compiled workflow could only copy. Null when it has to be compiled
+  // (a linked input, a muted or bypassed node, a subgraph).
+  literalTimelineBody(request) {
+    const node=this.node,graph=app.rootGraph??app.graph;
+    if(node.graph!==graph||node.mode===MUTED||node.mode===BYPASSED||isLinked(node,'timeline'))return null;
+    const {name,timeline,settings}=this.requestBody(),frames=settings.context_frames;
+    if(name==null||frames==null||typeof name==='object'||typeof frames==='object'||typeof timeline!=='string')return null;
+    return {...structuredClone(request),name,timeline,settings:{context_frames:frames}};
+  }
+
+  stillControls() {
+    if(this.controlsRead)return this.controlsRead;
+    const read=this.controlsRead=(async()=>{
+      await this.settled();await afterPaint();
+      this.controlsRead=null;
+      // Without a connected still recipe there is nothing to read; compiling the workflow would only say so.
+      if(this.node.graph===(app.rootGraph??app.graph)&&this.node.mode!==MUTED&&this.node.mode!==BYPASSED&&!isLinked(this.node,'still_recipe'))return null;
+      const snapshot=await app.graphToPrompt();
+      const id=captureTimelineId(snapshot,this.node.id,{root:this.node.graph===(app.rootGraph??app.graph)});
+      const recipe=captureRecipe(snapshot,id);
+      return recipe?{...recipeControls(snapshot,recipe),seedScope:recipe.adapter==='pixels'&&!compiledVideoOutput(snapshot,id)?'box':'native'}:null;
+    })();
+    read.catch(()=>{if(this.controlsRead===read)this.controlsRead=null;});
+    return read;
   }
 
   async generateStill(request) {
@@ -838,19 +888,24 @@ export class TimelineHost {
   }
 
   async recoverStills() {
-    clearTimeout(this.stillTimer);
+    clearTimeout(this.stillTimer);this.stillTimer=null;
     try {await this.stillClient.recover();} catch(error) {this.editor.frameImages.note(error.message);}
-    if(!this.removed && this.readState().still_requests?.some(item=>!['complete','failed','cancelled'].includes(item.state)))
-      this.stillTimer=setTimeout(()=>this.recoverStills(),3000);
+    const waiting=this.readState().still_requests?.filter(item=>!['complete','failed','cancelled'].includes(item.state));
+    if(!this.removed && waiting?.length)
+      this.stillTimer=setTimeout(()=>this.recoverStills(),waiting.some(item=>item.state!=='unknown')?3000:UNKNOWN_RECHECK_MS);
   }
 
   async stillSources(request,{signal}={}) {
+    await this.settled(signal);
     await afterPaint();
     signal?.throwIfAborted();
-    const snapshot=await app.graphToPrompt();
-    signal?.throwIfAborted();
-    const id=captureTimelineId(snapshot,this.node.id,{root:this.node.graph===(app.rootGraph??app.graph)});
-    const body=stillTimelineBody(snapshot,id,request);
+    let body=this.literalTimelineBody(request);
+    if(!body) {
+      const snapshot=await app.graphToPrompt();
+      signal?.throwIfAborted();
+      const id=captureTimelineId(snapshot,this.node.id,{root:this.node.graph===(app.rootGraph??app.graph)});
+      body=stillTimelineBody(snapshot,id,request);
+    }
     if(this.project?.project) body.name=this.project.project.sequence;
     return this.stillRequest('/h3c/stills/sources',body,{signal});
   }
@@ -1143,7 +1198,9 @@ export class TimelineHost {
 
   async refresh() {
     await this.saved.ready;
-    this.recoverStills();this.recoverReferences();
+    // Requests still waiting are checked by their own timers; an edit does not need to ask again.
+    if(!this.stillTimer)this.recoverStills();
+    if(!this.referenceTimer)this.recoverReferences();
     if (this.project) {
       try {
         await this.saved.ready;
@@ -1240,15 +1297,33 @@ export class TimelineHost {
     }
     choices.hidden = true;
     const ready = project.load({preserveLocal}); ready.catch(error => {label.textContent = error.message;});
-    let timer;
+    let timer, editedAt = 0, dirty = false;
+    // Saves after a pause in editing, or when focus leaves the field the edit was made in.
+    const save = () => {
+      dirty = false;
+      if (autosaveEnabled(app)) project.save().catch(() => {});
+    };
+    const later = () => {
+      if (!autosaveEnabled(app)) return;
+      if (userBusy(editedAt)) {timer = setTimeout(later, AUTOSAVE_IDLE_MS); return;}
+      save();
+    };
+    const leave = () => {
+      releaseUser();
+      if (!dirty) return;
+      clearTimeout(timer); save();
+    };
+    document.addEventListener('focusout', leave, true);
     this.saved = {bar, ready,
       flush: async () => {await ready; await project.save();},
       changed: () => {
+        editedAt = Date.now();
         clearTimeout(timer);
-        if(!autosaveEnabled(app)){label.textContent='Autosave off — save a checkpoint to keep your edits.';return;}
-        timer = setTimeout(() => {if(autosaveEnabled(app))project.save().catch(() => {});}, 250);
+        if(!autosaveEnabled(app)){setText(label,AUTOSAVE_OFF);return;}
+        dirty = true;
+        timer = setTimeout(later, AUTOSAVE_IDLE_MS);
       },
-      destroy: () => {clearTimeout(timer); project.destroy(); bar.remove();}};
+      destroy: () => {clearTimeout(timer); document.removeEventListener('focusout', leave, true); project.destroy(); bar.remove();}};
     if (reopen) this.openStudio(page, {link: false});
   }
 
