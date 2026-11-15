@@ -4,6 +4,8 @@ H3 Continuity is a ComfyUI custom node pack for authoring and rendering sequence
 
 Visual memory can bring selected moments from earlier clips into a later shot, including after an exterior scene or a camera-angle change. H3 Story can plan and write the Timeline through an OpenAI-compatible endpoint, local or cloud.
 
+For long continuing chains, the optional [H3 Continuity Protection](guide/continuity/long-chains.md#h3-continuity-protection) node uses sampler-level context noise and original chain anchors to target accumulated color/detail drift. It requires no extra node pack or model; protected sampling bypasses disk cache and does not support Context Windows. Render quality still needs checking on your model.
+
 [Watch the contest demo (under two minutes)](https://github.com/KadoBOT/ComfyUI-H3-Continuity-Studio/releases/download/v0.1.0/H3-Continuity-demo-contest.mp4) · [Full demo](https://github.com/KadoBOT/ComfyUI-H3-Continuity-Studio/releases/download/v0.1.0/H3-Continuity-demo-full.mp4) · [Reproduce the example](docs/MEMORY-DEMO.md)
 
 ![The same room from another camera angle](docs/media/memory-comparison.png)

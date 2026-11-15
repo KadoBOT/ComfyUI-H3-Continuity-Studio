@@ -4,6 +4,10 @@ All notable changes to H3 Continuity Studio are recorded here. Versions follow [
 
 ## [Unreleased]
 
+### Added
+
+- Opt-in **H3 Continuity Protection** node: sampler-level context noise, clean native chain anchors and late capstones, with original carried frames restored in normal and denoised sampler outputs. Save Segment verifies executed output before writing. Protected continuations bypass sampling disk cache; disabled/fresh clips keep cache behavior. No extra models or packages; Context Windows and the old pixel-noise mode cannot be combined with it. Visual drift reduction remains model-dependent and has not yet been validated by a matched GPU comparison.
+
 ## [1.2.0] - 2026-11-15
 
 ### Added

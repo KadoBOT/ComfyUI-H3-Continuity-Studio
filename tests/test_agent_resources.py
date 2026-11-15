@@ -85,7 +85,8 @@ class AgentResourcesTest(unittest.TestCase):
 
     def test_coverage_classifies_all_nodes_and_skills(self):
         coverage = resources.catalog()['coverage']
-        self.assertEqual(len(coverage['nodes']), 19)
+        self.assertEqual(len(coverage['nodes']), 20)
+        self.assertIn('H3C_ContinuityProtection', coverage['nodes'])
         self.assertIn('H3C_MiniMaxH3ImageStill', coverage['nodes'])
         self.assertIn('H3C_MiniMaxPromptCaption', coverage['nodes'])
         self.assertEqual(len(coverage['skills']), 7)

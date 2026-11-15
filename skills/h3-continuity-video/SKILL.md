@@ -43,7 +43,7 @@ texts are under `docs/` and the user guide is under `guide/`.
 
 | Skill | Load it when the work involves |
 | --- | --- |
-| `h3-continuity-joins` | how a box meets the one before it: continue, cut, new scene, transitions inside H3, **visual memory**, bridges, splitting a box before a timed Shot |
+| `h3-continuity-joins` | how a box meets the one before it: continue, cut, new scene, transitions inside H3, **visual memory**, bridges, splitting a box before a timed Shot, opt-in **H3 Continuity Protection** sampling node |
 | `h3-continuity-timing` | box lengths, the frame grid, **exact lengths** and long edits of many cuts, where each box starts, long boxes past 362 frames, Context Windows, merging and refining continuing chains |
 | `h3-continuity-references` | prompts and what H3 sees in one box: the native prompt structure, `t2va`/`flf2va`/`ref2va` modes, `@` mentions, Timeline pictures, first/last frames and Shot guides, still candidates, RefMods, plates, replacements |
 | `h3-continuity-sound` | audio lanes, playing the original recording in the full video, character voice clips, Whisper timed text |
