@@ -1,6 +1,6 @@
 # Cast assignment and structured prompt forms
 
-Status: draft for user approval. The foundation is agreed; detailed behavior below is proposed unless identified as a user requirement. No implementation is authorized by this document alone.
+Status: approved by the user on 2026-11-15. Next: write and review the implementation plan before product implementation.
 
 Builder check (2026-11-15): an independent software-engineer review reported "nothing important left" to resolve before planning. This checks planning completeness, not product behavior or user approval.
 
