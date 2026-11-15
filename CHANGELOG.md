@@ -4,6 +4,16 @@ All notable changes to H3 Continuity Studio are recorded here. Versions follow [
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-11-15
+
+### Added
+
+- **Stills from your own image workflow.** The Timeline has a **still_image** input. Connect the IMAGE output of any image workflow wrapped in a native subgraph whose inputs are named `prompt` and `seed` (optionally `width`, `height`, `negative`, and one IMAGE input per reference picture); the Studio generates stills and reference pictures through it and leaves every other setting alone. No Still Recipe node or written bindings are needed. A still that has fewer references than the workflow requires is reported before it is queued. **Still Recipe**, **P-H3-Image Still** and **MiniMax H3 Image Still** keep working. See [Stills with your own image workflow](guide/build/own-image-workflow-stills.md).
+
+### Changed
+
+- `examples/qwen_image_21_still.json` no longer contains a Still Recipe node: connect its IMAGE output to **still_image**.
+
 ## [1.1.1] - 2026-11-15
 
 ### Fixed

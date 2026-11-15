@@ -160,7 +160,7 @@ later box.
 - Connected references (images, videos, video audio, audio), Timeline pictures,
   enabling, disabling and replacing references, and the `image_N` outputs
   (`h3-continuity-references`).
-- First and last frames, timed Shot guides, still candidates from a Still Recipe,
+- First and last frames, timed Shot guides, still candidates from the user's own image workflow,
   scene anchors and prepared still prompts (`h3-continuity-references`).
 - RefMods, FLF2VA with cached RefMods, and appearance plates
   (`h3-continuity-references`).

@@ -19,7 +19,7 @@ import { referenceFile, referenceSource, referencePools, referenceType, effectiv
 import {referenceImageFile} from './h3c_reference_sources.mjs?v=107846e10a11';
 import { pictureRefs } from './h3c_pictures.mjs?v=220c235a7923';
 import { voiceRefs } from './h3c_voices.mjs?v=efb0f83d17e1';
-import {captureRecipe,captureTimelineId,captureStillBody,stillTimelineBody,recipeControls,StillClient,isolateVideoPrompt,videoOutputs,hasVideoOutput as compiledVideoOutput,graphWiring} from './h3c_stills.mjs?v=91783cbcec22';
+import {captureRecipe,captureTimelineId,captureStillBody,stillTimelineBody,recipeControls,StillClient,isolateVideoPrompt,videoOutputs,hasVideoOutput as compiledVideoOutput,graphWiring} from './h3c_stills.mjs?v=0925953008c8';
 import {boundarySnapshot} from './h3c_frame_images.mjs?v=f1342e7ccbe1';
 import {stillPromptSource,sameStillPromptSource} from './h3c_still_prompt_preparation.mjs?v=9ea1bfd9b6b5';
 import { TakesClient } from './h3c_takes.mjs?v=15deab5acdd6';
@@ -714,7 +714,7 @@ export class TimelineHost {
   async prepareReference(request) {
     const snapshot=await app.graphToPrompt();
     const id=captureTimelineId(snapshot,this.node.id,{root:this.node.graph===(app.rootGraph??app.graph)});
-    const recipe=captureRecipe(snapshot,id);if(!recipe)throw Error('Connect an image recipe before generating references.');
+    const recipe=captureRecipe(snapshot,id);if(!recipe)throw Error("Connect an image workflow to the Timeline's still_image input before generating references.");
     const body=captureStillBody(snapshot,id,{...request,request_id:request.request_id??crypto.randomUUID(),recipe});
     if(this.project?.project){body.name=this.project.project.sequence;body.workflow.api[id].inputs.name=body.name;}
     const result=await this.stillRequest('/h3c/reference-assets/prepare',body);
@@ -829,7 +829,7 @@ export class TimelineHost {
   async openStillGenerator() {
     const snapshot=await app.graphToPrompt();
     const id=captureTimelineId(snapshot,this.node.id,{root:this.node.graph===(app.rootGraph??app.graph)});
-    const recipe=captureRecipe(snapshot,id);if(!recipe)throw Error('Connect a Still Recipe first.');
+    const recipe=captureRecipe(snapshot,id);if(!recipe)throw Error("Connect an image workflow to the Timeline's still_image input first.");
     const root=app.rootGraph??app.graph,rootId=recipe.output[0].split(':')[0];
     const node=root.getNodeById(rootId);if(!node)throw Error('The connected generator is missing.');
     studio().close();if(app.canvas.graph!==root)app.canvas.setGraph(root);
@@ -914,7 +914,7 @@ export class TimelineHost {
     const snapshot=await app.graphToPrompt();
     const id=captureTimelineId(snapshot,this.node.id,{root:this.node.graph===(app.rootGraph??app.graph)});
     const recipe=captureRecipe(snapshot,id);
-    if (!recipe) throw new Error('Connect an H3 Still Recipe to this Timeline.');
+    if (!recipe) throw new Error("Connect an image workflow to this Timeline's still_image input.");
     const body=captureStillBody(snapshot,id,{...request,request_id:request.request_id ?? crypto.randomUUID(),recipe});
     if(this.project?.project) {
       body.name=this.project.project.sequence;
