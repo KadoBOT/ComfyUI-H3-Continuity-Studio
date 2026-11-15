@@ -4,6 +4,8 @@ All notable changes to H3 Continuity Studio are recorded here. Versions follow [
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-11-15
+
 ### Fixed
 
 - **Studio edits are quick again, and Autosave off stays off.** A still or reference request the server could not report on was asked about, rewritten into the Timeline and force-saved after every edit, which reloaded the whole editor and flashed "Saved on this ComfyUI server" even with Autosave off. A request with nothing new is now left alone, a result read back from the server is saved by Autosave like any other edit, and requests the server could not read are checked every 30 s instead of every edit. The still panel no longer serializes the workflow (about 100 ms) after each edit: it waits until edits pause, reads the Timeline's own widgets instead when it can, and a clip click through the Timeline waits too. With Autosave off the label no longer flips to "Changes pending…" on each edit. With Autosave on, edits are saved after a 1.5 s pause or when focus leaves the field, not between keys, and the Story library's five-second save waits for typing to stop. The Render buttons' video-output check is reused until the workflow's wiring changes. The redraw when the server's status comes back, and when the still panel's answer arrives, no longer replaces nodes (icon-button captions, audio lane headers, still-panel notes), which restyled the whole page about 70 ms each time even when nothing had changed.
