@@ -1,6 +1,6 @@
 ---
 name: h3-continuity-story
-description: Use when an H3 Timeline uses or could use H3 Story. That covers writing, rewriting or revising box prompts with a language model, story templates, idea images, the Story bible and Cast (characters, places, props, looks, schedules, joins, pins), Cast visual memory, updating prose after Cast edits, and the continuity check with colour drift. Part of the H3 Continuity pack; read h3-continuity-video first.
+description: Use when an H3 Timeline uses or could use H3 Story. That covers writing, rewriting or revising box prompts with a language model, story templates, idea images, the Story bible and Cast (characters, places, props, looks, schedules, joins, pins, adding an entity to a box), Cast visual memory, updating prose after Cast edits, and the continuity check with colour drift. Part of the H3 Continuity pack; read h3-continuity-video first.
 ---
 
 # H3 Story, the bible and the continuity check
@@ -75,6 +75,21 @@ preparation also read the bible/schedule; keep them consistent with the prompts.
   the change in words.
 - A box's subject line **differs** when it isn't the bible's wording. Cast offers to
   use the bible's wording, make it a look, or link someone else.
+- **Add from Cast** (bible action `assign` with `box` and `entity`) adds one
+  entity to one box: the next unused `<Subject N>` (above every number in the box
+  prompt, the shared prompt and the box's `cast`) defined with the bible's wording
+  and pictures in force at that box, plus its `cast` link and `schedule` entry
+  (`schedule.place` for a place). A prompt without `subject_definitions:` gains
+  it; an `integrated_multimodal_description:` header becomes
+  `detailed_description:`, and plain text moves under it. It returns
+  `{prompts, casts, schedules, subject, changed}` for one atomic save, or
+  `changed: false` with the existing label when the entity is already linked
+  there. It refuses, changing nothing, an entity with neither description nor
+  picture, disabled pictures, duplicate sections, or a box that would exceed
+  H3's reference limits. It never adds shots, retention or actions.
+- Removing an entity from a box's schedule leaves its prompt text and `cast`
+  link; edit or delete the `<Subject N>` definition separately, after removing
+  its other uses.
 - Voices and voice clips belong to characters (see `h3-continuity-sound`).
 - Each Cast change is one undo step.
 

@@ -176,7 +176,7 @@ class StudioTools:
                  target: Target, arguments_json: str = '{}', expected_revision: dict[str, StrictInt] | None = None,
                  request_key: str | None = None) -> dict[str, Any]:
         """Story proposals: write/rewrite {box?,rewrite_all?}, feedback {edit}, check {boxes?}, still_prompts {instructions?,source?};
-        execution needs revision/key. Templates/hosts read configuration; bible {action:build|link|apply|status|recompile,...}
+        execution needs revision/key. Templates/hosts read configuration; bible {action:build|link|apply|status|recompile|assign,...}
         returns transformed data only. See h3c://docs/MCP.md for action contracts. Poll returned job; save proposals explicitly.
         """
         args = _object(arguments_json)

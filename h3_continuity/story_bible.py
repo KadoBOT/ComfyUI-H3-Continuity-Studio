@@ -1,8 +1,9 @@
 """The Story bible: a Timeline's characters, places and props, their looks over time, and the subject lines they give.
 
 The bible is the Timeline's top-level "bible" object; each box's "cast" maps its subject labels to entity ids. Only
-`apply` and `recompile` change prompts: `apply` for boxes whose prompt is still what their source compiled to and
-for subjects whose line is still what the bible gave them, and `recompile` only for the boxes it is asked for.
+`apply`, `recompile` and `assign` change prompts: `apply` for boxes whose prompt is still what their source compiled
+to and for subjects whose line is still what the bible gave them, `recompile` only for the boxes it is asked for, and
+`assign` by adding one entity's subject line to one box.
 Nothing here calls a model."""
 import copy
 import json
@@ -653,7 +654,7 @@ def handle(body):
         elif action == "recompile":
             result = recompile(timeline, body.get("boxes"))
         else:
-            raise ValueError(f"Unknown bible action {action!r}; use build, link, apply, status or recompile.")
+            raise ValueError(f"Unknown bible action {action!r}; use build, link, apply, status, recompile or assign.")
     except ValueError as error:
         return {"ok": False, "error": str(error)}
     return {"ok": True, **result}
