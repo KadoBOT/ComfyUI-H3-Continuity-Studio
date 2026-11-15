@@ -3,7 +3,7 @@ import {promptSections,promptShots,replacePromptRanges} from './h3c_prompt_secti
 import {SwitchSection} from './h3c_switch_section.mjs?v=c253500f4908';
 import {MentionLayer} from './h3c_mentions.mjs?v=7d543c4a1ce8';
 import {shotTiming,editPromptShot} from './h3c_prompt_shots.mjs?v=17aa67525854';
-import {decorateIcon} from './h3c_icons.mjs?v=53ef18502c79';
+import {decorateIcon} from './h3c_icons.mjs?v=62c964e1ecbe';
 const el=(tag,cls,text)=>{const node=document.createElement(tag);if(cls)node.className=cls;if(text!==undefined)node.textContent=text;return node;};
 const button=(text,action)=>{const node=el('button','h3ct-button',text);node.type='button';node.addEventListener('click',action);return node;};
 const SECTION_ICONS={subject_definitions:'cast',summary:'story',retention_analysis:'refs',integrated_multimodal_description:'shots',

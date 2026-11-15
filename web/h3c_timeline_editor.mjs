@@ -6,13 +6,13 @@ import * as tracks from './h3c_tracks.mjs';
 // Plain DOM without ComfyUI imports; the host object connects it to the node.
 import { MentionCard, MentionLayer } from './h3c_mentions.mjs?v=7d543c4a1ce8';
 import { promptSections, promptShots, writePromptSections } from './h3c_prompt_sections.mjs?v=1f35473e5668';
-import {PromptFormPanel} from './h3c_prompt_form.mjs?v=5182a82ed8bf';
+import {PromptFormPanel} from './h3c_prompt_form.mjs?v=f43a53953089';
 import * as model from './h3c_timeline_model.mjs?v=1dfc1612e462';
 import * as videoLayers from './h3c_layers.mjs?v=1dfc1612e462';
 import {audioSourceLocked} from './h3c_audio_windows.mjs?v=cdefbd77b246';
 import { AudioLanes } from './h3c_audio_lanes.mjs?v=2c8422417f0a';
 import { shotFrames, frameTargets, syncTargets, acceptedGuideFrames, endpointGuide, endpointReference, adoptEndpointGuides } from './h3c_shot_preview.mjs?v=1dfc1612e462';
-import {FrameImages, targetLabel, imageDrop} from './h3c_frame_images.mjs?v=1a29803a605a';
+import {FrameImages, targetLabel, imageDrop} from './h3c_frame_images.mjs?v=f1342e7ccbe1';
 import { splitBox, splitTiming } from './h3c_shot_split.mjs?v=d147aa313f65';
 import { fillReferenceSwitches } from './h3c_reference_switches.mjs?v=e94b5b02e02b';
 import { ReferenceReplacements } from './h3c_reference_replacements.mjs?v=00c628e63671';
