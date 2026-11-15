@@ -94,7 +94,8 @@ audio references alone do not rule out `flf2va`.
   `Breathing:`, `Posture:`, `Hands:`, `Continuity:`, `Recovery:` and
   `End state:`. A value runs until the next cue (the Studio indents its
   continuation lines two spaces). A repeated cue is left as plain text. Cues are a Studio editing convention, not an H3 format
-  requirement; use them only where they help.
+  requirement; use them only where they help. `h3_inspect` `prompt_fields` shows
+  how the form reads a prompt; `unstructured_text` counts what it cannot edit as fields.
 - Dialogue and sung words go in `<d>…</d>`. Visible on-screen text is timed text
   (see `h3-continuity-sound`), never `<d>`.
 - Give each distinct action or view its own `[Shot N]` with time to play. A turn, a

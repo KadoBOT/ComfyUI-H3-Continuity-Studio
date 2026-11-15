@@ -4,9 +4,12 @@ All notable changes to H3 Continuity Studio are recorded here. Versions follow [
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-11-15
+
 ### Added
 
 - **Cast assignment and structured prompt forms.** Add from Cast creates the next Subject from the bible as one undo step. Sections offers optional reference, retention, shot, camera and dialogue fields, playback-second shot starts, and an Advanced switch for extra creative details (hidden while off, readable on read-only Timelines). Custom wording and existing prompt text remain authoritative, with draft and accepted-guide guards.
+- **MCP story duplicates and prompt checks.** `h3_library` `duplicate` copies a saved story and its renders into a new editable story, with an optional title and corrected Timeline. A story whose Timeline needs features this Studio cannot read can be copied without them. `h3_get_project` lists those `unsupported_features`, and native `h3_list_projects` rows show story titles. `h3_inspect` `prompt_fields` reads a prompt as the Sections form does and counts text the form cannot edit as fields. `h3c-mcp --call TOOL --arguments JSON` runs one tool without an MCP client.
 
 ## [1.0.1] - 2026-11-15
 

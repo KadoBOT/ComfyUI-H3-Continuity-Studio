@@ -20,8 +20,8 @@ An explicit recapture replaces the authoritative saved library workflow and its 
 | --- | --- |
 | `h3_capabilities` | Read host profiles, schemas, queue readiness, agent API version and capability classification. |
 | `h3_read_guidance` | `uri`, default `skill://h3-continuity-video/SKILL.md`. Reads host text as ordinary context. |
-| `h3_list_projects` | `kind:managed|native`, `cursor?`, `limit` 1–100. Keep cursors with their kind. |
-| `h3_get_project` | `target`; authored JSON, revision, readiness, managed inspection/status or native checkpoint state. |
+| `h3_list_projects` | `kind:managed|native`, `cursor?`, `limit` 1–100. Keep cursors with their kind. Native rows saved in the Story library also carry `title`, `sequence`, `library_id` and, for checkpoints, `checkpoint_name`. |
+| `h3_get_project` | `target`; authored JSON, revision, readiness, managed inspection/status or native checkpoint state. Native views list `unsupported_features`: Timeline `requires` entries this host cannot read. The Studio opens such a Timeline read-only and saves reject it; `h3_library` `duplicate` with a corrected `timeline_json` makes an editable copy. |
 | `h3_create_project` | Managed `document_json` including profile and a durable `request_key`. |
 | `h3_save_project` | `target`, `expected_revision`, full replacement `document_json`. No automatic merge. |
 | `h3_register_workflow` | Native `target`, `workflow_json:{ui,api}`, `expected_revision?`. |
@@ -94,6 +94,7 @@ Managed supports list/use through its revision/lease guards. Cleanup/ratings nev
 | `delete` | Exact listed `id`; deletes the selected version/group per the existing library identity contract. |
 | `checkpoint` | Display `name`; pins current saved UI/media under the native revision. |
 | `restore` | Checkpoint `id`; returns a separate editable workflow identity. Register its matching API export before headless execution. |
+| `duplicate` | `title?` (1–120 characters), `timeline_json?` (a Timeline object or JSON text this host must accept); needs the target's `story_node` and current revision. Copies the saved story, its renders and takes into a new editable library story (the checkpoint-and-restore copy in one step), starting from `timeline_json` when given — for example the saved Timeline without `requires` entries listed in `unsupported_features`. The source is unchanged. Returns the copy's `target` plus `data_json` with `id`, `graph`, `story`, `timeline_node`, `sequence` and `title`. Register an API export before headless execution. |
 | `generation_start` | Starts a fresh independent sequence, preserving previous sequence outputs/history. Explicitly adopt the returned name in the saved workflow. |
 | `generation_history` | Playable earlier sequences. |
 | `generation_export` | `references?`, `origin?`; exports saved Story/Timeline/settings and verified installation media references. |
@@ -105,6 +106,8 @@ These are native workflows; managed targets need deliberate export/fork. Pure sa
 ### h3_inspect
 
 `status` returns native status/media descriptors (may materialize previews) or managed project status. `regeneration` takes `box` and resolves its executable snapshot for read-only overlap preflight. `audio` takes `file`. `image_description` uses `action:read|resolve|edit|clear|regenerate|clear_all`, file/source/slot/provider fields from the existing route. `refmods` lists installed entries. `nodes` takes optional `node` class name and returns ComfyUI's schema, including graph-only nodes. No model downloads or key readback are offered.
+
+`prompt_fields` reads a prompt the way the Studio's Sections form does. Pass either `prompt` (any target, no revision) or a saved `box` with optional `layer` id (native target and revision). Optional `tags` (`[{tag:"<Picture 1>",name:"image3"}]`) resolve picture labels as the Studio's picked references do. The result has `structured` (a known section header is present), `sections[].entries[]` with `kind` (`definition`, `retention`, `summary`, `narrative`, `cue`, `dialogue` or `existing`), `shot`, `start`/`end` (Python string offsets into the prompt) and the parsed `value`, plus `summary` counts: `shots`, `cues`, `advanced_cues` (cues behind the form's Advanced switch), `dialogue` and `unstructured_text` (shot text, unknown or duplicate sections and unresolved reference lines that the form can show only as Existing text). Use it to check a prompt before saving it.
 
 ## Skills/resources and boundaries
 

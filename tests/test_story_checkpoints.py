@@ -109,6 +109,41 @@ class StoryCheckpointTest(unittest.TestCase):
         story_library.checkpoint(value['graph'], '1', '2', 'job', {'result': {'title': 'Changed'}})
         self.assertNotIn('job', story_library.load(value['id']))
 
+    def test_duplicate_makes_a_titled_editable_copy_with_a_replacement_timeline(self):
+        before = copy.deepcopy(self.workflow)
+        line = json.loads(self.workflow['nodes'][1]['widgets_values'][1])
+        line['boxes'][0]['prompt'] = 'Falls up, corrected'
+        result = story_library.duplicate('working', '1', self.workflow, 'Project-original',
+                                         title=' Heavy things, copy ', timeline_text=json.dumps(line))
+        self.assertEqual(self.workflow, before)
+        value = story_library.load(result['id'])
+        self.assertNotIn('checkpoint_name', value)
+        self.assertEqual(result, {'id': result['id'], 'graph': value['graph'], 'story': '1', 'timeline_node': '2',
+                                  'sequence': value['sequence'], 'title': 'Heavy things, copy'})
+        self.assertNotEqual(value['graph'], 'working')
+        fields = story_library._fields(value['workflow'])
+        self.assertEqual(fields[('1', 'state')]['title'], 'Heavy things, copy')
+        self.assertEqual(fields[('2', 'timeline')]['boxes'][0]['prompt'], 'Falls up, corrected')
+        with open(os.path.join(self.root, value['sequence'], 'video.mp4'), 'rb') as stream:
+            self.assertEqual(stream.read(), b'original video')
+        story_library.save(value['graph'], '1', value['workflow'], value['sequence'], library_revision=value['workflow_revision'])
+
+    def test_duplicate_can_drop_features_this_host_cannot_read(self):
+        line = json.loads(self.workflow['nodes'][1]['widgets_values'][1])
+        line['requires'] = ['future-feature-9']
+        with self.assertRaisesRegex(ValueError, 'newer'):
+            story_library.duplicate('working', '1', self.workflow, 'Project-original', timeline_text=json.dumps(line))
+        self.workflow['nodes'][1]['widgets_values'][1] = json.dumps(line)
+        with self.assertRaisesRegex(ValueError, 'newer'):
+            story_library.duplicate('working', '1', self.workflow, 'Project-original')
+        self.assertEqual(os.listdir(self.root), ['Project-original'])
+        with self.assertRaisesRegex(ValueError, 'title'):
+            story_library.duplicate('working', '1', self.workflow, 'Project-original', title=' ')
+        result = story_library.duplicate('working', '1', self.workflow, 'Project-original', timeline_text=json.dumps({**line, 'requires': []}))
+        value = story_library.load(result['id'])
+        self.assertEqual(result['title'], 'Heavy things fall up')
+        self.assertEqual(story_library._fields(value['workflow'])[('2', 'timeline')]['requires'], [])
+
     def test_restoring_makes_an_independent_workflow_and_media_copy(self):
         checkpoint = story_library.load(self.save()['id'])
         restored = story_library.restore_checkpoint(checkpoint['id'])
