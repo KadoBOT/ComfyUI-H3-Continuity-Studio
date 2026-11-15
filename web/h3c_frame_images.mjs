@@ -5,6 +5,7 @@ import {StillPromptPreparation,preparedStillPrompt,setPreparedStillPrompt} from 
 
 import {seedValue, stringifyJSON} from './h3c_project.mjs?v=0882b8a6265a';
 import {decorateIcon,icon,setIconLabel} from './h3c_icons.mjs';
+import {setText} from './h3c_dom.mjs?v=584a9bf55653';
 import {SwitchSection} from './h3c_switch_section.mjs?v=c253500f4908';
 import {promptSections} from './h3c_prompt_sections.mjs?v=1f35473e5668';
 
@@ -139,8 +140,8 @@ export class FrameImages {
     this.candidateCounts=new Map();
   }
   note(text) {
-    this.noteEl.textContent=text;
-    if (this.editor.uploadNote) {this.editor.uploadNote.textContent=text;this.editor.uploadNote.hidden=!text;}
+    setText(this.noteEl,text);
+    if (this.editor.uploadNote) {setText(this.editor.uploadNote,text);this.editor.uploadNote.hidden=!text;}
   }
   live() {
     const editor=this.editor, selectedId=editor.box()?.id;
@@ -167,6 +168,7 @@ export class FrameImages {
     this.promptEl.value=this.prompt();this.autoPrompt=this.promptEl.value;this.saveField('still_prompt',this.promptEl.value);
   }
   open(boxId,target) {
+    this.host.touchStills?.();
     if (target.kind==='shot'&&target.shot===1) target={kind:'first'};
     const moved=this.boxId!==boxId||key(this.target)!==key(target);
     this.boxId=boxId;this.target=structuredClone(target);
@@ -287,32 +289,32 @@ export class FrameImages {
     this.renderRecovery();
     this.root.hidden=!box && !(this.editor.state.still_requests?.length);if (!box) return;
     const stillName=this.target.kind!=='shot'&&this.editor.runsFlf?.(this.editor.state.boxes.indexOf(box))?`${targetLabel(this.target)} frame`:targetLabel(this.target);
-    this.titleEl.textContent=`Clip ${this.editor.state.boxes.indexOf(box)+1} · ${stillName} image${this.generatorLabel?` · ${this.generatorLabel}`:''}`;
+    setText(this.titleEl,`Clip ${this.editor.state.boxes.indexOf(box)+1} · ${stillName} image${this.generatorLabel?` · ${this.generatorLabel}`:''}`);
     this.uploadButton.disabled=typeof this.host.importGuide!=='function';
     const additionalReferences=this.additionalReferences??[];
     this.additionalReferencesEl.hidden=!additionalReferences.length;
-    this.additionalReferencesEl.textContent=additionalReferences.length?`Additional identity references included: ${additionalReferences.join(', ')}. Use an alias in the clip prompt to match it to a subject, e.g. “Use ${additionalReferences[0]} for the person's identity.” These names stay separate from Story references.`:'';
+    setText(this.additionalReferencesEl,additionalReferences.length?`Additional identity references included: ${additionalReferences.join(', ')}. Use an alias in the clip prompt to match it to a subject, e.g. “Use ${additionalReferences[0]} for the person's identity.” These names stay separate from Story references.`:'');
     const saved=box.previews?.find(item=>key(itemTarget(item))===key(this.target));
     const prepared=preparedStillPrompt(this.editor.state,this.boxId,this.target);
     if(prepared&&!this.promptEditing) {this.promptEl.value=saved?.still_prompt??prepared.prompt;this.autoPrompt=undefined;}
     this.renderGenerateControls();
-    this.resetButton.textContent=prepared?'Use prepared prompt':'Rebuild prompt';
+    setText(this.resetButton,prepared?'Use prepared prompt':'Rebuild prompt');
     this.resetButton.title=prepared?'Replace this target’s earlier override with its shared prepared prompt.':'';
     this.preparedHintEl.hidden=!prepared||saved?.still_prompt==null;
-    this.preparedHintEl.textContent='Earlier saved prompt active. Use prepared prompt to use the new batch result; the earlier text stays saved for Undo.';
+    setText(this.preparedHintEl,'Earlier saved prompt active. Use prepared prompt to use the new batch result; the earlier text stays saved for Undo.');
     this.preparation.render(this.boxId,this.target);
     const source=this.candidatePrompt(),summary=promptSections(source)?.find(section=>section.key==='summary');
     const excerpt=summary?summary.fields.map(part=>part.value.trim()).filter(Boolean).join(' '):source.trim();
-    this.promptExcerpt.textContent=excerpt||'No prompt yet. Candidates use this clip’s prompt.';
+    setText(this.promptExcerpt,excerpt||'No prompt yet. Candidates use this clip’s prompt.');
     this.promptExcerpt.classList.toggle('empty',!excerpt);
     this.seedSection.set(this.seedEl.value!=='',{state:this.seedEl.value?'':'Random for each candidate'});
     this.guideSourceEl.hidden=true;
-    this.guideSourceEl.textContent=this.previousGuide?`Continuity: ${guideLabel(this.editor.state,this.previousGuide)} accepted guide. The requested scene controls the new image.`:'';
+    setText(this.guideSourceEl,this.previousGuide?`Continuity: ${guideLabel(this.editor.state,this.previousGuide)} accepted guide. The requested scene controls the new image.`:'');
     const index=this.editor.state.boxes.indexOf(box),next=this.editor.state.boxes[index+1];
     const paired=this.target.kind==='first'&&index>0&&!box.cut?`Clip ${index} Last`:
       this.target.kind==='last'&&next&&!next.cut?`Clip ${index+2} First`:null;
     this.boundaryHintEl.hidden=!paired;
-    this.boundaryHintEl.textContent=paired?`Continuous boundary: using a guide also sets ${paired} while both clips are unrendered.`:'';
+    setText(this.boundaryHintEl,paired?`Continuous boundary: using a guide also sets ${paired} while both clips are unrendered.`:'');
     this.acceptedEl.replaceChildren();this.candidatesEl.replaceChildren();
     const guide=this.currentGuide(saved)?.guide;
     const reference=!guide?endpointReference(this.editor.state,index,this.target.kind,this.host.connected().images):null;
@@ -342,7 +344,7 @@ export class FrameImages {
     const count=saved?.images?.length??0,countKey=`${this.boxId}:${key(this.target)}`,before=this.candidateCounts.get(countKey);
     this.candidateCounts.set(countKey,count);
     this.root.classList.toggle('h3ct-has-candidates',count>0);
-    this.candidateTitle.textContent=`Candidates · ${count} · choose one to use as the guide`;
+    setText(this.candidateTitle,`Candidates · ${count} · choose one to use as the guide`);
     this.candidatePicker.hidden=!count;
     this.candidateTitle.hidden=!count;
     this.candidateHint.hidden=!count;
@@ -488,7 +490,11 @@ export class FrameImages {
     this.endingEl.replaceChildren();
     if (this.target.kind!=='first'||!this.host.readBoundary
       || this.editor.state.boxes.findIndex(box=>box.id===this.boxId)<1) return;
-    const boxId=this.boxId, boundary=await this.host.readBoundary(boxId);
+    const boxId=this.boxId;
+    // Reading the boundary asks the server for the Timeline's status and two clips' takes, so it waits like the sources do.
+    await this.host.stillsSettled?.();
+    if (this.boxId!==boxId||this.target.kind!=='first') return;
+    const boundary=await this.host.readBoundary(boxId);
     if (this.boxId!==boxId||this.target.kind!=='first'||!boundary?.ending) return;
     const file=boundary.ending.file;
     this.endingEl.append(this.image(file,'Verified predecessor ending'),button('Use saved predecessor ending',()=>this.accept(file,{boxId,target:{kind:'first'},reuseEnding:true})));

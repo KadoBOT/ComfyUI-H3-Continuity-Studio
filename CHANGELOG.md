@@ -4,6 +4,8 @@ All notable changes to H3 Continuity Studio are recorded here. Versions follow [
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-11-15
+
 ### Added
 
 - **Stills from your own image workflow.** The Timeline has a **still_image** input. Connect the IMAGE output of any image workflow wrapped in a native subgraph whose inputs are named `prompt` and `seed` (optionally `width`, `height`, `negative`, and one IMAGE input per reference picture); the Studio generates stills and reference pictures through it and leaves every other setting alone. No Still Recipe node or written bindings are needed. A still that has fewer references than the workflow requires is reported before it is queued. **Still Recipe**, **P-H3-Image Still** and **MiniMax H3 Image Still** keep working. See [Stills with your own image workflow](guide/build/own-image-workflow-stills.md).
@@ -12,8 +14,11 @@ All notable changes to H3 Continuity Studio are recorded here. Versions follow [
 
 - `examples/qwen_image_21_still.json` no longer contains a Still Recipe node: connect its IMAGE output to **still_image**.
 
+## [1.1.1] - 2026-11-15
+
 ### Fixed
 
+- **Studio edits are quick again, and Autosave off stays off.** A still or reference request the server could not report on was asked about, rewritten into the Timeline and force-saved after every edit, which reloaded the whole editor and flashed "Saved on this ComfyUI server" even with Autosave off. A request with nothing new is now left alone, a result read back from the server is saved by Autosave like any other edit, and requests the server could not read are checked every 30 s instead of every edit. The still panel no longer serializes the workflow (about 100 ms) after each edit: it waits until edits pause, reads the Timeline's own widgets instead when it can, and a clip click through the Timeline waits too. With Autosave off the label no longer flips to "Changes pending…" on each edit. With Autosave on, edits are saved after a 1.5 s pause or when focus leaves the field, not between keys, and the Story library's five-second save waits for typing to stop. The Render buttons' video-output check is reused until the workflow's wiring changes. The redraw when the server's status comes back, and when the still panel's answer arrives, no longer replaces nodes (icon-button captions, audio lane headers, still-panel notes), which restyled the whole page about 70 ms each time even when nothing had changed.
 - **Prompt form Advanced switch, tabs and retention markers.** Advanced is on whenever a clip has advanced details; turning it off asks, removes them and keeps them until it is on again (read-only Timelines only show or hide them). Prompt section tabs use the Studio's icon and text tabs again. Reference retention **Relationship** is a choice of the H3 markers, with **Custom…** for other wording.
 
 ## [1.1.0] - 2026-11-15

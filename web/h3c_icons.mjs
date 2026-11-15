@@ -1,3 +1,4 @@
+import {setText} from './h3c_dom.mjs?v=584a9bf55653';
 // Shared 24-unit stroke icons for Studio actions and navigation.
 const paths={
  video:'M3 5h18v14H3z M3 9h18 M7 5v4 M17 5v4', audio:'M9 18V5l11-2v13 M9 9l11-2 M5 16a3 3 0 1 0 0 6 3 3 0 0 0 0-6 M17 14a3 3 0 1 0 0 6 3 3 0 0 0 0-6',
@@ -19,7 +20,7 @@ export function icon(name) {
  for(const [key,value] of Object.entries({viewBox:'0 0 24 24',width:'18',height:'18',fill:'none',stroke:'currentColor','stroke-width':'1.6','stroke-linecap':'round','stroke-linejoin':'round','aria-hidden':'true',focusable:'false'}))svg.setAttribute(key,value);
  const path=document.createElementNS('http://www.w3.org/2000/svg','path');path.setAttribute('d',paths[name]??paths.more);svg.append(path);return svg;
 }
-export function setIconLabel(button,label) {button.title=label;button.setAttribute('aria-label',label);const caption=[...button.children].find(n=>n.classList.contains('h3ci-caption')||n.classList.contains('h3ci-sr'));if(caption)caption.textContent=label;}
+export function setIconLabel(button,label) {button.title=label;button.setAttribute('aria-label',label);const caption=[...button.children].find(n=>n.classList.contains('h3ci-caption')||n.classList.contains('h3ci-sr'));if(caption)setText(caption,label);}
 export function decorateIcon(button,name,label,{text=false}={}) {
  const caption=document.createElement('span');caption.textContent=label;caption.className=text?'h3ci-caption':'h3ci-sr';
  button.replaceChildren(icon(name),caption);button.classList.add('h3ci-button');setIconLabel(button,label);return button;

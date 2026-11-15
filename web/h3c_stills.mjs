@@ -1,4 +1,4 @@
-import {ImageJobClient} from './h3c_image_jobs.mjs?v=441234615008';
+import {ImageJobClient} from './h3c_image_jobs.mjs?v=c02f98fb5ed8';
 // h3_continuity/ph3_image_nodes.py describes the same recipe; keep the two in step.
 export const SELF_RECIPE_CLASS = 'H3C_PH3ImageStill';
 const SELF_RECIPE = {version:2, adapter:'pixels', label:'P-H3-Image', reference_limit:8, reference_label:'<Picture {index}>'};
@@ -222,7 +222,7 @@ export class StillClient extends ImageJobClient {
       identify:prepared=>({box:prepared.request.box,target:structuredClone(prepared.request.target)})});
     Object.assign(this,{read,write});
   }
-  async save(receipt,context=this.context?.()) {
+  async save(receipt,context=this.context?.(),options={}) {
     if(context!==this.context?.())throw Error("The generation changed while processing this still.");
     const state=structuredClone(this.read());
     const receipts=state.still_requests??=[];
@@ -237,7 +237,7 @@ export class StillClient extends ImageJobClient {
         for(const image of receipt.images??[]) if(!images.some(item=>item.prompt_id===image.prompt_id && item.batch_index===image.batch_index)) images.push(structuredClone(image));
       }
     }
-    await this.write(state);
+    await this.write(state,options);
     return receipt;
   }
 

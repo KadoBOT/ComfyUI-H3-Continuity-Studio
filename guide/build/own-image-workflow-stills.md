@@ -64,6 +64,22 @@ To use another wording, add the property `h3c_still_reference_label` to the
 Timeline node (right-click, **Properties Panel**) with `{index}` where the number
 goes, for example `Figure {index}`.
 
+## Follow the video's shape at a fixed size
+
+To make stills that match the video's aspect ratio at a chosen area, let `width`
+and `height` only set the shape and compute the size inside the subgraph:
+
+1. Connect the video's width and height to the subgraph's `width` and `height`.
+2. Inside, add a **Float** primitive for megapixels and two **Math Expression**
+   nodes, each with `a` from `width`, `b` from `height` and `c` from megapixels:
+   - width: `round(sqrt(c * 1000000 * a / b) / 32) * 32`
+   - height: `round(sqrt(c * 1000000 * b / a) / 32) * 32`
+3. Connect their **INT** outputs to the width and height of the node that sets the
+   canvas, and expose the primitive as an input named `megapixels`.
+
+A still size chosen in the Studio is treated the same way: it sets the shape and
+is scaled to the megapixels value.
+
 ## One node instead of a subgraph
 
 A single node that has its own `prompt` and `seed` inputs and an IMAGE output,

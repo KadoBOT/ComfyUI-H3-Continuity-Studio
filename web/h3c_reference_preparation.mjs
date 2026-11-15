@@ -1,6 +1,6 @@
 import {icon,iconButton} from './h3c_icons.mjs';
 import {stringifyJSON,seedValue} from './h3c_project.mjs?v=0882b8a6265a';
-import {ImageJobClient} from './h3c_image_jobs.mjs?v=441234615008';
+import {ImageJobClient} from './h3c_image_jobs.mjs?v=c02f98fb5ed8';
 export const REFERENCE_CATEGORIES = ['cast','locations','props'];
 
 export function preparationOf(state) {
@@ -30,11 +30,11 @@ export class ReferenceClient {
     this.jobs=new ImageJobClient({request:(path,body)=>host.request(path,body),
       capture:request=>host.prepareReference(request),context:()=>host.referenceContext(),
       receipts:()=>preparationOf(host.referenceState()).requests,
-      save:(receipt,context)=>this.save(receipt,context),resultPath:'/h3c/reference-assets/result',
+      save:(receipt,context,options)=>this.save(receipt,context,options),resultPath:'/h3c/reference-assets/result',
       identify:prepared=>({asset_key:prepared.request.asset_key,input_fingerprint:prepared.request.input_fingerprint})});
   }
   get busy() {return !!this.batch || !!this.jobs.active.size || !!this.jobs.recovering;}
-  async save(receipt,context) {
+  async save(receipt,context,options={}) {
     const check=()=>{if(context!==this.host.referenceContext())throw Error('The generation changed while preparing references.');};
     check();
     let row;
@@ -61,7 +61,7 @@ export class ReferenceClient {
           request_id:receipt.request_id,prompt_id:receipt.prompt_id,batch_index:image.batch_index});
       }
     }
-    await this.host.writeReferenceState(state);check();
+    await this.host.writeReferenceState(state,options);check();
     if(receipt.state==='submitting'&&!preparationOf(this.host.referenceState()).generate[row.category])throw Error('Reference preparation was disabled before submission.');
     this.host.referenceChanged();return receipt;
   }
@@ -80,9 +80,11 @@ export class ReferenceClient {
     await this.host.writeReferenceState(state);
     return this.jobs.generate({asset_key:key,input_fingerprint:row.input_fingerprint,prompt:row.prompt,...(row.seed!=null?{seed:row.seed}:{}),...(row.size?{size:row.size}:{})});
   }
+  // The panel is told when a request changed, or the check failed, not after every check.
   async recover() {
-    try {return await this.jobs.recover();}
-    finally {this.host.referenceChanged();}
+    let changed=true;
+    try {changed=await this.jobs.recover();return changed;}
+    finally {if(changed)this.host.referenceChanged();}
   }
   stopAfterCurrent() {if(this.batch&&!this.batch.stop){this.batch.stop=true;this.host.referenceChanged();}}
   async generateSelected(keys) {

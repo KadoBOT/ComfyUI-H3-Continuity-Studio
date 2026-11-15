@@ -157,11 +157,31 @@ audio references alone do not rule out `flf2va`.
 
 ### Generating stills
 
-Connect a native image generator's `IMAGE` output to the **Still Recipe** node
-(with `bindings` saying where its prompt, seed, size and references are) and that to
-the Timeline's `still_recipe`. Video rendering never evaluates it. The examples
-include H3 Fizgig, Qwen Image 2.1 and 2.1 Turbo recipes, and `docs/QWEN-STORY-STUDIO.md`
-describes the bindings.
+Connect the user's own image workflow to the Timeline's `still_image` input: wrap it
+in a native subgraph and connect the subgraph's `IMAGE` output. The subgraph's input
+names bind it, with no recipe node:
+
+- `prompt` (or `positive_prompt`) and `seed` (or `noise_seed`) are required.
+- `width`, `height` and `negative` (or `negative_prompt`) are optional. Without
+  `width` and `height` the workflow keeps its own size and a requested still size is
+  refused.
+- Every `IMAGE` input is one reference picture, filled in subgraph order; their count
+  is the most references a still can use. An image input feeding a node that cannot
+  run without a picture makes that many references necessary, and the server says so
+  before queueing.
+- Every other input and widget (steps, sampler, models, LoRAs, megapixels) is the
+  user's and is never changed. Text the workflow joins to `prompt` still applies.
+- The wording for pictures follows the nodes inside: `<image1>` for Qwen Image 2.1,
+  `<Picture 1>` for P-H3-Image and MiniMax H3 Image conditioning, `image 1` otherwise.
+  The Timeline node property `h3c_still_reference_label` (with `{index}`) overrides it.
+- One node with its own `prompt` and `seed` inputs can connect without a subgraph.
+
+Video rendering never evaluates `still_image`. The older connection still works and
+wins when both are connected: a **Still Recipe** node (with `bindings` saying where a
+generator's prompt, seed, size and references are), **P-H3-Image Still** or **MiniMax
+H3 Image Still** on the Timeline's `still_recipe`. The examples include H3 Fizgig and
+Qwen Image 2.1 generators; `examples/qwen_image_21_still.json` is a subgraph for
+`still_image`, and `docs/QWEN-STORY-STUDIO.md` describes the bindings.
 
 - **Generate candidates** never changes a render until one is accepted with
   **Use as guide**. Each candidate keeps its prompt, seed and source.
@@ -177,7 +197,7 @@ describes the bindings.
   divider lines): a 2 × 2 sheet becomes `<Picture 1>` to `<Picture 4>` instead of a
   grid to copy. Character sheets and Cast-entry stills stay whole.
 - Still generation receives relevant Cast images, images explicitly mentioned in the clip prompt, and images
-  connected to the Still Recipe. Scene anchors and preceding guides are not
+  connected to the image workflow's own image inputs (or to the Still Recipe). Scene anchors and preceding guides are not
   automatically added.
 - Saved still-prompt preparation is retained as writing notes, not as a candidate
   prompt override. **Prepare references** (on the

@@ -142,9 +142,12 @@ export class TrackEditor {
   const lanes=[...audio.lanes.children].filter(n=>n.classList.contains('h3ct-audio-lane')&&!n.classList.contains('h3ct-row'));
   for(const [index,lane] of lanes.entries()){
    const recording=audio.clips[index];if(!recording)continue;
+   const track=state.tracks?.find(t=>t.id===recording.track);
+   // Taking a header out and putting a new one in restyles the whole ComfyUI page, so one that already says the same stays.
+   const signature=JSON.stringify([recording.slot,recording.track,track?.name??index,tracks.enabled(state)]);
+   if(lane._trackHeader?.parentNode===lane&&lane._trackSignature===signature)continue;
    lane._trackHeader?.remove();
    const header=el('div','h3ct-lane-header');
-   const track=state.tracks?.find(t=>t.id===recording.track);
    header.append(laneLabel({type:'audio',name:track?.name??`Audio ${index+1}`}));
    const remove=laneAction('trash',`Delete ${track?.name??'audio lane'}`,()=>{
     if(!globalThis.confirm?.(`Delete this audio lane and its recording? Media files will be kept.`))return;
@@ -152,7 +155,7 @@ export class TrackEditor {
    });
    remove.classList.add('h3ct-lane-delete');header.append(remove);
    if(!tracks.enabled(state)){header.style.marginLeft='0';header.style.position='absolute';header.style.right='0';}
-   lane._trackHeader=header;lane.prepend(header);
+   lane._trackHeader=header;lane._trackSignature=signature;lane.prepend(header);
   }
  }
  render(span) {
@@ -160,7 +163,7 @@ export class TrackEditor {
   const state=this.editor.state,active=tracks.enabled(state),rows=[];
   this.editor.laneEl.classList.toggle('h3ct-independent',active);
   this.add.querySelectorAll?.('button').forEach(b=>b.disabled=this.editor.readOnly.length>0);
-  if(!active){this.rows.replaceChildren();return;}
+  if(!active){if(this.rows.firstChild)this.rows.replaceChildren();return;}
   const videoTracks=state.tracks.filter(t=>t.type==='video');
   const master=this.row({id:'combined',type:'video',name:'All video lanes'},false);
   const toggle=laneAction(this.expanded?'collapse':'expand',this.expanded?'Collapse video lanes':'Expand video lanes',()=>{this.expanded=!this.expanded;this.render(this.span);});toggle.setAttribute('aria-expanded',String(this.expanded));master.head.append(toggle);

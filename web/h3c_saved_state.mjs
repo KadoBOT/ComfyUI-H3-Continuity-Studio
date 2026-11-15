@@ -7,6 +7,15 @@ const equal = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
 export const AUTOSAVE_SETTING = 'H3Continuity.Autosave';
 export const autosaveEnabled = app => app.ui?.settings?.getSettingValue?.(AUTOSAVE_SETTING) !== false;
+export const AUTOSAVE_OFF = 'Autosave off — save a checkpoint to keep your edits.';
+
+// Autosave waits for the user to stop typing or to leave the field, so saving (serializing and sending the whole Timeline)
+// never runs between two keys. `touched` is the last key or value change anywhere on the page.
+export const AUTOSAVE_IDLE_MS = 1500;
+let touched = 0;
+if (typeof document !== 'undefined') document.addEventListener?.('input', () => { touched = Date.now(); }, true);
+export const userBusy = (editedAt = 0) => Date.now() - Math.max(touched, editedAt) < AUTOSAVE_IDLE_MS - 50;
+export const releaseUser = () => { touched = 0; };
 
 export class SavedState {
   constructor({ read, apply, request, status, identity, enabled = () => true, session = {} }) {
@@ -17,7 +26,7 @@ export class SavedState {
   set conflict(value) { this.session.conflict = value; }
 
   async sync(force = false) {
-    if (!force && !this.enabled()) {this.status('Autosave off — save a checkpoint to keep your edits.'); return;}
+    if (!force && !this.enabled()) {this.status(AUTOSAVE_OFF); return;}
     const session=this.session;
     if (this.gone||session.suspended) return;
     while (session.pending) await session.pending;
@@ -171,9 +180,13 @@ export function mountSavedState(node, root, { app, api, loaded }) {
       return record;
     },
   });
-  const tick = () => {
+  let editedAt = 0, dirty = false;
+  // `gated`: the poll and the idle timer leave an edit that is still going on; a flush, focus change or Save does not wait.
+  const tick = (gated = true) => {
     if (node.properties?.h3c_project?.mode === 'attached') return Promise.resolve();
     if (!node.graph?.id || node.graph !== (app.rootGraph ?? app.graph)) return Promise.resolve();
+    if (gated && sync.enabled() && userBusy(editedAt)) return Promise.resolve();
+    dirty = false;
     const key = String(node.graph.extra?.h3c_story_id ?? node.graph.id);
     if (!sessions.has(key)) sessions.set(key, {});
     sync.session = sessions.get(key);
@@ -184,10 +197,17 @@ export function mountSavedState(node, root, { app, api, loaded }) {
   const timer = setInterval(() => {
     if (!document.hidden && Date.now() - (sync.session.synced ?? 0) >= 900) tick().catch(() => {});
   }, 1000);
-  const ready = new Promise(resolve => setTimeout(resolve, 0)).then(tick).catch(() => {});
-  const wake = () => tick().catch(() => {});
+  const ready = new Promise(resolve => setTimeout(resolve, 0)).then(() => tick(false)).catch(() => {});
+  const wake = () => tick(false).catch(() => {});
+  // Leaving a field saves the edits made in it now instead of waiting for the pause.
+  const leave = () => {
+    releaseUser();
+    if (!dirty || !sync.enabled()) return;
+    clearTimeout(editTimer); editedAt = 0; wake();
+  };
   window.addEventListener('focus', wake);
   document.addEventListener('visibilitychange', wake);
+  document.addEventListener('focusout', leave, true);
   let editTimer;
   return {
     bar,
@@ -199,15 +219,20 @@ export function mountSavedState(node, root, { app, api, loaded }) {
       sync.session=sessions.get(key);
       return sync.suspend();
     },
-    async flush() { await ready; await tick(); await sync.flush(); },
+    async flush() { await ready; await tick(false); await sync.flush(); },
     changed() {
-      if (!sync.conflict) sync.status('Changes pending…');
+      editedAt = Date.now();
       clearTimeout(editTimer);
-      editTimer = setTimeout(wake, 250);
+      // Nothing is waiting to be saved with Autosave off, so the label stays as it is.
+      if (!sync.enabled()) { if (!sync.conflict) sync.status(AUTOSAVE_OFF); return; }
+      dirty = true;
+      if (!sync.conflict) sync.status('Changes pending…');
+      editTimer = setTimeout(() => tick().catch(() => {}), AUTOSAVE_IDLE_MS);
     },
     destroy() {
       sync.gone = true; restorers.delete(node); clearInterval(timer); clearTimeout(editTimer);
-      window.removeEventListener('focus', wake); document.removeEventListener('visibilitychange', wake); bar.remove();
+      window.removeEventListener('focus', wake); document.removeEventListener('visibilitychange', wake);
+      document.removeEventListener('focusout', leave, true); bar.remove();
     },
   };
 }
