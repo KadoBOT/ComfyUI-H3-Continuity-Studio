@@ -108,3 +108,21 @@ test('the only load for a target is never cancelled and its answer fills the sou
   assert.equal(frames.sourceEl.options.length, 2);
   assert.equal(editor.state.boxes[0].previews[0].still_source, null);
 });
+
+test('finished candidates are chosen right under the image, not below the prompt', () => {
+  const {frames, editor} = panel();
+  const box = editor.state.boxes[0];
+  box.previews = [{target: {kind: 'first'}, frame: 0, images: [1, 2].map(n => ({file: {filename: `c${n}.png`, subfolder: '', type: 'output'}, seed: n, prompt: 'p'}))}];
+  Object.assign(editor, {uploadNote: null});
+  frames.host.viewUrl = file => `/view?filename=${file.filename}`;
+  frames.host.pinGuide = null;
+  frames.promptEl.value = 'p';
+  delete frames.render;
+  frames.render();
+  const order = [...frames.root.children];
+  assert.equal(order.indexOf(frames.candidatePicker), order.indexOf(frames.acceptedEl) + 1);
+  assert.equal(frames.candidatePicker.hidden, false);
+  assert.equal(frames.candidatesEl.children.length, 2);
+  const caption = frames.acceptedEl.children.at(-1);
+  assert.ok(caption.children.some(child => child.textContent === 'Use as guide'), 'the previewed candidate can be used from the image itself');
+});

@@ -4,6 +4,16 @@ All notable changes to H3 Continuity Studio are recorded here. Versions follow [
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-11-15
+
+### Changed
+
+- **Cast, location and prop reference sheets.** A character sheet is a six-column landscape sheet with one head-only close-up and four neck-down body views, so the face is drawn once. A location grid swaps its high view for an interior view when the place has an inside. Props get a 2x2 ivory sheet of the object alone from four angles.
+
+### Fixed
+
+- **Choosing a finished still candidate in Shots.** Candidates now sit directly under the image instead of below the prompt summary and seed controls, the image carries a **Use as guide** button when it previews a candidate, and a finished generation announces its new candidates and scrolls them into view.
+
 ## [1.0.0] - 2026-11-14
 
 The first stable release. Projects saved with 0.x open as one video track with their original timing and video stacks, without rerendering. Older versions open projects that use several tracks read-only.

@@ -38,19 +38,24 @@ def planned_prompt(key, approved_identity=None):
 
 
 class CastSheetTest(unittest.TestCase):
-    def test_cast_is_a_character_sheet_with_face_and_full_body_on_ivory(self):
+    def test_cast_is_a_six_column_sheet_with_one_head_and_four_headless_bodies(self):
         prompt = planned_prompt('entity:e2')
-        self.assertTrue(prompt.startswith('A character reference sheet'), prompt)
-        self.assertIn('plain ivory background', prompt)
-        self.assertIn('face', prompt)
-        self.assertIn('full body', prompt)
+        self.assertTrue(prompt.startswith('A 16:9 landscape character reference sheet'), prompt)
+        self.assertIn('ivory background', prompt)
+        self.assertIn('six equal-width vertical columns', prompt)
+        self.assertIn('The face appears exactly once', prompt)
+        for column in ('Columns 1-2 (merged)', 'Column 3: front', 'Column 4: true 90-degree profile',
+                       'Column 5: back', 'Column 6: relaxed'):
+            self.assertIn(column, prompt)
+        self.assertIn('neck-down only', prompt)
+        self.assertIn('NO head, NO face and NO hair', prompt)
         self.assertIn('A barrel-bodied grazer with long horns.', prompt)
         self.assertIn('no text, letters or numbers', prompt)
 
     def test_a_look_is_a_character_sheet_of_the_same_identity(self):
         identity = [{'slot': 'image17', 'roles': ['identity: STRAY'], 'sha256': 'a' * 64}]
         prompt = planned_prompt('entity:e1:look:b2', identity)
-        self.assertTrue(prompt.startswith('A character reference sheet'), prompt)
+        self.assertTrue(prompt.startswith('A 16:9 landscape character reference sheet of the same character'), prompt)
         self.assertIn('same character as the identity reference', prompt)
         self.assertIn('Her jacket is torn.', prompt)
 
@@ -72,6 +77,31 @@ class LocationGridTest(unittest.TestCase):
         self.assertIn('no people, characters, animals or creatures', prompt)
         self.assertNotIn('STRAY', prompt)
         self.assertNotIn('Characters move', prompt)
+
+    def test_a_place_with_an_interior_gets_one_interior_camera(self):
+        prompt = planned_prompt('entity:e3')
+        self.assertIn('If the place has an interior', prompt)
+        self.assertIn('row 2, column 2, instead shows that interior from the inside', prompt)
+
+
+class ObjectGridTest(unittest.TestCase):
+    def test_object_is_a_two_by_two_ivory_grid_of_angles_of_only_the_object(self):
+        saved = document()
+        saved['bible']['entities'].append(entity('e4', 'prop', 'Pry bar', 'A long steel pry bar, sharpened at one end.'))
+        saved['boxes'][0]['schedule']['props'] = ['e4']
+        body = {'timeline': json.dumps(saved), 'recipe': {'version': 2, 'adapter': 'pixels'}, 'workflow': {'api': {}}}
+        row = next(r for r in reference_assets.catalog(saved, body) if r['key'] == 'entity:e4')
+        body.update(asset_key=row['key'], input_fingerprint=row['input_fingerprint'], prompt=row['prompt'])
+        with mock.patch.object(stills, '_pixel_references', return_value=[]),              mock.patch.object(image_recipe, 'prepare', return_value={'ok': True}) as prepared:
+            reference_assets.prepare(body)
+        prompt = prepared.call_args.args[2]['prompt']
+        self.assertTrue(prompt.startswith('An object reference sheet'), prompt)
+        self.assertIn('plain ivory background', prompt)
+        self.assertIn('2 rows and 2 columns', prompt)
+        for cell in ('row 1, column 1', 'row 1, column 2', 'row 2, column 1', 'row 2, column 2'):
+            self.assertIn(cell, prompt)
+        self.assertIn('Only the object appears', prompt)
+        self.assertIn('A long steel pry bar, sharpened at one end.', prompt)
 
 
 if __name__ == '__main__':
