@@ -14,4 +14,4 @@ features.md links this task ledger; five task checkpoints belong to DP1. SDD led
 
 ## Can Pick Up Next Steps
 
-Recover features.md and its canonical reload paths. All five Native tasks and the independent review/fix/verification gate are complete (DP1 passing). User requested pushing this branch and creating a draft PR for later testing. DP2 requires separate GPU authorization; CPU checks do not demonstrate visual improvement or a fix for the clip30 camera reset. No merge/release/deployment or live test is requested.
+Recover features.md and its canonical reload paths. All five Native tasks and the independent review/fix/verification gate are complete (DP1 passing). Draft PR #94 is open for later testing. DP3 reviewed Geiru through099da1b, added README/guide/notices credits and passed strict docs; new attention is a separate experiment, with no product change from this review. DP2 requires separate GPU authorization; CPU checks do not demonstrate visual improvement or a fix for the clip30 camera reset. No merge/release/deployment or live test is requested.

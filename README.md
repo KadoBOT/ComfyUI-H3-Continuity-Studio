@@ -47,6 +47,12 @@ The full user guide, with screenshots of every feature, is at **https://kadobot.
 
 Deeper reference notes: [Story Studio](docs/QWEN-STORY-STUDIO.md), [external Timeline](docs/EXTERNAL-TIMELINE.md), and [continuity checks](docs/CONTINUITY-CHECK.md). Generation quality and continuity vary with the model, inputs and settings; inspect the resulting joins.
 
+## Credits
+
+**H3 Continuity Protection** builds on the public keystone/capstone anchor and late-locking ideas in **[roycho87's Geiru Context Suite](https://github.com/roycho87/geiru_context_suite)**. Sampler-synchronized context noise is credited to **ethanfel / Lumifel**, whose [H3 Context Loop work](https://github.com/ethanfel/ComfyUI-MiniMaxH3-Context-Loop) Geiru also credits. Our native implementation is independent; it does not vendor Geiru's GPL-3.0 source or require its node pack.
+
+The [latest upstream review](docs/research/2026-11-16-geiru-upstream-review.md) covers Geiru's new Keystone Attention and Hybrid Windows changes. Those additions are not included in this implementation or claimed as tested here. See [third-party notices](THIRD_PARTY_NOTICES.md) for this project's other sources and attributions.
+
 ## License and third-party material
 
 Original project code is offered under the [MIT License](LICENSE). The public release does not include the optional MiniMax H3 prompt guides. If you have obtained them under terms that permit your use, place `base-en.txt` and `ref-en.txt` in `h3_continuity/h3_guide/` and restart ComfyUI. Without them, the node pack runs and its instruction bundle explicitly reports the missing guides. The guides and H3 model are subject to MiniMax terms, including territorial restrictions; see the [upstream project](https://github.com/MiniMax-AI/MiniMax-H3) and the included [notice](h3_continuity/h3_guide/NOTICE). Model weights and external dependencies have separate licenses. Review those terms before use or redistribution. See [third-party notices](THIRD_PARTY_NOTICES.md) for adapted guidance and attribution.

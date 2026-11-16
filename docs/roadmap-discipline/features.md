@@ -1,6 +1,6 @@
 # Continuity protection execution
 
-**Status:** DP0 and DP1 passing; Native implementation and independent review fixes verified. DP2 visual comparison not started. Local branch kept for deliberate integration.
+**Status:** DP0, DP1 and DP3 passing; Native implementation, independent review fixes, upstream review and credits verified. DP2 visual comparison not started. Draft PR #94 kept for later testing.
 **Current Phase:** Phase 23: Continuity degradation protection
 
 Historical Phase20 watch-through blockers remain in the original parent roadmap at D:/development/rambrogi/work/ComfyUI-H3-Continuity-Studio/docs/roadmap-discipline/. They are preserved and outside this execution.
@@ -14,19 +14,23 @@ Historical Phase20 watch-through blockers remain in the original parent roadmap 
 ```json
 {
   "version": 1,
-  "revision": 14,
+  "revision": 18,
   "phase": "Phase 23: Continuity degradation protection",
   "active_features": [],
   "focus_feature": "None",
-  "goal": "Implement the approved native continuity-protection node and preserve both sampler output paths",
-  "done_when": "All five approved tasks, CPU suites, docs and independent final branch review pass; DP2 visual comparison remains separately authorized",
-  "last_completed": "Implementation and cumulative final-review fixes committed as fa5bdd6 on feat/continuity-protection;402JS+577Python,79 adapter, strict docs, diff and roadmap checks pass",
-  "in_progress": "User-authorized draft PR publication: preparing current verified branch and test-later description; no code changes",
+  "goal": "Review recent Geiru changes for relevant native continuity improvements and add explicit README/docs credits",
+  "done_when": "Pinned upstream review and explicit README/docs credits verified and delivered in draft PR94; GPU visual validation remains separate",
+  "last_completed": "DP3 passing: upstream099da1b source comparison, native applicability review, explicit credits and strict docs verified",
+  "in_progress": "Documentation-only follow-up ready for commit/push to existing draft PR94; product behavior unchanged",
   "next": {
-    "action": "Commit roadmap follow-up, push feat/continuity-protection, create draft PR against main and link it to this thread",
-    "reason": "User explicitly requested a draft PR for later testing; no live deployment or inference requested"
+    "action": "Commit and push the verified documentation-only follow-up to draft PR94, then link the PR immediately",
+    "reason": "Complete the requested upstream review and credits while preserving the separately authorized DP2 GPU gate"
   },
   "files": [
+    {
+      "path": "docs/research/2026-11-16-geiru-upstream-review.md",
+      "state": "Pinned latest upstream review complete; attention is a separate integration candidate, window optimization has no native target; explicit README/guide/notices credits verified"
+    },
     {
       "path": "h3_continuity/protection.py",
       "state": "Implemented and post-review verified; sampler/segment input binding, normal/denoised restoration, bridge pass-through and pre-write receipts"
@@ -46,17 +50,22 @@ Historical Phase20 watch-through blockers remain in the original parent roadmap 
   ],
   "repository": {
     "branch": "feat/continuity-protection",
-    "head": "fa5bdd6c4970",
+    "head": "7b6bb57440eb",
     "dirty": [
-      "docs/roadmap-discipline/readiness-checklist.md"
+      "CHANGELOG.md",
+      "README.md",
+      "THIRD_PARTY_NOTICES.md",
+      "docs/research/2026-11-16-geiru-upstream-review.md",
+      "docs/roadmap-discipline/readiness-checklist.md",
+      "guide/continuity/long-chains.md"
     ],
-    "dirty_hash": "4345c24f5d0be2614e0092408566364dcb475280dc780975e85d58e7882c32d6"
+    "dirty_hash": "3ad427462198f92eb34ca122a92dcdb00dbe31a53fb650d3c758481b342d2c5c"
   },
   "verification": {
-    "required": "approved-design implementation plan; focused CPU regression checks; full suite; strict docs; diff check",
-    "last_run": "Previously verified product tree; git diff --check; roadmap check; remote PR metadata verification",
+    "required": "pinned upstream commit/diff/source inspection; focused tests if code changes; strict docs; diff/roadmap checks",
+    "last_run": "Pinned GitHub compare/source review; strict MkDocs build; local attribution link inspection; git diff --check",
     "status": "passed",
-    "detail": "No product changes since402JS+577Python,79 adapter and strict docs passed; publication-only follow-up"
+    "detail": "Latest099da1b confirmed; original mechanics unchanged; attention metadata/timing mismatch documented; strict docs exit0 and local links/diff clean; no product tests rerun for docs-only follow-up"
   },
   "blockers": [],
   "reload": [
@@ -65,7 +74,8 @@ Historical Phase20 watch-through blockers remain in the original parent roadmap 
     "docs/superpowers/specs/2026-11-15-degradation-protection-design.md",
     "docs/superpowers/plans/2026-11-15-degradation-protection.md",
     "docs/research/2026-11-15-orbit29-30.md",
-    "docs/research/2026-11-15-continuity-protection-review.md"
+    "docs/research/2026-11-15-continuity-protection-review.md",
+    "docs/research/2026-11-16-geiru-upstream-review.md"
   ]
 }
 ```

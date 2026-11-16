@@ -29,7 +29,13 @@ This feature has CPU checks for masks, native sampler outputs, joins' carried da
 
 Visual memory serves a different purpose. If a prop leaves the camera view, choose **Selected** memory from a moment that clearly shows it and label the details to retain. Automatic Same scene memory already includes an establishing view and recent view; those views may not clearly cover every object. Protection is not an object-permanence guarantee.
 
-Public technique references: [Geiru Context Suite](https://github.com/roycho87/geiru_context_suite) (clean keystone/capstone and late locking) and [ethanfel/Lumifel's context-noise work](https://github.com/ethanfel/ComfyUI-MiniMaxH3-Context-Loop). This is an independent native implementation using ComfyUI APIs, not a vendored copy of those node packs.
+### Credits and upstream developments
+
+The clean keystone/capstone and late-locking ideas are credited to **roycho87's [Geiru Context Suite](https://github.com/roycho87/geiru_context_suite)**. Sampler-synchronized context noise is credited to **ethanfel / Lumifel** and [H3 Context Loop](https://github.com/ethanfel/ComfyUI-MiniMaxH3-Context-Loop), whom Geiru also credits. This is an independent native implementation using ComfyUI APIs; Geiru's GPL-3.0 code is not vendored here.
+
+Reviewed through Geiru commit [099da1b](https://github.com/roycho87/geiru_context_suite/commit/099da1be92f2da22a775076a0d533d29b4d97268) on 2026-11-16: its new **Keystone Attention** redistributes the attention shared by clean anchors and carried context on selected transformer blocks, to address residual darkening. Upstream credits **ckinpdx's Carry Attention** as its inspiration and reports a motion tradeoff. This is a promising separate experiment; **our node does not implement that attention adjustment**, and Geiru's new node expects Geiru-specific latent metadata, so it cannot simply be placed after our node as an equivalent integration.
+
+The same update moves whole-video Hybrid Windows state to system RAM and samples cropped windows. Our continuing-clip path already renders one clip at a time and does not own that whole-video state, so it has no corresponding Hybrid Windows memory fix to import. Context Windows remain unsupported by our protection node. Neither Geiru's visual-quality nor its memory results are measurements of this implementation.
 
 ## What was measured
 
