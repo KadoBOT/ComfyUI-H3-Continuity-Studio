@@ -4,6 +4,12 @@ All notable changes to H3 Continuity Studio are recorded here. Versions follow [
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-11-16
+
+### Fixed
+
+- **MCP renders no longer stay in `needs_reconciliation` after ComfyUI finishes them.** ComfyUI rewrites whole numbers in the prompt it keeps (an integer given for a FLOAT input comes back as `24.0`), so the graph in its history never hashed to the one the receipt recorded and `h3_job_status` and `h3_resume_job` refused to call the finished prompt ours. The prompt id and `h3c_agent` provenance are still required, and the history graph is now compared with the retained submission with whole-number floats treated as the same integer; a changed value still holds the job. Receipts already stuck on this recover on the next status call.
+
 ## [1.2.0] - 2026-11-15
 
 ### Added
