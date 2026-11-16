@@ -102,6 +102,27 @@ class NativeJobsTest(unittest.TestCase):
         self.assertEqual(status['state'], 'succeeded')
         self.assertTrue(status['execution_completed'])
 
+    def test_history_graph_with_comfyui_numeric_coercion_is_still_ours(self):
+        # ComfyUI rewrites 24 as 24.0 for a FLOAT input while validating; the finished prompt must still match.
+        self.api['9']['inputs'].update(fps=24, strength=1, seed=7)
+        result = self.render()
+        row = copy.deepcopy(self.queue['queue_pending'][0])
+        row[2]['9']['inputs'].update(fps=24.0, strength=1.0)
+        self.history[row[1]] = {'prompt': row, 'status': {'status_str': 'success', 'completed': True, 'messages': []}, 'outputs': {}}
+        self.queue['queue_pending'] = []
+        status = self.jobs.status(JobHandle.model_validate(result['job']))
+        self.assertEqual(status['state'], 'succeeded')
+        self.assertEqual(len(self.posts()), 1)
+
+    def test_history_graph_with_a_different_value_is_still_rejected(self):
+        self.api['9']['inputs'].update(strength=1)
+        result = self.render()
+        row = copy.deepcopy(self.queue['queue_pending'][0])
+        row[2]['9']['inputs'].update(strength=1.5)
+        self.history[row[1]] = {'prompt': row, 'status': {'status_str': 'success', 'completed': True, 'messages': []}, 'outputs': {}}
+        self.queue['queue_pending'] = []
+        self.assertEqual(self.jobs.status(JobHandle.model_validate(result['job']))['state'], 'needs_reconciliation')
+
     def test_new_request_content_cannot_reuse_an_accepted_key(self):
         self.render()
         self.line['boxes'][0]['prompt'] = 'Different'

@@ -14,6 +14,18 @@ def digest(value):
                                      separators=(',', ':')).encode()).hexdigest()
 
 
+def settled(value):
+    """`value` with whole-number floats as integers: ComfyUI rewrites an INT given for a FLOAT input as 24.0 (and the
+    reverse) while validating, so a graph read back from its history differs from the one submitted only this way."""
+    if isinstance(value, float) and value.is_integer() and abs(value) < 2 ** 53:
+        return int(value)
+    if isinstance(value, list):
+        return [settled(item) for item in value]
+    if isinstance(value, dict):
+        return {key: settled(item) for key, item in value.items()}
+    return value
+
+
 def set_input(api, node, name, value):
     inputs = api[node]['inputs']
     previous = inputs.get(name)
@@ -151,7 +163,7 @@ class NativeJobs:
 
     def _owned(self, row, record):
         return (isinstance(row, list) and len(row) >= 4 and row[1] == record['id']
-                and digest(row[2]) == record['provenance']['graph_sha256']
+                and digest(settled(row[2])) == digest(settled(record['body']['prompt']))
                 and isinstance(row[3], dict) and row[3].get('h3c_agent') == record['provenance'])
 
     def status(self, handle):
