@@ -14,17 +14,17 @@ Historical Phase20 watch-through blockers remain in the original parent roadmap 
 ```json
 {
   "version": 1,
-  "revision": 18,
+  "revision": 19,
   "phase": "Phase 23: Continuity degradation protection",
   "active_features": [],
   "focus_feature": "None",
   "goal": "Review recent Geiru changes for relevant native continuity improvements and add explicit README/docs credits",
   "done_when": "Pinned upstream review and explicit README/docs credits verified and delivered in draft PR94; GPU visual validation remains separate",
-  "last_completed": "DP3 passing: upstream099da1b source comparison, native applicability review, explicit credits and strict docs verified",
-  "in_progress": "Documentation-only follow-up ready for commit/push to existing draft PR94; product behavior unchanged",
+  "last_completed": "Pushed777a4cc: upstream review and README/guide/notices credits delivered in linked draft PR94; PR body updated",
+  "in_progress": "None; DP0/DP1/DP3 passing, DP2 not started; no GPU or live changes",
   "next": {
-    "action": "Commit and push the verified documentation-only follow-up to draft PR94, then link the PR immediately",
-    "reason": "Complete the requested upstream review and credits while preserving the separately authorized DP2 GPU gate"
+    "action": "Keep draft PR94 unmerged for later testing; on explicit test request coordinate GPU and safe activation before DP2 matched renders",
+    "reason": "Current upstream-review and attribution request is complete; visual acceptance still requires a separately authorized test"
   },
   "files": [
     {
@@ -50,22 +50,15 @@ Historical Phase20 watch-through blockers remain in the original parent roadmap 
   ],
   "repository": {
     "branch": "feat/continuity-protection",
-    "head": "7b6bb57440eb",
-    "dirty": [
-      "CHANGELOG.md",
-      "README.md",
-      "THIRD_PARTY_NOTICES.md",
-      "docs/research/2026-11-16-geiru-upstream-review.md",
-      "docs/roadmap-discipline/readiness-checklist.md",
-      "guide/continuity/long-chains.md"
-    ],
-    "dirty_hash": "3ad427462198f92eb34ca122a92dcdb00dbe31a53fb650d3c758481b342d2c5c"
+    "head": "777a4cca4f7e",
+    "dirty": [],
+    "dirty_hash": "75a11da44c802486bc6f65640aa48a730f0f684c5c07a42ba3cd1735eb3fb070"
   },
   "verification": {
     "required": "pinned upstream commit/diff/source inspection; focused tests if code changes; strict docs; diff/roadmap checks",
-    "last_run": "Pinned GitHub compare/source review; strict MkDocs build; local attribution link inspection; git diff --check",
+    "last_run": "Pinned upstream099da1b compare/source review; strict MkDocs build; local attribution links; git diff --check; roadmap check",
     "status": "passed",
-    "detail": "Latest099da1b confirmed; original mechanics unchanged; attention metadata/timing mismatch documented; strict docs exit0 and local links/diff clean; no product tests rerun for docs-only follow-up"
+    "detail": "Docs build exit0; original noise/anchor files unchanged upstream; no product changes; local links valid and roadmap0 errors0 warnings"
   },
   "blockers": [],
   "reload": [
