@@ -31,9 +31,11 @@ Visual memory serves a different purpose. If a prop leaves the camera view, choo
 
 ### Attention balance
 
-Experimental. Clean anchors alone can still leave a chain slowly darkening, because each new clip reads its held carried frames far more than the single clean anchor. `attention_balance` changes that split and nothing else: of the attention a token gives to the anchors and the held carried frames together, the anchors take `balance` times their normal weight and the carried frames give up exactly that much. Attention to the prompt, references, audio and new frames is unchanged. **1 leaves sampling unchanged**; Geiru's own default for the equivalent control is 20.
+Experimental. Clean anchors alone can still leave a chain slowly darkening, because each new clip reads its held carried frames far more than the single clean anchor. `attention_balance` changes that split and nothing else: of the attention a token gives to the anchors and the held carried frames together, the anchors take `balance` times their normal weight and the carried frames give up exactly that much. Attention to the prompt, references, audio and new frames is unchanged. **1 leaves attention unchanged** while the node's other protection remains active; Geiru's own default for the equivalent control is 20.
 
-`attention_blocks` chooses the transformer blocks (0-49) it applies to, as numbers and ranges. The default, `31-33, 36-44, 47`, is the set Geiru reports as carrying brightness on H3. That is Geiru's finding, not our measurement.
+`attention_blocks` chooses existing transformer blocks as numbers and ranges. Invalid indices fail before sampling. The default, `31-33, 36-44, 47`, is the set Geiru reports as carrying brightness on H3. That is Geiru's finding, not our measurement.
+
+Use native attention for this experiment. Veda's sparse attention can bypass the balance hook, regardless of node order. Every selected block must run the balance on every model evaluation; a bypass fails that evaluation instead of saving a partly balanced result. This path uses PyTorch SDPA with extra value channels; it needs a backend that supports unequal query/key and value dimensions. Memory-efficient attention works on the tested Windows host; CUDA Flash attention is not available for this shape.
 
 Geiru reports less motion as the cost, and a strong pull toward an old frame can also pull pose and framing. Raise it in steps and compare motion and joins, not only color. Each balanced block runs three attention passes instead of one, so those blocks are slower. If another node replaces H3's attention on those blocks, so the balance cannot run, sampling stops with an error instead of saving a clip that only claims to be balanced; set the balance to 1 or remove that patch.
 

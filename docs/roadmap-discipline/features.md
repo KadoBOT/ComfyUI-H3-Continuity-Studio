@@ -1,6 +1,6 @@
 # Continuity protection execution
 
-**Status:** DP0, DP1 and DP3 passing; Native implementation, independent review fixes, upstream review and credits verified. DP2 visual comparison not started. Draft PR #94 kept for later testing.
+**Status:** DP0, DP1, DP3 and DP4 passing on recorded CPU/docs evidence. DP2 integration and visual comparison active under the user's 2026-11-17 testing authorization. Draft PR #94 remains open.
 **Current Phase:** Phase 23: Continuity degradation protection
 
 Historical Phase20 watch-through blockers remain in the original parent roadmap at D:/development/rambrogi/work/ComfyUI-H3-Continuity-Studio/docs/roadmap-discipline/. They are preserved and outside this execution.
@@ -14,47 +14,49 @@ Historical Phase20 watch-through blockers remain in the original parent roadmap 
 ```json
 {
   "version": 1,
-  "revision": 21,
+  "revision": 27,
   "phase": "Phase 23: Continuity degradation protection",
-  "active_features": [],
-  "focus_feature": "None",
+  "active_features": [
+    "DP2"
+  ],
+  "focus_feature": "DP2",
   "goal": "Credit ckinpdx per PR94 comment; add native opt-in attention balance to H3 Continuity Protection; then DP2 matched GPU color/motion comparison",
   "done_when": "DP4 CPU-verified and pushed to draft PR94 with credits; DP2 matched baseline/protected/balanced renders inspected or its blocker recorded",
-  "last_completed": "DP4 passing on CPU: native attention balance, tests and ckinpdx credits",
-  "in_progress": "None committed beyond DP4; DP2 GPU comparison next",
+  "last_completed": "Baseline and protected balance1 clip30 arms saved successfully on isolated8189; no execution errors",
+  "in_progress": "Balance20 arm running; ticket433397e7-e45a-451d-8364-93ee7afb900a active; actual frame/flow comparison still pending",
   "next": {
-    "action": "DP2: on idle live ComfyUI, decide safe activation of this branch, then matched baseline/protected/balanced renders on a short continuing chain; inspect color, motion and joins",
-    "reason": "User asked 2026-11-17 to continue remaining integration/motion testing"
+    "action": "Finish balance20, validate all three saved outputs, stop owned host/release GPU, then inspect frame/flow comparison",
+    "reason": "Need isolate attention effect against protected arm before visual acceptance"
   },
   "files": [
     {
+      "path": "docs/research/2026-11-17-protection-integration.md",
+      "state": "DP2 fixture, native/Veda compatibility, independent review findings and fresh verification; render evidence in progress"
+    },
+    {
       "path": "tests/python/test_protection_attention.py",
-      "state": "8 CPU checks for the attention balance, passing"
+      "state": "10 CPU checks including partial-block/later-evaluation bypass and invalid block regressions, passing"
     }
   ],
   "repository": {
     "branch": "feat/continuity-protection",
-    "head": "b39a05e0fda5",
+    "head": "fcf29cf3bbd4",
     "dirty": [
-      "CHANGELOG.md",
-      "README.md",
-      "THIRD_PARTY_NOTICES.md",
       "docs/research/2026-11-16-geiru-upstream-review.md",
+      "docs/research/2026-11-17-protection-integration.md",
+      "docs/roadmap-discipline/readiness-checklist.md",
       "guide/continuity/long-chains.md",
-      "guide/reference/nodes.md",
-      "h3_continuity/disk_cache.py",
       "h3_continuity/protection.py",
-      "skills/h3-continuity-joins/SKILL.md",
       "tests/python/test_protection_attention.py",
       "tests/python/test_protection_save.py"
     ],
-    "dirty_hash": "0f156e9284e9ff9f3092226187828dde27c497bdbfd12dda46e64eacac255080"
+    "dirty_hash": "a34f5b5a7bcf16f1fd626a92ab38aa436623e59f51e8da14873f396f0116324b"
   },
   "verification": {
-    "required": "CPU exact-redistribution checks against explicit softmax; real tiny-H3 row-mapping check; full suite; strict docs; diff/roadmap checks",
-    "last_run": "node tests/run.mjs; adapter unittest; uv mkdocs build --strict; git diff --check",
-    "status": "passed",
-    "detail": "402 JS + 585 Python, 79 adapter, docs exit 0, diff clean"
+    "required": "matched baseline/protected render and reviewed source frames across a continuing chain",
+    "last_run": "Recovery git/PR/process/queue/GPU-status read-only checks",
+    "status": "not_run",
+    "detail": "DP4 recorded402JS+585Python and79adapter; current DP2 has no generated comparison evidence"
   },
   "blockers": [],
   "reload": [
@@ -64,7 +66,8 @@ Historical Phase20 watch-through blockers remain in the original parent roadmap 
     "docs/superpowers/plans/2026-11-15-degradation-protection.md",
     "docs/research/2026-11-15-orbit29-30.md",
     "docs/research/2026-11-15-continuity-protection-review.md",
-    "docs/research/2026-11-16-geiru-upstream-review.md"
+    "docs/research/2026-11-16-geiru-upstream-review.md",
+    "docs/research/2026-11-17-protection-integration.md"
   ]
 }
 ```

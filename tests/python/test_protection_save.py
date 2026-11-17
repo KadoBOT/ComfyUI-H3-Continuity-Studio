@@ -108,7 +108,8 @@ class ProtectionSaveTest(unittest.TestCase):
         schema=cls.define_schema()
         self.assertEqual(schema.node_id,'H3C_ContinuityProtection')
         self.assertEqual([v.id for v in schema.inputs],['model','latent','segment','enabled','attention_balance','attention_blocks'])
-        self.assertTrue(schema.inputs[-1].default)
+        self.assertIs(next(v for v in schema.inputs if v.id == 'enabled').default, True)
+        self.assertEqual(next(v for v in schema.inputs if v.id == 'attention_balance').default, 1.0)
         self.assertEqual([v.io_type for v in schema.outputs],['MODEL','LATENT','H3C_SEGMENT','STRING'])
         self.assertIn(cls,asyncio.run(extension.H3ContinuityExtension().get_node_list()))
 

@@ -73,6 +73,7 @@ def attention_override(previous, receipt, tokens, held, balance, blocks):
                 return torch.cat([torch.arange(span[0] + s * rows, span[0] + (s + 1) * rows) for s in slots]).to(k.device)
 
             receipt.balanced += 1
+            receipt.balanced_blocks.add(options['block_index'])
             return balanced_attention(q, k, v, index([0] + [tokens] * (frames > tokens)), index(held), balance)
         if previous:
             return previous(func, q, k, v, heads, mask=mask, skip_reshape=skip_reshape, **kwargs)
@@ -221,6 +222,7 @@ class ProtectionReceipt:
         self.schedule = None
         self.calls = 0
         self.balanced = 0
+        self.balanced_blocks = set()
 
 
 def _streams(value, shapes):
@@ -285,6 +287,9 @@ def patch_model(model, prepared, segment, originals, capstone, descriptor, balan
     held = [s for s in range(1, originals.shape[2]) if float(video_mask[0, 0, s].max()) < .5]
     balancing = balance != 1 and bool(blocks) and bool(held)
     if balancing:
+        invalid = blocks - set(range(len(core.diffusion_model.blocks)))
+        if invalid:
+            raise ValueError(f'{WHO}: attention blocks {sorted(invalid)} do not exist in this model.')
         options = m.model_options.setdefault('transformer_options', {})
         options['optimized_attention_override'] = attention_override(
             options.get('optimized_attention_override'), receipt, prepared['samples'].tensors[0].shape[2],
@@ -294,6 +299,15 @@ def patch_model(model, prepared, segment, originals, capstone, descriptor, balan
     expected_mask = content_digest(comfy.utils.pack_latents([
         comfy.sampler_helpers.prepare_mask(mask, shape, torch.device('cpu'))
         for mask, shape in zip(prepared['noise_mask'].tensors, expected_shapes)])[0].float())
+
+    def call_model(apply_model, args):
+        receipt.balanced_blocks.clear()
+        result = previous(apply_model, args) if previous else apply_model(args['input'], args['timestep'], **args['c'])
+        missing = blocks - receipt.balanced_blocks if balancing else set()
+        if missing:
+            raise ValueError(f'{WHO}: attention balance never ran on selected blocks {sorted(missing)}; '
+                             'another attention patch may be bypassing native attention.')
+        return result
 
     def evaluate(apply_model, args):
         c = args['c']
@@ -308,7 +322,7 @@ def patch_model(model, prepared, segment, originals, capstone, descriptor, balan
             raise ValueError(f'{WHO}: ambiguous model timestep for the sampling schedule.')
         receipt.calls += 1
         if capstone is None or sigma > receipt.schedule[receipt.start]:
-            return previous(apply_model, args) if previous else apply_model(args['input'], args['timestep'], **c)
+            return call_model(apply_model, args)
         shapes = c.get('latent_shapes')
         if shapes is None or len(shapes) != 2:
             raise ValueError(f'{WHO}: missing native packed AV shapes for the capstone.')
@@ -325,7 +339,7 @@ def patch_model(model, prepared, segment, originals, capstone, descriptor, balan
         if 'minimax_payload' in conditions:
             conditions['minimax_payload'] = {k:v for k,v in conditions['minimax_payload'].items() if k != 'layout'}
         call = dict(args, input=enlarged, c=conditions)
-        result = previous(apply_model, call) if previous else apply_model(enlarged, args['timestep'], **conditions)
+        result = call_model(apply_model, call)
         streams = comfy.utils.unpack_latents(result, new_shapes)
         return comfy.utils.pack_latents((streams[0][:, :, :video.shape[2]], streams[1]))[0]
 

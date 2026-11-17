@@ -111,6 +111,7 @@ class ProtectedSamplingAttentionTest(unittest.TestCase):
         latent, segment, front = carried()
         prepared, originals = protection.prepare_latent(latent, segment, front)
         base, attend = patcher(), {}
+        base.model.diffusion_model.blocks = range(48)
 
         def previous(fn, args):
             if attend:
@@ -141,6 +142,10 @@ class ProtectedSamplingAttentionTest(unittest.TestCase):
                 run(model, prepared)
         self.assertFalse(receipt.complete)
 
+    def test_nonexistent_attention_block_is_rejected_before_sampling(self):
+        with self.assertRaisesRegex(ValueError, 'attention blocks.*999'):
+            self.setup_model(20., frozenset([31, 999]))
+
     def test_balanced_run_records_its_settings(self):
         _, model, prepared, receipt, attend = self.setup_model(20.)
         override = model.model_options['transformer_options']['optimized_attention_override']
@@ -154,6 +159,29 @@ class ProtectedSamplingAttentionTest(unittest.TestCase):
         self.assertTrue(receipt.complete)
         self.assertEqual((receipt.descriptor['attention_balance'], receipt.descriptor['attention_blocks']), (20., [31]))
         self.assertEqual(receipt.balanced, 16)
+
+    def test_partial_attention_bypass_fails_on_the_first_incomplete_model_call(self):
+        for complete_first_call in (False, True):
+            with self.subTest(complete_first_call=complete_first_call):
+                _, model, prepared, receipt, attend = self.setup_model(20., frozenset([31, 32]))
+                override = model.model_options['transformer_options']['optimized_attention_override']
+                layout = types.SimpleNamespace(segments=[(0, 3, 'text'), (3, 151, 'video')],
+                                               signature=(3, 37, 4, 4, 0), seq_len=151)
+                q, k, v = (torch.randn(1, 2, 151, 8) for _ in range(3))
+                calls = []
+
+                def partially_patched():
+                    calls.append(True)
+                    for block in ([31, 32] if complete_first_call and len(calls) == 1 else [31]):
+                        override(None, q, k, v, 2, skip_reshape=True,
+                                 transformer_options=dict(block_index=block, minimax_h3_layout=layout))
+
+                attend['call'] = partially_patched
+                with mock.patch.object(protection, '_current_source'):
+                    with self.assertRaisesRegex(ValueError, 'attention balance.*32'):
+                        run(model, prepared)
+                self.assertFalse(receipt.complete)
+                self.assertEqual(len(calls), 2 if complete_first_call else 1)
 
 
 if __name__ == '__main__':
