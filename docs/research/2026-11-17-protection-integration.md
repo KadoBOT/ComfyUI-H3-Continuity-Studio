@@ -1,5 +1,7 @@
 # Native protection integration and motion testing — 2026-11-17
 
+**Scope correction:** User subsequently identified wall darkening at full-film 0:02 versus 0:50 as the degradation case. This clip-30 report covers integration and the camera reset only. DP2 was reopened; see the [narrow wall-onset test](2026-11-17-wall-darkening-onset.md). It must not be used as the color-protection acceptance case.
+
 ## Scope and recovery
 
 User requested the additional credits identified in PR #94, remaining attention integration and motion testing, and necessary follow-through. The previous provider pushed `fcf29cf` with native opt-in attention balance and explicit **ckinpdx / Carry Attention / ComfyUI-MMH3Tools** credits, then stopped before launching a test server. Its recorded CPU result was 402 JavaScript + 585 Python tests and 79 adapter tests. No GPU comparison existed at recovery.
@@ -51,4 +53,4 @@ Local artifacts: `.tmp/dp2/comparison.html` (video, charts and source-frame shee
 
 The isolated queue was empty after all three successful receipts. Owned host PID 43360 was stopped and confirmed absent; its GPU memory was released (device usage returned to about 1.9 GiB for desktop/shared-host resources). The GPU ticket was finished and released with that factual cleanup note. Original ComfyUI PID 14784 remains alive on port 8188 and its queue is idle. No shared workflow/story, installation source or original output manifest was edited; there was no shared-host restart, merge or release.
 
-Fresh verification after the review fixes: 402 JavaScript + 587 Python tests, 79 adapter tests, strict MkDocs, output/carry/memory validation and diff/roadmap checks. DP2 completion means this bounded integration and comparison was performed and its negative/uncertain visual results recorded. It does not mean the original story now meets seamless-shot or long-chain color acceptance.
+Fresh verification after the review fixes: 402 JavaScript + 587 Python tests, 79 adapter tests, strict MkDocs, output/carry/memory validation and diff/roadmap checks. This bounded integration/jump comparison is complete and its negative/uncertain visual results are recorded. It does not mean DP2's wall-degradation acceptance is complete, or that the original story meets seamless-shot acceptance.

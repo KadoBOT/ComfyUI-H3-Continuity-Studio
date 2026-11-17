@@ -10,7 +10,7 @@ All notable changes to H3 Continuity Studio are recorded here. Versions follow [
 
 - Explicit README, long-chain guide and third-party credits for roycho87's Geiru Context Suite and ethanfel/Lumifel's sampler-level context noise; source-backed review of Geiru's 2026-11-15 Keystone Attention and Hybrid Windows update, with applicability and unverified-result limits.
 
-- Opt-in **H3 Continuity Protection** node: sampler-level context noise, clean native chain anchors and late capstones, with original carried frames restored in normal and denoised sampler outputs. Save Segment verifies executed output before writing. Protected continuations bypass sampling disk cache; disabled/fresh clips keep cache behavior. No extra models or packages; Context Windows and the old pixel-noise mode cannot be combined with it. A matched three-arm GPU check completed on one late-chain 10Eros beta7 continuation; the camera reset remains and progressive color/detail improvement is unproven.
+- Opt-in **H3 Continuity Protection** node: sampler-level context noise, clean native chain anchors and late capstones, with original carried frames restored in normal and denoised sampler outputs. Save Segment verifies executed output before writing. Protected continuations bypass sampling disk cache; disabled/fresh clips keep cache behavior. No extra models or packages; Context Windows and the old pixel-noise mode cannot be combined with it. Matched GPU checks on 10Eros beta7 validated execution, but the first wall-darkening onset test showed no clear color-fidelity gain at neutral balance and worse wall color at balance 20. The separate clip-30 camera reset also remains.
 
 ### Fixed
 

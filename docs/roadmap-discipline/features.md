@@ -1,6 +1,6 @@
 # Continuity protection execution
 
-**Status:** DP0–DP4 passing for implementation and executed verification. DP2's bounded GPU comparison completed; the camera reset remains and general color retention is unproven. Draft PR #94 remains open; visual acceptance is separate.
+**Status:** DP0, DP1, DP3 and DP4 passing technically. DP2 active: the requested clip-2 onset experiment completed, but wall-preservation acceptance failed (balance20 worse; neutral no clear color-fidelity gain). Clip30 remains integration/jump evidence only. Draft PR #94 remains open.
 **Current Phase:** Phase 23: Continuity degradation protection
 
 Historical Phase20 watch-through blockers remain in the original parent roadmap at D:/development/rambrogi/work/ComfyUI-H3-Continuity-Studio/docs/roadmap-discipline/. They are preserved and outside this execution.
@@ -14,19 +14,25 @@ Historical Phase20 watch-through blockers remain in the original parent roadmap 
 ```json
 {
   "version": 1,
-  "revision": 31,
+  "revision": 41,
   "phase": "Phase 23: Continuity degradation protection",
-  "active_features": [],
-  "focus_feature": "None",
-  "goal": "Deliver reviewed native protection/attention integration, deserved credits and bounded matched GPU comparison in draftPR94",
-  "done_when": "Review fixes and fresh CPU/docs checks pass; matched GPU outputs/frames/motion inspected with honest limits; resources released; draftPR94 updated",
-  "last_completed": "DP2 bounded comparison complete:3arms85frames each, exact protected carry, identical memories; camera reset persists, color retention unproven; GPU cleanup complete",
-  "in_progress": "Final report/guide/roadmap verified; commit/push and draftPR94 body refresh pending; no GPU workload remains",
+  "active_features": [
+    "DP2"
+  ],
+  "focus_feature": "DP2",
+  "goal": "Find wall-darkening onset and test native protection only across last-bright to first-dark range",
+  "done_when": "Onset range located and documented; matched range renders preserve source/settings/memory; wall and motion compared honestly, draftPR94 updated",
+  "last_completed": "Requested clip2 onset range rendered in3matched arms; output/carry/memory checks pass; registered wall result negative; GPUticket9cdd0f62 released and ownedPID40500 stopped",
+  "in_progress": "No GPU work. Onset report/README/guide now explicitly record failed wall acceptance; draftPR94 publication pending. DP2 remains active; neutral attention default retained",
   "next": {
-    "action": "Commit/push final integration evidence to draftPR94, link immediately, refresh PR description and confirm clean draft head",
-    "reason": "Complete authorized work with concrete tested implementation and explicit remaining visual limits"
+    "action": "Verify docs and publish exact negative onset evidence to draftPR94; retain frozen clip2 fixture as gate for any later recipe changes",
+    "reason": "User requested this narrow range; tests completed but wall protection is not a demonstrated fix and must not be marked passing"
   },
   "files": [
+    {
+      "path": "docs/research/2026-11-17-wall-darkening-onset.md",
+      "state": "User-selected clip2-only onset experiment complete; three successful saves, negative wall-color result, similar motion, source/overlap/memory preserved; GPU host stopped/ticket released"
+    },
     {
       "path": "docs/research/2026-11-17-protection-integration.md",
       "state": "Completed three-arm GPU fixture, per-output receipts/carry/memory checks, frame/flow findings and limits; owned GPU host stopped and ticket released"
@@ -38,20 +44,22 @@ Historical Phase20 watch-through blockers remain in the original parent roadmap 
   ],
   "repository": {
     "branch": "feat/continuity-protection",
-    "head": "626caddcc66a",
+    "head": "572c45f2563c",
     "dirty": [
       "CHANGELOG.md",
+      "README.md",
       "docs/research/2026-11-17-protection-integration.md",
+      "docs/research/2026-11-17-wall-darkening-onset.md",
       "docs/roadmap-discipline/readiness-checklist.md",
       "guide/continuity/long-chains.md"
     ],
-    "dirty_hash": "24f2f967b23e64cb6ac35ad119e5f68487697749e48b15faade3f3b7d1abacc9"
+    "dirty_hash": "d2b2e736a10e5926054fbc4c650682a11a2c111131103346bfa39339e4f71d8b"
   },
   "verification": {
     "required": "matched baseline/protected render and reviewed source frames across a continuing chain",
-    "last_run": "402JS+587Python;79adapter;3GPU successful save receipts; CPU source/carry/memory validation; source-frame/flow inspection; strict MkDocs; diff/roadmap",
-    "status": "passed",
-    "detail": "All checks pass. Per-evaluation attention bypass regressions RED→GREEN. Strict link issue fixed. Camera reset remains and one-clip brightness proxies do not prove long-chain quality"
+    "last_run": "3GPU onset saves; CPU source/carry/memory and common-frame wall/flow checks; prior402JS+587Python/79adapter technical checks",
+    "status": "failed",
+    "detail": "Technical execution passes; visual acceptance fails. Common-frame DeltaE baseline2.37 neutral2.39 balance20 3.20. No accepted color-preservation recipe for this story"
   },
   "blockers": [],
   "reload": [
@@ -62,7 +70,8 @@ Historical Phase20 watch-through blockers remain in the original parent roadmap 
     "docs/research/2026-11-15-orbit29-30.md",
     "docs/research/2026-11-15-continuity-protection-review.md",
     "docs/research/2026-11-16-geiru-upstream-review.md",
-    "docs/research/2026-11-17-protection-integration.md"
+    "docs/research/2026-11-17-protection-integration.md",
+    "docs/research/2026-11-17-wall-darkening-onset.md"
   ]
 }
 ```
