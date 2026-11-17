@@ -51,7 +51,7 @@ Deeper reference notes: [Story Studio](docs/QWEN-STORY-STUDIO.md), [external Tim
 
 **H3 Continuity Protection** builds on the public keystone/capstone anchor and late-locking ideas in **[roycho87's Geiru Context Suite](https://github.com/roycho87/geiru_context_suite)**. Sampler-synchronized context noise is credited to **ethanfel / Lumifel**, whose [H3 Context Loop work](https://github.com/ethanfel/ComfyUI-MiniMaxH3-Context-Loop) Geiru also credits. Our native implementation is independent; it does not vendor Geiru's GPL-3.0 source or require its node pack.
 
-The [latest upstream review](docs/research/2026-11-16-geiru-upstream-review.md) covers Geiru's new Keystone Attention and Hybrid Windows changes. Those additions are not included in this implementation or claimed as tested here. See [third-party notices](THIRD_PARTY_NOTICES.md) for this project's other sources and attributions.
+The optional **attention balance** follows Geiru's **Keystone Attention**, which is based on an idea by **ckinpdx**: biasing H3's attention by part of its sequence, published as **[ckinpdx's Carry Attention](https://github.com/ckinpdx/ComfyUI-MMH3Tools)** in ComfyUI-MMH3Tools. The default blocks are Geiru's published lighting blocks. Ours is again an independent native implementation; see the [upstream review](docs/research/2026-11-16-geiru-upstream-review.md). Geiru's Hybrid Windows changes are not included. See [third-party notices](THIRD_PARTY_NOTICES.md) for this project's other sources and attributions.
 
 ## License and third-party material
 

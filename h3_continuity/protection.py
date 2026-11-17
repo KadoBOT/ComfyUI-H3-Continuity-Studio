@@ -12,6 +12,73 @@ from . import latents, store, timeline, timing
 METHOD = 'h3c-continuity-protection-v1'
 WHO = 'H3 Continuity Protection'
 RECEIPT_KEY = '_h3c_protection_receipt'
+# H3 blocks that Geiru Context Suite reports as carrying brightness; its finding, not our measurement.
+LIGHTING_BLOCKS = '31-33, 36-44, 47'
+
+
+def parse_blocks(text):
+    blocks = set()
+    for part in str(text or '').replace(';', ',').split(','):
+        ends = [end.strip() for end in part.split('-')]
+        if ends == ['']:
+            continue
+        if len(ends) > 2 or not all(end.isdigit() for end in ends):
+            raise ValueError(f"{WHO}: cannot read attention blocks '{part.strip()}'; "
+                             f'use numbers and ranges such as {LIGHTING_BLOCKS}.')
+        blocks.update(range(min(map(int, ends)), max(map(int, ends)) + 1))
+    return frozenset(blocks)
+
+
+def balanced_attention(q, k, v, anchor, context, balance):
+    """Re-split only the attention shared by anchor and context keys; q, k, v are [1, heads, rows, dim].
+
+    With anchor share a and context share c of one query's attention, the anchor takes
+    (a + c) * balance * a / (balance * a + c) and the context keeps the rest of a + c. Every other key
+    keeps its exact share. Two marker value channels read a and c out of the ordinary attention pass.
+    """
+    attend = torch.nn.functional.scaled_dot_product_attention
+    heads, rows, dim = q.shape[1:]
+    marks = v.new_zeros(k.shape[2], 8)
+    marks[anchor, 0] = 1
+    marks[context, 1] = 1
+    out = torch.empty(q.shape[0], rows, heads * dim, dtype=q.dtype, device=q.device)
+    wide = torch.promote_types(q.dtype, torch.float32)   # shares need more than half precision
+    step = max(1, heads // 4)   # heads are independent; groups bound the extra memory
+    for h in range(0, heads, step):
+        qs, ks, vs = (t[:, h:h + step] for t in (q, k, v))
+        full = attend(qs, ks, torch.cat((vs, marks.expand(*vs.shape[:2], -1, -1)), dim=-1))
+        a, c = full[..., dim:dim + 1].to(wide), full[..., dim + 1:dim + 2].to(wide)
+        gain = (a + c) * balance * a / (balance * a + c).clamp_min(1e-12) - a
+        moved = (attend(qs, ks[:, :, anchor], vs[:, :, anchor]).to(wide)
+                 - attend(qs, ks[:, :, context], vs[:, :, context]).to(wide))
+        part = (full[..., :dim].to(wide) + gain * moved).to(q.dtype)
+        out[:, :, h * dim:(h + step) * dim] = part.transpose(1, 2).reshape(q.shape[0], rows, -1)
+    return out
+
+
+def attention_override(previous, receipt, tokens, held, balance, blocks):
+    """Core optimized_attention_override: balance our own rows on the chosen blocks, otherwise defer."""
+    def override(func, q, k, v, heads, mask=None, skip_reshape=False, **kwargs):
+        options = kwargs.get('transformer_options') or {}
+        layout = options.get('minimax_h3_layout')
+        span = next(((a, z) for a, z, kind in getattr(layout, 'segments', ()) if kind == 'video'), None)
+        frames = layout.signature[1] if span else 0
+        # The late capstone is one extra held latent after the clip's own tokens.
+        if (span and skip_reshape and mask is None and not kwargs.get('skip_output_reshape')
+                and options.get('block_index') in blocks and k.shape[-2] == layout.seq_len
+                and frames in (tokens, tokens + 1)):
+            rows = (span[1] - span[0]) // frames
+
+            def index(slots):
+                return torch.cat([torch.arange(span[0] + s * rows, span[0] + (s + 1) * rows) for s in slots]).to(k.device)
+
+            receipt.balanced += 1
+            return balanced_attention(q, k, v, index([0] + [tokens] * (frames > tokens)), index(held), balance)
+        if previous:
+            return previous(func, q, k, v, heads, mask=mask, skip_reshape=skip_reshape, **kwargs)
+        return func(q, k, v, heads, mask=mask, skip_reshape=skip_reshape, **kwargs)
+    override.h3c_balance = balance
+    return override
 
 
 def passthrough_reason(segment):
@@ -153,6 +220,7 @@ class ProtectionReceipt:
         self.descriptor = None
         self.schedule = None
         self.calls = 0
+        self.balanced = 0
 
 
 def _streams(value, shapes):
@@ -195,7 +263,7 @@ def _sample_digest(value, shapes):
     return content_digest(NestedTensor(_streams(value, shapes)))
 
 
-def patch_model(model, prepared, segment, originals, capstone, descriptor):
+def patch_model(model, prepared, segment, originals, capstone, descriptor, balance=1.0, blocks=frozenset()):
     import comfy.model_base
     import comfy.patcher_extension as pe
     import comfy.utils
@@ -213,6 +281,14 @@ def patch_model(model, prepared, segment, originals, capstone, descriptor):
     m.model_options['h3c_protection'] = True
     receipt = ProtectionReceipt()
     previous = m.model_options.get('model_function_wrapper')
+    video_mask = prepared['noise_mask'].tensors[0]
+    held = [s for s in range(1, originals.shape[2]) if float(video_mask[0, 0, s].max()) < .5]
+    balancing = balance != 1 and bool(blocks) and bool(held)
+    if balancing:
+        options = m.model_options.setdefault('transformer_options', {})
+        options['optimized_attention_override'] = attention_override(
+            options.get('optimized_attention_override'), receipt, prepared['samples'].tensors[0].shape[2],
+            held, float(balance), blocks)
     expected_samples, expected_shapes = comfy.utils.pack_latents(prepared['samples'].tensors)
     expected_input = _sample_digest(expected_samples, expected_shapes)
     expected_mask = content_digest(comfy.utils.pack_latents([
@@ -258,7 +334,7 @@ def patch_model(model, prepared, segment, originals, capstone, descriptor):
         if not receipt.lock.acquire(blocking=False):
             raise ValueError(f'{WHO}: this prepared model is already sampling.')
         receipt.complete, receipt.accepted, receipt.descriptor = False, set(), None
-        receipt.calls = 0
+        receipt.calls = receipt.balanced = 0
         receipt.schedule = None
         try:
             if getattr(executor.class_obj, 'model_options', {}).get('context_handler') is not None:
@@ -290,11 +366,16 @@ def patch_model(model, prepared, segment, originals, capstone, descriptor):
             result = _restored(result, latent_shapes, segment, originals, core)
             if not receipt.calls:
                 raise ValueError(f'{WHO}: the protected model was not evaluated by the sampler.')
+            if balancing and not receipt.balanced:
+                raise ValueError(f'{WHO}: attention balance never ran; another attention patch replaces native H3 '
+                                 'attention on these blocks. Set attention_balance to 1 or remove that patch.')
             receipt.accepted = {_sample_digest(result, latent_shapes)}
             if last_x0 is not None:
                 receipt.accepted.add(last_x0)
             receipt.descriptor = dict(descriptor, late_start_step=receipt.start if capstone is not None else None,
-                                      sampling_steps=len(schedule)-1)
+                                      sampling_steps=len(schedule)-1,
+                                      attention_balance=float(balance) if balancing else None,
+                                      attention_blocks=sorted(blocks) if balancing else None)
             receipt.complete = True
             return result
         finally:
@@ -331,24 +412,39 @@ class H3C_ContinuityProtection(io.ComfyNode):
                                      'continuations. Connect model to the guider, latent to the sampler and the '
                                      'returned segment to Save Segment. Turn off old Context noise. Protected '
                                      'sampling bypasses disk cache. No Context Windows. Regenerate affected clips '
-                                     'or start a new generation; graph changes do not mark old takes outdated.',
+                                     'or start a new generation; graph changes do not mark old takes outdated. '
+                                     'attention_balance above 1 is experimental and can reduce motion.',
                          inputs=[io.Model.Input('model'), io.Latent.Input('latent'), SegmentType.Input('segment'),
-                                 io.Boolean.Input('enabled', default=True)],
+                                 io.Boolean.Input('enabled', default=True),
+                                 io.Float.Input('attention_balance', default=1.0, min=0.0, max=1000.0, step=0.1,
+                                                optional=True,
+                                                tooltip='Experimental. 1 = unchanged. Above 1, the clean chain '
+                                                        'anchors take that many times more of the attention they '
+                                                        'share with the held carried frames; prompt, references, '
+                                                        'audio and new frames keep their exact share. Geiru uses 20. '
+                                                        'Can reduce motion.'),
+                                 io.String.Input('attention_blocks', default=LIGHTING_BLOCKS, optional=True,
+                                                 tooltip='Transformer blocks (0-49) the balance applies to. The '
+                                                         "default is Geiru's lighting blocks.")],
                          outputs=[io.Model.Output(display_name='model'), io.Latent.Output(display_name='latent'),
                                   SegmentType.Output(display_name='segment'), io.String.Output(display_name='info')])
 
     @classmethod
-    def execute(cls, model, latent, segment, enabled=True):
+    def execute(cls, model, latent, segment, enabled=True, attention_balance=1.0, attention_blocks=LIGHTING_BLOCKS):
         reason = 'Disabled.' if not enabled else passthrough_reason(segment)
         if reason:
             return io.NodeOutput(model, latent, segment, f'{WHO}: passed through. {reason}')
+        blocks = parse_blocks(attention_blocks)
         owned = replace(segment, timeline=copy.deepcopy(segment.timeline),
                         protection_source=copy.deepcopy(segment.protection_source))
         front, capstone, descriptor = load_anchors(owned)
         prepared, originals = prepare_latent(latent, owned, front)
-        model, owned.protection_receipt = patch_model(model, prepared, owned, originals, capstone, descriptor)
+        model, owned.protection_receipt = patch_model(model, prepared, owned, originals, capstone, descriptor,
+                                                      attention_balance, blocks)
         prepared[RECEIPT_KEY] = owned.protection_receipt
         message = f'{WHO}: prepared; sampler-level noise and clean chain anchor. Disk sampling cache bypassed.'
+        if hasattr(model.model_options.get('transformer_options', {}).get('optimized_attention_override'), 'h3c_balance'):
+            message += f' Attention balance {attention_balance:g} on {len(blocks)} blocks.'
         if descriptor.get('capstone_suppressed'):
             message += f" Capstone off: {descriptor['capstone_suppressed']}"
         return io.NodeOutput(model, prepared, owned, message)

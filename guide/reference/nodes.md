@@ -73,6 +73,8 @@ Optional sampling protection for native continuing clips. Feed the chosen sampli
 
 It applies fractional sampler noise to carried video, uses the original chain's front anchor and appends/removes a late capstone inside model calls. Both normal and denoised outputs restore the original carried video and held audio/ending regions. Save verifies the completed output before writing. Turn off old **Context noise**; Context Windows are unsupported. Protected sampling bypasses disk cache. Fresh clips/cuts and suppressed appearance changes pass through; ending/frame guides suppress the capstone. Changed source takes or geometry fail explicitly. Use Regenerate or a new generation to replace existing clips after changing graph settings. See [wiring and limits](../continuity/long-chains.md#h3-continuity-protection); visual improvement is not yet verified by a matched GPU comparison.
 
+Optional `attention_balance` (default 1 = unchanged) and `attention_blocks` (default `31-33, 36-44, 47`) re-split the attention shared by the clean anchors and the held carried frames on those blocks; experimental, and it can reduce motion. See [attention balance](../continuity/long-chains.md#attention-balance).
+
 | Input | Notes |
 | --- | --- |
 | `model` | For clips that start fresh or cut. |

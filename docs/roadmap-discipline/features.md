@@ -14,51 +14,47 @@ Historical Phase20 watch-through blockers remain in the original parent roadmap 
 ```json
 {
   "version": 1,
-  "revision": 19,
+  "revision": 21,
   "phase": "Phase 23: Continuity degradation protection",
   "active_features": [],
   "focus_feature": "None",
-  "goal": "Review recent Geiru changes for relevant native continuity improvements and add explicit README/docs credits",
-  "done_when": "Pinned upstream review and explicit README/docs credits verified and delivered in draft PR94; GPU visual validation remains separate",
-  "last_completed": "Pushed777a4cc: upstream review and README/guide/notices credits delivered in linked draft PR94; PR body updated",
-  "in_progress": "None; DP0/DP1/DP3 passing, DP2 not started; no GPU or live changes",
+  "goal": "Credit ckinpdx per PR94 comment; add native opt-in attention balance to H3 Continuity Protection; then DP2 matched GPU color/motion comparison",
+  "done_when": "DP4 CPU-verified and pushed to draft PR94 with credits; DP2 matched baseline/protected/balanced renders inspected or its blocker recorded",
+  "last_completed": "DP4 passing on CPU: native attention balance, tests and ckinpdx credits",
+  "in_progress": "None committed beyond DP4; DP2 GPU comparison next",
   "next": {
-    "action": "Keep draft PR94 unmerged for later testing; on explicit test request coordinate GPU and safe activation before DP2 matched renders",
-    "reason": "Current upstream-review and attribution request is complete; visual acceptance still requires a separately authorized test"
+    "action": "DP2: on idle live ComfyUI, decide safe activation of this branch, then matched baseline/protected/balanced renders on a short continuing chain; inspect color, motion and joins",
+    "reason": "User asked 2026-11-17 to continue remaining integration/motion testing"
   },
   "files": [
     {
-      "path": "docs/research/2026-11-16-geiru-upstream-review.md",
-      "state": "Pinned latest upstream review complete; attention is a separate integration candidate, window optimization has no native target; explicit README/guide/notices credits verified"
-    },
-    {
-      "path": "h3_continuity/protection.py",
-      "state": "Implemented and post-review verified; sampler/segment input binding, normal/denoised restoration, bridge pass-through and pre-write receipts"
-    },
-    {
-      "path": ".superpowers/sdd/2026-11-15-degradation-protection/progress.md",
-      "state": "All five tasks and final review/fix gate complete; durable copy in phase/review documents"
-    },
-    {
-      "path": "docs/superpowers/plans/2026-11-15-degradation-protection.md",
-      "state": "All25 steps complete under approved Native execution"
-    },
-    {
-      "path": "docs/superpowers/specs/2026-11-15-degradation-protection-design.md",
-      "state": "Approved design implemented locally; DP2 visual gain unverified"
+      "path": "tests/python/test_protection_attention.py",
+      "state": "8 CPU checks for the attention balance, passing"
     }
   ],
   "repository": {
     "branch": "feat/continuity-protection",
-    "head": "777a4cca4f7e",
-    "dirty": [],
-    "dirty_hash": "75a11da44c802486bc6f65640aa48a730f0f684c5c07a42ba3cd1735eb3fb070"
+    "head": "b39a05e0fda5",
+    "dirty": [
+      "CHANGELOG.md",
+      "README.md",
+      "THIRD_PARTY_NOTICES.md",
+      "docs/research/2026-11-16-geiru-upstream-review.md",
+      "guide/continuity/long-chains.md",
+      "guide/reference/nodes.md",
+      "h3_continuity/disk_cache.py",
+      "h3_continuity/protection.py",
+      "skills/h3-continuity-joins/SKILL.md",
+      "tests/python/test_protection_attention.py",
+      "tests/python/test_protection_save.py"
+    ],
+    "dirty_hash": "0f156e9284e9ff9f3092226187828dde27c497bdbfd12dda46e64eacac255080"
   },
   "verification": {
-    "required": "pinned upstream commit/diff/source inspection; focused tests if code changes; strict docs; diff/roadmap checks",
-    "last_run": "Pinned upstream099da1b compare/source review; strict MkDocs build; local attribution links; git diff --check; roadmap check",
+    "required": "CPU exact-redistribution checks against explicit softmax; real tiny-H3 row-mapping check; full suite; strict docs; diff/roadmap checks",
+    "last_run": "node tests/run.mjs; adapter unittest; uv mkdocs build --strict; git diff --check",
     "status": "passed",
-    "detail": "Docs build exit0; original noise/anchor files unchanged upstream; no product changes; local links valid and roadmap0 errors0 warnings"
+    "detail": "402 JS + 585 Python, 79 adapter, docs exit 0, diff clean"
   },
   "blockers": [],
   "reload": [

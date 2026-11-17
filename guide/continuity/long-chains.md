@@ -19,7 +19,7 @@ Sampler output (normal or denoised) ──────────────�
 
 Use the node's **returned segment** for Save Segment. Both sampler outputs restore the real carried frames before decode/save; the historical front anchor and temporary late capstone never become visible extra frames. Save rejects an output that did not complete the matching protected sampling pass, before moving takes or writing files. Audio generation, held audio and clip lengths remain on their existing clocks.
 
-Turn off the Studio's old **Context noise** control first: it is a separate pixel-noise treatment and cannot be combined with this node. The new node has only an **enabled** switch. It leaves fresh clips, cuts, bridges and non-continuing layers unchanged; anchors reset at the next continuing chain on the same track. An authored appearance change suppresses protection through the next fresh clip, so an old look is not forced back. An authored Last/frame guide or a protected following neighbor suppresses only the late capstone; the node's info explains this.
+Turn off the Studio's old **Context noise** control first: it is a separate pixel-noise treatment and cannot be combined with this node. Besides **enabled**, the node has an optional [attention balance](#attention-balance), off at 1. It leaves fresh clips, cuts, bridges and non-continuing layers unchanged; anchors reset at the next continuing chain on the same track. An authored appearance change suppresses protection through the next fresh clip, so an old look is not forced back. An authored Last/frame guide or a protected following neighbor suppresses only the late capstone; the node's info explains this.
 
 Protection needs a current native MiniMax H3 AV model with partial masks and an ordinary finite descending sigma schedule ending at zero. It rejects **Context Windows**, including windows added downstream. Missing or changed source takes and resolution mismatches require preparing/rendering the chain again; no source is silently substituted or resized.
 
@@ -29,11 +29,19 @@ This feature has CPU checks for masks, native sampler outputs, joins' carried da
 
 Visual memory serves a different purpose. If a prop leaves the camera view, choose **Selected** memory from a moment that clearly shows it and label the details to retain. Automatic Same scene memory already includes an establishing view and recent view; those views may not clearly cover every object. Protection is not an object-permanence guarantee.
 
+### Attention balance
+
+Experimental. Clean anchors alone can still leave a chain slowly darkening, because each new clip reads its held carried frames far more than the single clean anchor. `attention_balance` changes that split and nothing else: of the attention a token gives to the anchors and the held carried frames together, the anchors take `balance` times their normal weight and the carried frames give up exactly that much. Attention to the prompt, references, audio and new frames is unchanged. **1 leaves sampling unchanged**; Geiru's own default for the equivalent control is 20.
+
+`attention_blocks` chooses the transformer blocks (0-49) it applies to, as numbers and ranges. The default, `31-33, 36-44, 47`, is the set Geiru reports as carrying brightness on H3. That is Geiru's finding, not our measurement.
+
+Geiru reports less motion as the cost, and a strong pull toward an old frame can also pull pose and framing. Raise it in steps and compare motion and joins, not only color. Each balanced block runs three attention passes instead of one, so those blocks are slower. If another node replaces H3's attention on those blocks, so the balance cannot run, sampling stops with an error instead of saving a clip that only claims to be balanced; set the balance to 1 or remove that patch.
+
 ### Credits and upstream developments
 
 The clean keystone/capstone and late-locking ideas are credited to **roycho87's [Geiru Context Suite](https://github.com/roycho87/geiru_context_suite)**. Sampler-synchronized context noise is credited to **ethanfel / Lumifel** and [H3 Context Loop](https://github.com/ethanfel/ComfyUI-MiniMaxH3-Context-Loop), whom Geiru also credits. This is an independent native implementation using ComfyUI APIs; Geiru's GPL-3.0 code is not vendored here.
 
-Reviewed through Geiru commit [099da1b](https://github.com/roycho87/geiru_context_suite/commit/099da1be92f2da22a775076a0d533d29b4d97268) on 2026-11-16: its new **Keystone Attention** redistributes the attention shared by clean anchors and carried context on selected transformer blocks, to address residual darkening. Upstream credits **ckinpdx's Carry Attention** as its inspiration and reports a motion tradeoff. This is a promising separate experiment; **our node does not implement that attention adjustment**, and Geiru's new node expects Geiru-specific latent metadata, so it cannot simply be placed after our node as an equivalent integration.
+The attention balance follows Geiru's **Keystone Attention** (reviewed at commit [099da1b](https://github.com/roycho87/geiru_context_suite/commit/099da1be92f2da22a775076a0d533d29b4d97268)), including its lighting blocks. Keystone Attention is based on an idea by **ckinpdx**: biasing H3's attention by part of its sequence, published as **[ckinpdx's Carry Attention](https://github.com/ckinpdx/ComfyUI-MMH3Tools)** in ComfyUI-MMH3Tools. Our version is written independently on ComfyUI's attention override; Geiru's own node expects Geiru-specific latent metadata and is not a drop-in after ours.
 
 The same update moves whole-video Hybrid Windows state to system RAM and samples cropped windows. Our continuing-clip path already renders one clip at a time and does not own that whole-video state, so it has no corresponding Hybrid Windows memory fix to import. Context Windows remain unsupported by our protection node. Neither Geiru's visual-quality nor its memory results are measurements of this implementation.
 

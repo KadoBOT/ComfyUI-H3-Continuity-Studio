@@ -6,6 +6,8 @@ All notable changes to H3 Continuity Studio are recorded here. Versions follow [
 
 ### Added
 
+- Experimental `attention_balance` and `attention_blocks` on **H3 Continuity Protection** (default 1 = unchanged): on the chosen blocks, the clean chain anchors take more of the attention they share with the held carried frames, while every other share stays exact. It follows Geiru's Keystone Attention, itself based on ckinpdx's Carry Attention idea in ComfyUI-MMH3Tools; both are credited in the README, guide and notices. It can reduce motion.
+
 - Explicit README, long-chain guide and third-party credits for roycho87's Geiru Context Suite and ethanfel/Lumifel's sampler-level context noise; source-backed review of Geiru's 2026-11-15 Keystone Attention and Hybrid Windows update, with applicability and unverified-result limits.
 
 - Opt-in **H3 Continuity Protection** node: sampler-level context noise, clean native chain anchors and late capstones, with original carried frames restored in normal and denoised sampler outputs. Save Segment verifies executed output before writing. Protected continuations bypass sampling disk cache; disabled/fresh clips keep cache behavior. No extra models or packages; Context Windows and the old pixel-noise mode cannot be combined with it. Visual drift reduction remains model-dependent and has not yet been validated by a matched GPU comparison.

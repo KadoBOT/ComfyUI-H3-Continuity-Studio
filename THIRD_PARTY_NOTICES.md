@@ -6,7 +6,9 @@ The clean keystone/capstone anchors and late locking in `h3_continuity/protectio
 
 This is an independent native implementation against ComfyUI APIs. No Geiru source, example workflows or other GPL-3.0 material are vendored into this MIT project. Geiru retains its own license and attribution; credit here describes the ideas that informed our implementation.
 
-The [2026-11-16 upstream review](docs/research/2026-11-16-geiru-upstream-review.md) also records Geiru's new Keystone Attention, which upstream credits to **ckinpdx's Carry Attention** inspiration, and its Hybrid Windows memory changes, built on **kijai**'s core context windows and **JalenBrunson**'s HybridWindows work. Those new components are not implemented here; this notice does not imply their code or results are included.
+The optional `attention_balance` in the same file follows Geiru's **Keystone Attention** (reviewed at [099da1b](https://github.com/roycho87/geiru_context_suite/commit/099da1be92f2da22a775076a0d533d29b4d97268)): re-splitting only the attention shared by clean anchors and held carried frames, on Geiru's published lighting blocks 31-33, 36-44 and 47. Keystone Attention is in turn based on an idea by **ckinpdx**: biasing H3's attention by part of its sequence, published as **Carry Attention** in [ComfyUI-MMH3Tools](https://github.com/ckinpdx/ComfyUI-MMH3Tools) (MIT). Our version is written independently on ComfyUI's attention override hook; no Geiru or MMH3Tools source is included.
+
+The [2026-11-16 upstream review](docs/research/2026-11-16-geiru-upstream-review.md) also records Geiru's Hybrid Windows memory changes, built on **kijai**'s core context windows and **JalenBrunson**'s HybridWindows work. Those are not implemented here; this notice does not imply their code or results are included.
 
 ## Other sources
 

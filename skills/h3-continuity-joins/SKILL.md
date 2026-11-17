@@ -36,6 +36,8 @@ Timeline latent/segment in; model → guider, latent → sampler, **returned seg
 → Save Segment**. It uses sampler-level context noise, a clean chain-front anchor
 and a late capstone, then restores real carried frames in both normal and denoised
 outputs. Save rejects an unmatched/unexecuted protected result before writes.
+Optional `attention_balance` (1 = off; experimental, can reduce motion) moves
+attention from held carried frames to the clean anchors on `attention_blocks`.
 Disable old pixel `context_noise`; do not combine with Context Windows. Protected
 continuations bypass disk sampling cache. Disabled/fresh/cut/bridge paths pass
 through; appearance changes suppress protection until the next fresh chain;

@@ -45,3 +45,13 @@ The updated [clown_hybrid_windows.py](https://github.com/roycho87/geiru_context_
 ## Verification boundaries
 
 No product Python/JS or sampling settings changed. Check the README/research/notice links and build MkDocs strictly; there is no reason to rerun unchanged model mechanics or start GPU inference for these documentation edits. Original DP1 CPU evidence remains separate from DP2's still-unverified visual improvement and the already diagnosed clip29→30 camera reset. Keep draft PR94 unmerged for later testing.
+
+## Follow-up — 2026-11-17
+
+roycho87 asked on [PR #94](https://github.com/KadoBOT/ComfyUI-H3-Continuity-Studio/pull/94) that **ckinpdx** be credited if Keystone Attention is used or tested: Carry Attention in [ComfyUI-MMH3Tools](https://github.com/ckinpdx/ComfyUI-MMH3Tools), the idea of biasing H3's attention by part of its sequence, is what Keystone Attention is based on. README, guide and notices now name ckinpdx and link MMH3Tools.
+
+Carry Attention (`mmh3tools/nodes_carry_attention.py`, MIT, read at 5bf2f5b) adds a bias to the attention scores of chosen row spans through core's `optimized_attention_override`. Geiru's Keystone Attention instead leaves every share exact except the one shared by anchors and held context.
+
+The "separate optional experiment" above is now implemented natively as `attention_balance` / `attention_blocks` on H3 Continuity Protection, default 1 (unchanged). It uses the same override hook Carry Attention uses rather than replacing the attention forward, takes row ownership from our own prepared mask and core's `minimax_h3_layout`, includes the late capstone when present, and fails sampling if another patch keeps it from running. Geiru's lighting blocks are the default. CPU checks compare it with explicit softmax attention and with a small real `MiniMaxH3Model`.
+
+Upstream commits after 099da1b (0c81e3e, a2c094a, 6171b3f; versions 1.1.3-1.1.5) change README credits and Hybrid Windows preview and noise cropping only. Nothing further applies here.
