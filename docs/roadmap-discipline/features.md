@@ -14,7 +14,7 @@ Historical Phase20 watch-through blockers remain in the original parent roadmap 
 ```json
 {
   "version": 1,
-  "revision": 41,
+  "revision": 42,
   "phase": "Phase 23: Continuity degradation protection",
   "active_features": [
     "DP2"
@@ -22,11 +22,11 @@ Historical Phase20 watch-through blockers remain in the original parent roadmap 
   "focus_feature": "DP2",
   "goal": "Find wall-darkening onset and test native protection only across last-bright to first-dark range",
   "done_when": "Onset range located and documented; matched range renders preserve source/settings/memory; wall and motion compared honestly, draftPR94 updated",
-  "last_completed": "Requested clip2 onset range rendered in3matched arms; output/carry/memory checks pass; registered wall result negative; GPUticket9cdd0f62 released and ownedPID40500 stopped",
-  "in_progress": "No GPU work. Onset report/README/guide now explicitly record failed wall acceptance; draftPR94 publication pending. DP2 remains active; neutral attention default retained",
+  "last_completed": "Pushed58aa972 to linked draftPR94; README/guide/report and PRbody explicitly record negative clip2 wall result; all requested onset arms/technical checks complete, resources released",
+  "in_progress": "No GPU workload or implementation edits. DP2 remains active because wall-preservation acceptance failed; requested narrow-range test is delivered, neutral default retained",
   "next": {
-    "action": "Verify docs and publish exact negative onset evidence to draftPR94; retain frozen clip2 fixture as gate for any later recipe changes",
-    "reason": "User requested this narrow range; tests completed but wall protection is not a demonstrated fix and must not be marked passing"
+    "action": "Use frozen clip2 fixture for anchor-only/noise-only ablations before proposing another recipe; do not claim a fix or recommend balance20 from these results",
+    "reason": "Current model/recipe does not improve wall-color fidelity; the next useful diagnosis must isolate the mechanism within the same user-selected range"
   },
   "files": [
     {
@@ -44,22 +44,15 @@ Historical Phase20 watch-through blockers remain in the original parent roadmap 
   ],
   "repository": {
     "branch": "feat/continuity-protection",
-    "head": "572c45f2563c",
-    "dirty": [
-      "CHANGELOG.md",
-      "README.md",
-      "docs/research/2026-11-17-protection-integration.md",
-      "docs/research/2026-11-17-wall-darkening-onset.md",
-      "docs/roadmap-discipline/readiness-checklist.md",
-      "guide/continuity/long-chains.md"
-    ],
-    "dirty_hash": "d2b2e736a10e5926054fbc4c650682a11a2c111131103346bfa39339e4f71d8b"
+    "head": "58aa972ffcc5",
+    "dirty": [],
+    "dirty_hash": "75a11da44c802486bc6f65640aa48a730f0f684c5c07a42ba3cd1735eb3fb070"
   },
   "verification": {
     "required": "matched baseline/protected render and reviewed source frames across a continuing chain",
-    "last_run": "3GPU onset saves; CPU source/carry/memory and common-frame wall/flow checks; prior402JS+587Python/79adapter technical checks",
+    "last_run": "3GPU onset saves; source/carry/memory validation; registered common-frame wall/flow inspection; strict docs/diff/roadmap; draftPR94 metadata",
     "status": "failed",
-    "detail": "Technical execution passes; visual acceptance fails. Common-frame DeltaE baseline2.37 neutral2.39 balance20 3.20. No accepted color-preservation recipe for this story"
+    "detail": "Technical checks pass; wall acceptance fails: baselineDeltaE2.37 neutral2.39 balance20 3.20 on30 common frames. Six total GPU tests across distinct onset/jump cases; both GPU tickets released"
   },
   "blockers": [],
   "reload": [
