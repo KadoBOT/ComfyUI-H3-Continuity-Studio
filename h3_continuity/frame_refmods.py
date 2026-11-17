@@ -71,7 +71,7 @@ def prepare(clip, vae, images, refs, audios=(), audio_vae=None):
     Raw audio needs no conversion: it becomes the same reference block native REF2VA builds for it."""
     _, prompt = refmods.backend()
     mods = [cached_image(image, vae) for image in images]
-    items, blocks = prompt.prepare_references(mods + refmods.load(refs), vae)
+    items, blocks = refmods.prepare_references(prompt, mods + refmods.load(refs), vae)
     if audios:
         if audio_vae is None:
             raise ValueError("H3 Timeline: connect the H3 audio VAE to use audio references with FLF2VA")
