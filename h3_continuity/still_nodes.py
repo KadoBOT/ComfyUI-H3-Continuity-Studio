@@ -96,7 +96,7 @@ class H3C_StillConditioning(io.ComfyNode):
                 if ref is None or ref != owner['refmod']:
                     raise ValueError(f"H3 still RefMod @{owner['slot']} changed before loading")
                 _, backend = refmods.backend()
-                items, blocks = backend.prepare_references(refmods.load([ref]), vae)
+                items, blocks = refmods.prepare_references(backend, refmods.load([ref]), vae)
                 mods[owner['port']] = (items, blocks)
                 groups[kind][name] = None
             elif 'file' in owner:
@@ -135,8 +135,8 @@ class H3C_StillConditioning(io.ComfyNode):
             _, backend = refmods.backend()
             for name, pixels in images.items():
                 if pixels is not None:
-                    mods[f'ref_images.{name}'] = backend.prepare_references(
-                        [frame_refmods.cached_image(pixels, vae)], vae)
+                    mods[f'ref_images.{name}'] = refmods.prepare_references(
+                        backend, [frame_refmods.cached_image(pixels, vae)], vae)
                     images[name] = None
         positive, _ = conditioning._core().MiniMaxH3ReferenceToVideo.execute(
             wrapped, prompt, width, height, length, ref_image_size=ref_image_size, vae=vae, audio_vae=audio_vae,

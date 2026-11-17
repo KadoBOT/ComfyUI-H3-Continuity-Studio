@@ -4,6 +4,11 @@ All notable changes to H3 Continuity Studio are recorded here. Versions follow [
 
 ## [Unreleased]
 
+## [1.2.2] - 2026-11-17
+### Fixed
+
+- **Video RefMods render with ComfyUI-MiniMaxH3Mod 0.2.x.** Reference preparation failed with `module ... has no attribute 'prepare_references'` because that package keeps the logic inside its RefMod text encoder. The Studio now prepares the references itself when the helper is missing (same strength, VAE decode and 2 fps video sampling as the encoder) and still uses the package's helper when it has one. Reported and diagnosed by @toto025fr-cloud in #97.
+
 ## [1.2.1] - 2026-11-16
 
 ### Fixed
