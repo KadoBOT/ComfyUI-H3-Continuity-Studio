@@ -14,4 +14,4 @@ features.md links this task ledger; five task checkpoints belong to DP1. SDD led
 
 ## Can Pick Up Next Steps
 
-Recover features.md and its canonical reload paths. Draft PR #94 includes DP4 native opt-in attention balance and ckinpdx/MMH3Tools credits at fcf29cf. DP2 is active under the user's 2026-11-17 testing authorization. Coordinate GPU use before inference, preserve source assets/memory across arms and report visual evidence separately from CPU checks. Original clip30 camera-reset diagnosis remains an independent acceptance concern.
+Recover features.md and its canonical reload paths. Draft PR #94 includes native opt-in attention balance and ckinpdx/MMH3Tools credits. Review fixes626cadd enforce per-evaluation block coverage. DP2 completed three matched native-backend GPU arms on original box30;85 played frames each, source/memory preserved. Camera reset remains, and progressive color/detail retention is unproven by this single-clip test. Owned test host stopped and GPU ticket released; shared host remains alive/idle. Keep draft for review/testing; no merge/release requested. Full report and local comparison artifacts are identified in Recovery State.

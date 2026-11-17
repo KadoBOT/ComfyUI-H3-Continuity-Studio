@@ -10,7 +10,11 @@ All notable changes to H3 Continuity Studio are recorded here. Versions follow [
 
 - Explicit README, long-chain guide and third-party credits for roycho87's Geiru Context Suite and ethanfel/Lumifel's sampler-level context noise; source-backed review of Geiru's 2026-11-15 Keystone Attention and Hybrid Windows update, with applicability and unverified-result limits.
 
-- Opt-in **H3 Continuity Protection** node: sampler-level context noise, clean native chain anchors and late capstones, with original carried frames restored in normal and denoised sampler outputs. Save Segment verifies executed output before writing. Protected continuations bypass sampling disk cache; disabled/fresh clips keep cache behavior. No extra models or packages; Context Windows and the old pixel-noise mode cannot be combined with it. Visual drift reduction remains model-dependent and has not yet been validated by a matched GPU comparison.
+- Opt-in **H3 Continuity Protection** node: sampler-level context noise, clean native chain anchors and late capstones, with original carried frames restored in normal and denoised sampler outputs. Save Segment verifies executed output before writing. Protected continuations bypass sampling disk cache; disabled/fresh clips keep cache behavior. No extra models or packages; Context Windows and the old pixel-noise mode cannot be combined with it. A matched three-arm GPU check completed on one late-chain 10Eros beta7 continuation; the camera reset remains and progressive color/detail improvement is unproven.
+
+### Fixed
+
+- Experimental attention balance now requires every selected block on every model evaluation; a partially bypassed attention patch cannot produce a successful balanced receipt. Invalid block indices fail before sampling. Veda sparse-attention and SDPA backend limits are documented with the integration results.
 
 ## [1.2.0] - 2026-11-15
 

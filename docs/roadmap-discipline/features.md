@@ -1,6 +1,6 @@
 # Continuity protection execution
 
-**Status:** DP0, DP1, DP3 and DP4 passing on recorded CPU/docs evidence. DP2 integration and visual comparison active under the user's 2026-11-17 testing authorization. Draft PR #94 remains open.
+**Status:** DP0–DP4 passing for implementation and executed verification. DP2's bounded GPU comparison completed; the camera reset remains and general color retention is unproven. Draft PR #94 remains open; visual acceptance is separate.
 **Current Phase:** Phase 23: Continuity degradation protection
 
 Historical Phase20 watch-through blockers remain in the original parent roadmap at D:/development/rambrogi/work/ComfyUI-H3-Continuity-Studio/docs/roadmap-discipline/. They are preserved and outside this execution.
@@ -14,24 +14,22 @@ Historical Phase20 watch-through blockers remain in the original parent roadmap 
 ```json
 {
   "version": 1,
-  "revision": 27,
+  "revision": 31,
   "phase": "Phase 23: Continuity degradation protection",
-  "active_features": [
-    "DP2"
-  ],
-  "focus_feature": "DP2",
-  "goal": "Credit ckinpdx per PR94 comment; add native opt-in attention balance to H3 Continuity Protection; then DP2 matched GPU color/motion comparison",
-  "done_when": "DP4 CPU-verified and pushed to draft PR94 with credits; DP2 matched baseline/protected/balanced renders inspected or its blocker recorded",
-  "last_completed": "Baseline and protected balance1 clip30 arms saved successfully on isolated8189; no execution errors",
-  "in_progress": "Balance20 arm running; ticket433397e7-e45a-451d-8364-93ee7afb900a active; actual frame/flow comparison still pending",
+  "active_features": [],
+  "focus_feature": "None",
+  "goal": "Deliver reviewed native protection/attention integration, deserved credits and bounded matched GPU comparison in draftPR94",
+  "done_when": "Review fixes and fresh CPU/docs checks pass; matched GPU outputs/frames/motion inspected with honest limits; resources released; draftPR94 updated",
+  "last_completed": "DP2 bounded comparison complete:3arms85frames each, exact protected carry, identical memories; camera reset persists, color retention unproven; GPU cleanup complete",
+  "in_progress": "Final report/guide/roadmap verified; commit/push and draftPR94 body refresh pending; no GPU workload remains",
   "next": {
-    "action": "Finish balance20, validate all three saved outputs, stop owned host/release GPU, then inspect frame/flow comparison",
-    "reason": "Need isolate attention effect against protected arm before visual acceptance"
+    "action": "Commit/push final integration evidence to draftPR94, link immediately, refresh PR description and confirm clean draft head",
+    "reason": "Complete authorized work with concrete tested implementation and explicit remaining visual limits"
   },
   "files": [
     {
       "path": "docs/research/2026-11-17-protection-integration.md",
-      "state": "DP2 fixture, native/Veda compatibility, independent review findings and fresh verification; render evidence in progress"
+      "state": "Completed three-arm GPU fixture, per-output receipts/carry/memory checks, frame/flow findings and limits; owned GPU host stopped and ticket released"
     },
     {
       "path": "tests/python/test_protection_attention.py",
@@ -40,23 +38,20 @@ Historical Phase20 watch-through blockers remain in the original parent roadmap 
   ],
   "repository": {
     "branch": "feat/continuity-protection",
-    "head": "fcf29cf3bbd4",
+    "head": "626caddcc66a",
     "dirty": [
-      "docs/research/2026-11-16-geiru-upstream-review.md",
+      "CHANGELOG.md",
       "docs/research/2026-11-17-protection-integration.md",
       "docs/roadmap-discipline/readiness-checklist.md",
-      "guide/continuity/long-chains.md",
-      "h3_continuity/protection.py",
-      "tests/python/test_protection_attention.py",
-      "tests/python/test_protection_save.py"
+      "guide/continuity/long-chains.md"
     ],
-    "dirty_hash": "a34f5b5a7bcf16f1fd626a92ab38aa436623e59f51e8da14873f396f0116324b"
+    "dirty_hash": "24f2f967b23e64cb6ac35ad119e5f68487697749e48b15faade3f3b7d1abacc9"
   },
   "verification": {
     "required": "matched baseline/protected render and reviewed source frames across a continuing chain",
-    "last_run": "Recovery git/PR/process/queue/GPU-status read-only checks",
-    "status": "not_run",
-    "detail": "DP4 recorded402JS+585Python and79adapter; current DP2 has no generated comparison evidence"
+    "last_run": "402JS+587Python;79adapter;3GPU successful save receipts; CPU source/carry/memory validation; source-frame/flow inspection; strict MkDocs; diff/roadmap",
+    "status": "passed",
+    "detail": "All checks pass. Per-evaluation attention bypass regressions RED→GREEN. Strict link issue fixed. Camera reset remains and one-clip brightness proxies do not prove long-chain quality"
   },
   "blockers": [],
   "reload": [
