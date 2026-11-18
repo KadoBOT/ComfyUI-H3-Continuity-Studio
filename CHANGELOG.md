@@ -4,6 +4,15 @@ All notable changes to H3 Continuity Studio are recorded here. Versions follow [
 
 ## [Unreleased]
 
+## [1.2.3] - 2026-11-18
+
+### Fixed
+
+- **Generate candidates works when only `still_image` is connected.** The button stayed disabled with "Configure a local still recipe" for a Timeline fed by your own image workflow, because the Studio looked for the legacy `still_recipe` link only. A connected `still_image` now counts.
+- **The empty-lane add button takes a real click.** Clicking **Add clip** on an empty video lane did nothing with a mouse.
+- **The overlap inspector no longer re-renders itself while a focused field blurs.**
+- **Reference batches show the reference name** while they run, and references that await approval are labelled **Needs approval**.
+
 ## [1.2.2] - 2026-11-17
 
 ### Fixed
