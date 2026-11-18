@@ -287,6 +287,8 @@ export class ReferencePreparationPanel {
       head.append(send);
       if(part.edited)head.append(element('span','h3cr-status','edited'));
       item.append(head);
+      // A part that is switched off shows nothing else: no layout pictures, no text to edit.
+      if(!part.enabled){box.append(item);continue;}
       const custom=part.choice==='custom';
       // A character sheet follows one of the layouts below; the pictures only show where the studies sit.
       if(part.choices) {

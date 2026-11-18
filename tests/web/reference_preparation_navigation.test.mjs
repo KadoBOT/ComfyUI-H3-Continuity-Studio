@@ -60,8 +60,13 @@ test('a reference shows the text added to its prompt and edits or switches it of
  const off=()=>findAll(box(),n=>n.getAttribute?.('role')==='switch'&&n.getAttribute('aria-label')==='Send visual style with Mara')[0];
  await new Promise(setImmediate);off().fire('click');await new Promise(setImmediate);
  assert.deepEqual(saved().part_overrides,{style:{text:'Visual style: Flat.',enabled:false}});
- fields()[1].value='Visual style: Painted.';fields()[1].disabled=false;fields()[1].fire('change');await new Promise(setImmediate);
- off().fire('click');
+ // Switched off, the part shows only its switch: no text to edit, and the layout part is untouched.
+ assert.equal(fields().length,1);assert.deepEqual(fields().map(n=>n.value),['A 16:9 sheet.']);
+ assert.equal(off().getAttribute('aria-checked'),'false');
+ off().fire('click');await new Promise(setImmediate);
+ assert.deepEqual(saved().part_overrides,{style:{text:'Visual style: Flat.'}});
+ assert.deepEqual(fields().map(n=>n.value),['A 16:9 sheet.','Visual style: Flat.']);
+ fields()[1].value='Visual style: Painted.';fields()[1].fire('change');await new Promise(setImmediate);
  assert.equal(saved().part_overrides,undefined);
 });
 
@@ -90,4 +95,14 @@ test('a character sheet layout is picked from pictures, with a layout of your ow
  assert.deepEqual(saved().part_overrides,{layout:{choice:'custom',text:'A turnaround on ivory.'}});
  picks()[0].fire('click');await new Promise(setImmediate);
  assert.equal(saved().part_overrides,undefined);
+});
+
+test('switching the sheet layout off hides its pictures and text',async()=>{
+ const layout=enabled=>({id:'layout',label:'Character sheet layout',where:'before',text:'Sheet for {description}',default:'Sheet for {description}',enabled,edited:false,choice:'human',choices:['human','creature','custom']});
+ const panel=await open();let enabled=true;
+ panel.host.referenceCatalog=async()=>[{...rows[0],part_overrides:enabled?{}:{layout:{enabled:false}},prompt_parts:[layout(enabled)]},rows[1]];await panel.refresh();
+ const radios=()=>findAll(panel.body,n=>n.getAttribute?.('role')==='radio').length,fields=()=>findAll(panel.body,n=>n.tagName==='TEXTAREA'&&n.getAttribute('aria-label')==='Character sheet layout for Mara').length;
+ assert.deepEqual([radios(),fields()],[3,1]);
+ enabled=false;findAll(panel.body,n=>n.getAttribute?.('role')==='switch'&&n.getAttribute('aria-label')==='Send character sheet layout with Mara')[0].fire('click');await new Promise(setImmediate);
+ assert.deepEqual([radios(),fields()],[0,0]);
 });
