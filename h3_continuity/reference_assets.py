@@ -26,7 +26,10 @@ LOCATION_GRID = ('A location reference sheet: one image divided into a grid of 2
                  'the way in visible; otherwise row 2, column 2 stays the high view. No two panels repeat the same viewpoint. '
                  'All four panels show one moment: the same time of day, '
                  'lighting, layout and materials. The location is empty: '
-                 'no people, characters, animals or creatures appear in any panel. ' + NO_TEXT + '\nLocation: ')
+                 'no people, characters, animals or creatures appear in any panel. ' + NO_TEXT + '\nLocation: {description}')
+LOCATION_LAYOUTS = {'grid': LOCATION_GRID, 'custom': ''}
+# The layouts a reference can pick, the first one being the default. Objects and composed scenes have a single built-in layout.
+LAYOUT_CHOICES = {'cast': tuple(SHEET_LAYOUTS), 'locations': tuple(LOCATION_LAYOUTS)}
 OBJECT_GRID = ('An object reference sheet: one image on a plain ivory background, divided into a grid of 2 rows and 2 columns by '
                'thin rules and generous gutters, showing the same single object from four clearly different angles, each panel '
                'floating alone in blank ivory: in row 1, column 1, a front view; in row 1, column 2, a true side profile view; '
@@ -64,7 +67,7 @@ def validate(value):
         edits = row.get('part_overrides', {})
         if not isinstance(edits, dict) or any(
                 id not in PART_IDS or not isinstance(own, dict) or set(own)-{'text','enabled','choice'}
-                or ('choice' in own and (id!='layout' or own['choice'] not in SHEET_LAYOUTS))
+                or ('choice' in own and (id!='layout' or own['choice'] not in LAYOUT_CHOICES.get(row['category'], ())))
                 or ('text' in own and not isinstance(own['text'], str))
                 or ('enabled' in own and type(own['enabled']) is not bool) for id,own in edits.items()):
             raise ValueError('Reference prompt part edits must give text or enabled for layout, style, empty or unoccupied.')
@@ -305,7 +308,8 @@ def prepare(body):
         placed = any('{description}' in text for text in before)
         before = [text.replace('{description}', prompt) for text in before]
         planned = dict(body,prompt='\n'.join([*before, *([] if placed else [prompt]), *lines('after')]),frame=0)
-        sheet = row['category']=='cast' and any(p['id']=='layout' for p in parts)
+        # Character and location sheets are 16:9 unless the reference sets a size; a composed scene follows the workflow.
+        sheet = row['role']!='scene_layout' and row['category'] in ('cast','locations') and any(p['id']=='layout' for p in parts)
         if sheet and not body.get('size') and all(recipe.get('bindings',{}).get('size',{}).get(d) for d in SHEET_SIZE):
             planned['size'] = dict(SHEET_SIZE)
         return image_recipe.prepare(recipe,body['workflow'],planned,refs)
@@ -325,13 +329,13 @@ def _parts(document, row, layout='human'):
         if not row.get('include_character'):
             add('unoccupied', 'Empty scene', 'before', 'An unoccupied location, with no people.')
     elif row['category']=='locations':
-        add('layout', 'Location sheet layout', 'before', LOCATION_GRID)
+        add('layout', 'Location sheet layout', 'before', LOCATION_LAYOUTS.get(layout, LOCATION_GRID))
     elif row['category']=='props':
         add('layout', 'Object sheet layout', 'before', OBJECT_GRID)
     else:
         look = (' of the same character as the identity reference, wearing the appearance described below'
                 if row['role']=='appearance' else ' for the character described below')
-        add('layout', 'Character sheet layout', 'before', SHEET_LAYOUTS[layout].replace('{look}', look))
+        add('layout', 'Character sheet layout', 'before', SHEET_LAYOUTS.get(layout, HUMAN_SHEET).replace('{look}', look))
     style = _style(document, row)
     if style:
         add('style', 'Visual style', 'after', 'Visual style: '+style)
@@ -343,15 +347,17 @@ def _parts(document, row, layout='human'):
 def resolve_parts(document, row):
     """The parts with this reference's own edits applied; `default` is what the Studio would send without them."""
     overrides = row.get('part_overrides') or {}
-    layout = (overrides.get('layout') or {}).get('choice', 'human')
+    choices = LAYOUT_CHOICES.get(row['category'], ())
+    layout = (overrides.get('layout') or {}).get('choice')
+    layout = layout if layout in choices else (choices[0] if choices else None)
     result = []
     for part in _parts(document, row, layout):
         own = overrides.get(part['id']) or {}
         text = own['text'] if isinstance(own.get('text'), str) else part['text']
         part = dict(part, default=part['text'], text=text, enabled=own.get('enabled') is not False,
                     edited=text.strip()!=part['text'])
-        if part['id']=='layout' and row['category']=='cast':
-            part.update(choice=layout, choices=list(SHEET_LAYOUTS))
+        if part['id']=='layout' and choices:
+            part.update(choice=layout, choices=list(choices))
         result.append(part)
     return result
 

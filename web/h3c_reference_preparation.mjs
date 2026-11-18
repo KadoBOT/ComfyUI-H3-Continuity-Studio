@@ -1,5 +1,5 @@
 import {icon,iconButton} from './h3c_icons.mjs';
-import {SHEET_LAYOUT_CHOICES,sheetLayoutPicture} from './h3c_sheet_layouts.mjs?v=6900854427bd';
+import {SHEET_LAYOUT_CHOICES,sheetLayoutPicture} from './h3c_sheet_layouts.mjs?v=0db8977322c8';
 import {stringifyJSON,seedValue} from './h3c_project.mjs?v=0882b8a6265a';
 import {ImageJobClient} from './h3c_image_jobs.mjs?v=c02f98fb5ed8';
 export const REFERENCE_CATEGORIES = ['cast','locations','props'];
@@ -179,6 +179,8 @@ export function addObjectReference(state,{name,description,boxId,wholeScene=fals
 
 const element=(tag,className,text)=>{const node=document.createElement(tag);if(className)node.className=className;if(text!=null)node.textContent=text;return node;};
 const action=(text,run)=>{const node=element('button','h3ct-button',text);node.type='button';node.addEventListener('click',()=>run());return node;};
+// Character and location sheets are drawn 16:9 unless the reference sets a size; objects and composed scenes follow the workflow.
+const sheetSized=row=>(row.category==='cast'||row.category==='locations')&&row.role!=='scene_layout';
 
 export class ReferencePreparationPanel {
   constructor(editor) {
@@ -268,12 +270,12 @@ export class ReferencePreparationPanel {
     const edit=(id,change)=>{
       const next=structuredClone(row.part_overrides??{}),own={...next[id],...change},part=parts.find(p=>p.id===id);
       if(own.enabled!==false)delete own.enabled;
-      if(own.choice==='human')delete own.choice;
+      if(own.choice===part.choices?.[0])delete own.choice;
       if(own.text==null||own.text.trim()===part.default)delete own.text;
       if(Object.keys(own).length)next[id]=own;else delete next[id];
       this.editRow(row,{part_overrides:Object.keys(next).length?next:undefined});
     };
-    const off=parts.filter(p=>!p.enabled).length,changed=parts.filter(p=>p.edited||(p.choice&&p.choice!=='human')).length;
+    const off=parts.filter(p=>!p.enabled).length,changed=parts.filter(p=>p.edited||(p.choice&&p.choice!==p.choices?.[0])).length;
     box.open=this.partsOpen?.has(row.key)??(off>0||changed>0);
     box.addEventListener('toggle',()=>{(this.partsOpen??=new Set())[box.open?'add':'delete'](row.key);});
     box.append(element('summary',null,'Also sent with this prompt'+(off||changed?` (${[changed&&changed+' edited',off&&off+' off'].filter(Boolean).join(', ')})`:'')));
@@ -416,8 +418,8 @@ export class ReferencePreparationPanel {
       seed.addEventListener('change',()=>{const value=seed.value===''?undefined:seedValue(seed.value);if(seed.value!==''&&value===undefined){this.message='Image seed must be an unsigned 64-bit integer.';this.render();return;}this.editRow(row,{seed:value});});
       const seedLabel=element('label',null,'Seed');seedLabel.append(seed);fields.append(seedLabel);
       for(const dimension of ['width','height']) {
-        const size=element('input','h3ct-text');size.type='number';size.min='1';size.placeholder=dimension+(row.category==='cast'?' (16:9 sheet)':' (native)');size.value=row.size?.[dimension]??'';size.setAttribute('aria-label',row.name+' '+dimension);size.dataset.focus=row.key+':'+dimension;
-        size.addEventListener('change',()=>{if(size.value===''){this.editRow(row,{size:undefined});return;}const base=row.category==='cast'?{width:2048,height:1152}:this.controls??{},width=Number(dimension==='width'?size.value:row.size?.width??base.width),height=Number(dimension==='height'?size.value:row.size?.height??base.height);if(Number.isInteger(width)&&width>0&&Number.isInteger(height)&&height>0)this.editRow(row,{size:{width,height}});else {this.message='Choose positive width and height, or use Generator settings.';this.render();}});const dimensionLabel=element('label',null,dimension==='width'?'Width':'Height');dimensionLabel.append(size);fields.append(dimensionLabel);
+        const size=element('input','h3ct-text');size.type='number';size.min='1';size.placeholder=dimension+(sheetSized(row)?' (16:9 sheet)':' (native)');size.value=row.size?.[dimension]??'';size.setAttribute('aria-label',row.name+' '+dimension);size.dataset.focus=row.key+':'+dimension;
+        size.addEventListener('change',()=>{if(size.value===''){this.editRow(row,{size:undefined});return;}const base=sheetSized(row)?{width:2048,height:1152}:this.controls??{},width=Number(dimension==='width'?size.value:row.size?.width??base.width),height=Number(dimension==='height'?size.value:row.size?.height??base.height);if(Number.isInteger(width)&&width>0&&Number.isInteger(height)&&height>0)this.editRow(row,{size:{width,height}});else {this.message='Choose positive width and height, or use Generator settings.';this.render();}});const dimensionLabel=element('label',null,dimension==='width'?'Width':'Height');dimensionLabel.append(size);fields.append(dimensionLabel);
       }
       const advanced=element('details','h3cr-advanced');advanced.append(element('summary',null,'Advanced: seed and dimensions'),fields);
       const controls=element('div','h3cr-actions'),generateOne=action(row.status==='approved'?'Regenerate reference':row.candidates.length?'Regenerate candidate':'Generate reference',()=>this.run(()=>this.host.generateReference(row.key)));

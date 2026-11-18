@@ -3,6 +3,7 @@
 export const SHEET_LAYOUT_CHOICES = [
   {id:'human', label:'Two head studies and four whole figures'},
   {id:'creature', label:'One head study and four body views'},
+  {id:'grid', label:'Four views of the place'},
   {id:'custom', label:'Write your own layout'},
 ];
 
@@ -47,6 +48,26 @@ function creature() {
   ].join('');
 }
 
+// A place seen four ways in a 2 x 2: wide from the front, the reverse view, low at ground level, and from above.
+function grid() {
+  const pillar = (x, top, bottom, w = 3) => `<rect x="${x}" y="${top}" width="${w}" height="${bottom - top}" fill="${FILL}" fill-opacity=".7" stroke="${INK}" stroke-width=".5"/>`;
+  const slab = (x, y, w) => `<rect x="${x}" y="${y}" width="${w}" height="3" fill="${FILL}" fill-opacity=".7" stroke="${INK}" stroke-width=".5"/>`;
+  const ground = (y, x, w, bottom) => `<rect x="${x}" y="${y}" width="${w}" height="${bottom - y}" fill="${INK}" fill-opacity=".35"/>`;
+  const cells = [[4, 4], [82, 4], [4, 47], [82, 47]];
+  return [
+    ...cells.map(([x, y]) => panel(x, y, 74, 39)),
+    // 1: wide establishing view
+    ground(28, 5, 72, 42), slab(12, 12, 58), pillar(18, 15, 31), pillar(36, 15, 31), pillar(54, 15, 31), pillar(66, 15, 31),
+    // 2: the reverse view, the same place from the other side
+    ground(30, 83, 72, 42), slab(90, 15, 52), pillar(96, 18, 33), pillar(112, 18, 33), pillar(130, 18, 33), pillar(144, 18, 33),
+    // 3: low, at ground level
+    ground(70, 5, 72, 85), slab(10, 52, 62), pillar(20, 54, 82, 6), pillar(52, 54, 82, 6),
+    // 4: from above
+    ground(47, 83, 72, 86), `<rect x="92" y="55" width="54" height="22" fill="${FILL}" fill-opacity=".45" stroke="${INK}" stroke-width=".6"/>`,
+    ...[98, 112, 126, 140].map(x => `<rect x="${x}" y="52" width="3" height="28" fill="${FILL}" fill-opacity=".7"/>`),
+  ].join('');
+}
+
 function custom() {
   return [
     `<rect x="14" y="10" width="132" height="70" rx="3" fill="${PANEL}" stroke="${INK}" stroke-width=".9" stroke-dasharray="3 2.5"/>`,
@@ -55,7 +76,7 @@ function custom() {
 }
 
 export function sheetLayoutPicture(id) {
-  const body = {human, creature, custom}[id]?.() ?? '';
+  const body = {human, creature, grid, custom}[id]?.() ?? '';
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 90"><rect width="160" height="90" fill="${PAGE}"/>${body}</svg>`;
   return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
 }

@@ -125,8 +125,17 @@ class CastSheetSizeTest(unittest.TestCase):
     def test_a_workflow_without_size_inputs_keeps_its_own_size(self):
         self.assertNotIn('size', planned('entity:e2'))
 
-    def test_a_location_keeps_the_workflow_size(self):
-        self.assertNotIn('size', planned('entity:e3', recipe=SIZED))
+    def test_a_location_sheet_is_16_9_too_unless_it_sets_a_size(self):
+        self.assertEqual(planned('entity:e3', recipe=SIZED).get('size'), {'width': 2048, 'height': 1152})
+        own = {'width': 1024, 'height': 1536}
+        self.assertEqual(planned('entity:e3', recipe=SIZED, size=own).get('size'), own)
+        self.assertNotIn('size', planned('entity:e3'))
+
+    def test_a_composed_scene_and_an_object_keep_the_workflow_size(self):
+        saved = document()
+        saved['bible']['entities'].append(entity('e4', 'prop', 'Pry bar', 'A long steel pry bar.'))
+        saved['boxes'][0]['schedule']['props'] = ['e4']
+        self.assertNotIn('size', planned('entity:e4', saved=saved, recipe=SIZED))
 
 
 def with_overrides(key, overrides):
@@ -161,7 +170,10 @@ class PromptPartsTest(unittest.TestCase):
     def test_a_cast_layout_offers_the_human_creature_and_custom_choices(self):
         layout = row_of(document(), 'entity:e2')['prompt_parts'][0]
         self.assertEqual((layout['choice'], layout['choices']), ('human', ['human', 'creature', 'custom']))
-        self.assertNotIn('choices', row_of(document(), 'entity:e3')['prompt_parts'][0])
+        saved = document()
+        saved['bible']['entities'].append(entity('e4', 'prop', 'Pry bar', 'A long steel pry bar.'))
+        saved['boxes'][0]['schedule']['props'] = ['e4']
+        self.assertNotIn('choices', row_of(saved, 'entity:e4')['prompt_parts'][0])
         saved = with_overrides('entity:e2', {'layout': {'choice': 'creature'}})
         self.assertEqual(row_of(saved, 'entity:e2')['prompt_parts'][0]['choice'], 'creature')
         self.assertFalse(row_of(saved, 'entity:e2')['prompt_parts'][0]['edited'])
@@ -196,6 +208,39 @@ class PromptPartsTest(unittest.TestCase):
                     {'layout': {'choice': 'dragon'}}, {'style': {'choice': 'human'}}):
             with self.assertRaises(ValueError):
                 reference_assets.catalog(with_overrides('entity:e2', bad))
+
+
+class LocationLayoutTest(unittest.TestCase):
+    def location(self, overrides):
+        saved = document()
+        saved['reference_preparation'] = {'version': 1, 'generate': {}, 'requests': [],
+                                          'assets': [{'key': 'entity:e3', 'category': 'locations', 'role': 'location',
+                                                      'part_overrides': overrides}]}
+        return saved
+
+    def test_a_location_offers_the_grid_of_angles_and_a_layout_of_your_own(self):
+        layout = row_of(document(), 'entity:e3')['prompt_parts'][0]
+        self.assertEqual((layout['choice'], layout['choices']), ('grid', ['grid', 'custom']))
+        self.assertTrue(layout['text'].startswith('A location reference sheet'))
+        self.assertTrue(layout['text'].endswith('Location: {description}'))
+
+    def test_the_description_goes_where_the_grid_puts_it(self):
+        prompt = planned_prompt('entity:e3')
+        self.assertIn('Location: A collapsed highway in dry grass.', prompt)
+        self.assertNotIn('{description}', prompt)
+
+    def test_a_location_layout_of_your_own_replaces_the_grid(self):
+        saved = self.location({'layout': {'choice': 'custom', 'text': 'One wide establishing view.'}})
+        prompt = planned('entity:e3', saved=saved)['prompt']
+        self.assertTrue(prompt.startswith('One wide establishing view.\nA collapsed highway in dry grass.'), prompt)
+        self.assertNotIn('2 rows and 2 columns', prompt)
+        self.assertIn('The place is empty in every panel.', prompt)
+
+    def test_a_character_layout_is_refused_for_a_location(self):
+        with self.assertRaises(ValueError):
+            reference_assets.catalog(self.location({'layout': {'choice': 'human'}}))
+        with self.assertRaises(ValueError):
+            reference_assets.catalog(with_overrides('entity:e2', {'layout': {'choice': 'grid'}}))
 
 
 class LocationGridTest(unittest.TestCase):

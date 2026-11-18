@@ -106,3 +106,22 @@ test('switching the sheet layout off hides its pictures and text',async()=>{
  enabled=false;findAll(panel.body,n=>n.getAttribute?.('role')==='switch'&&n.getAttribute('aria-label')==='Send character sheet layout with Mara')[0].fire('click');await new Promise(setImmediate);
  assert.deepEqual([radios(),fields()],[0,0]);
 });
+
+test('a location picks the grid of views or a layout of your own, and is drawn 16:9 unless sized',async()=>{
+ const panel=await open();panel.choose('b');
+ panel.host.referenceCatalog=async()=>{
+  const own=panel.editor.state.reference_preparation.assets.find(a=>a.key==='b')?.part_overrides??{};
+  const choice=own.layout?.choice??'grid';
+  return [rows[0],{...rows[1],role:'location',part_overrides:own,prompt_parts:[{id:'layout',label:'Location sheet layout',where:'before',text:choice==='custom'?'':'Grid of {description}',default:choice==='custom'?'':'Grid of {description}',enabled:true,edited:false,choice,choices:['grid','custom']}]}];
+ };await panel.refresh();
+ const picks=()=>findAll(panel.body,n=>n.getAttribute?.('role')==='radio');
+ assert.deepEqual(picks().map(n=>n.dataset.layout),['grid','custom']);
+ assert.deepEqual(picks().map(n=>n.getAttribute('aria-checked')),['true','false']);
+ const saved=()=>panel.editor.state.reference_preparation.assets.find(a=>a.key==='b');
+ picks()[1].fire('click');await new Promise(setImmediate);
+ assert.deepEqual(saved().part_overrides,{layout:{choice:'custom'}});
+ picks()[0].fire('click');await new Promise(setImmediate);
+ assert.equal(saved().part_overrides,undefined);
+ const sizes=findAll(panel.body,n=>n.tagName==='INPUT'&&/ (width|height)$/.test(n.getAttribute('aria-label')??''));
+ assert.deepEqual(sizes.map(n=>n.placeholder),['width (16:9 sheet)','height (16:9 sheet)']);
+});
