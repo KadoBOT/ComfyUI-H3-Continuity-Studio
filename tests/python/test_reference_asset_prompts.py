@@ -24,17 +24,27 @@ def document():
                 entity('e3', 'place', 'Overpass and Grassland', 'A collapsed highway in dry grass.')]}}
 
 
-def planned_prompt(key, approved_identity=None):
-    saved = document()
-    body = {'timeline': json.dumps(saved), 'recipe': {'version': 2, 'adapter': 'pixels'}, 'workflow': {'api': {}}}
+SIZED = {'version': 2, 'adapter': 'pixels', 'bindings': {'size': {'width': [{}], 'height': [{}]}}}
+
+
+def planned(key, approved_identity=None, saved=None, recipe=None, size=None):
+    saved = saved or document()
+    recipe = recipe or {'version': 2, 'adapter': 'pixels'}
+    body = {'timeline': json.dumps(saved), 'recipe': recipe, 'workflow': {'api': {}}}
     row = next(r for r in reference_assets.catalog(saved, body) if r['key'] == key)
     body.update(asset_key=key, input_fingerprint=row['input_fingerprint'], prompt=row['prompt'])
+    if size:
+        body['size'] = size
     with mock.patch.object(stills, '_pixel_references', return_value=[]), \
          mock.patch.object(reference_assets, '_approved_pixels', return_value=approved_identity or []), \
          mock.patch.object(image_recipe, 'prepare', return_value={'ok': True}) as prepared:
         answer = reference_assets.prepare(body)
     assert answer == {'ok': True}, answer
-    return prepared.call_args.args[2]['prompt']
+    return prepared.call_args.args[2]
+
+
+def planned_prompt(key, approved_identity=None):
+    return planned(key, approved_identity)['prompt']
 
 
 class CastSheetTest(unittest.TestCase):
@@ -64,6 +74,35 @@ class CastSheetTest(unittest.TestCase):
         self.assertIn('Painted angular planes and hard rim light.', prompt)
         self.assertNotIn('STRAY', prompt)
         self.assertIn('STRAY', planned_prompt('entity:e1'))
+
+
+    def test_a_style_sentence_about_another_character_without_naming_them_is_left_out(self):
+        saved = document()
+        saved['bible']['style']['look'] = ('Painted angular planes and hard rim light. '
+                                           "Safety orange appears only on the woman's jacket.")
+        prompt = planned('entity:e2', saved=saved)['prompt']
+        self.assertIn('Painted angular planes', prompt)
+        self.assertNotIn('Safety orange', prompt)
+        self.assertNotIn('jacket', prompt)
+
+    def test_the_sheet_does_not_assume_a_human_body(self):
+        prompt = planned_prompt('entity:e2')
+        self.assertIn('Never turn a non-human character into a person', prompt)
+        for human in ('collarbone', 'five fingers'):
+            self.assertNotIn(human, prompt)
+
+
+class CastSheetSizeTest(unittest.TestCase):
+    def test_a_sheet_is_16_9_unless_the_reference_sets_a_size(self):
+        self.assertEqual(planned('entity:e2', recipe=SIZED).get('size'), {'width': 2048, 'height': 1152})
+        own = {'width': 1024, 'height': 1536}
+        self.assertEqual(planned('entity:e2', recipe=SIZED, size=own).get('size'), own)
+
+    def test_a_workflow_without_size_inputs_keeps_its_own_size(self):
+        self.assertNotIn('size', planned('entity:e2'))
+
+    def test_a_location_keeps_the_workflow_size(self):
+        self.assertNotIn('size', planned('entity:e3', recipe=SIZED))
 
 
 class LocationGridTest(unittest.TestCase):

@@ -10,8 +10,12 @@ CATEGORIES = ('cast', 'locations', 'props')
 ROLES = ('identity', 'appearance', 'location', 'prop', 'scene_layout')
 HASH = re.compile(r'[a-f0-9]{64}')
 NO_TEXT = 'The image contains no text, letters or numbers.'
+# Character sheets are 16:9 unless the reference sets its own size (Advanced: seed and dimensions).
+SHEET_SIZE = {'width': 2048, 'height': 1152}
 CHARACTER_SHEET = (
     'A 16:9 landscape character reference sheet{look}. Clean ivory background, six equal-width vertical columns separated by thin rules and generous gutters. The sheet is purely visual, with blank ivory margins and unmarked panels.\n'
+    '\n'
+    'The character description below is authoritative for species, anatomy and number of limbs. Never turn a non-human character into a person, and never add clothing or props it does not describe. Where these instructions say arms, hands or feet, a four-legged or non-human character shows its own limbs, paws or hooves in its natural standing posture.\n'
     '\n'
     'FACE RULE\n'
     'The face appears exactly once on the entire sheet: in the headshot in columns 1-2. That headshot shows the head only, with NO shoulders, NO chest, NO torso, NO arms and NO clothing. Columns 3, 4, 5 and 6 contain NO head, NO face and NO hair. Every body figure is cut off at the base of the neck by the top edge of its panel; the head lies outside the frame, above the panel edge.\n'
@@ -23,16 +27,16 @@ CHARACTER_SHEET = (
     'Column 5: back body view, neck-down only.\n'
     'Column 6: relaxed standing body view, neck-down only.\n'
     '\n'
-    'Each of the four body panels is framed from the collarbone down to the floor. The figure fills the panel height, with the shoulders touching the top edge, so there is no room above the shoulders for a head. Each panel shows shoulders, torso, arms, hands, legs and feet only. All four figures share one scale and one floor baseline, with clear ivory space around every hand and foot.\n'
+    'Each of the four body panels is framed from the base of the neck down to the floor. The figure fills the panel height, with the base of the neck touching the top edge, so there is no room above it for a head. Each panel shows the body, limbs and feet only. All four figures share one scale and one floor baseline, with clear ivory space around every limb end.\n'
     '\n'
     'FACE (columns 1-2 only, head only)\n'
     'An extreme close-up of the face, front-facing, filling the width of the panel, in soft even studio light, gaze to camera. Take every facial feature, skin, eyes, hair and expression from the character description below. The image ends just under the chin: only bare upper neck, then ivory.\n'
     '\n'
     'BODY (columns 3-6 only)\n'
-    'The same body in every body panel, with the build, proportions, skin and outfit from the character description below. Hands open and relaxed with five fingers each.\n'
+    'The same body in every body panel, with the build, proportions, skin and outfit from the character description below. Limbs, hands or paws relaxed, exactly as the character description gives them.\n'
     '\n'
     'TURNAROUND (columns 3-5, faceless, neck-down)\n'
-    'Neutral standing pose in all three views: arms held slightly away from the torso, legs slightly apart, feet flat on the floor. In the profile view the near arm hangs slightly forward and the far leg is a half-step back, so both arms and both legs can be seen. The same outfit and carried items in all three. Flat, even studio lighting on ivory. No head, face or hair in any of these three panels.\n'
+    'Neutral standing pose in all three views: arms held slightly away from the torso, legs slightly apart, feet flat on the floor. In the profile view the near arm hangs slightly forward and the far leg is a half-step back, so both arms and both legs can be seen. The same outfit and carried items in all three, only if the description gives any. Flat, even studio lighting on ivory. No head, face or hair in any of these three panels.\n'
     '\n'
     'RELAXED VIEW (column 6, faceless, neck-down)\n'
     'The same body in the same outfit, cut off at the base of the neck by the top edge of the panel, standing relaxed with the weight on one leg and both arms loose at the sides, hands visible. Flat, even studio lighting on ivory. No head, face or hair in this panel.\n'
@@ -286,6 +290,7 @@ def prepare(body):
         if not isinstance(body.get('prompt'),str) or not body['prompt'].strip():
             raise ValueError('Write a still-image reference prompt before generating.')
         refs = []
+        sheet = False
         prompt = body['prompt']
         if row['role']=='scene_layout':
             for key in row['sources']:
@@ -314,9 +319,11 @@ def prepare(body):
                     refs = _approved_pixels(document,base,body)+refs
                 if not refs:
                     raise ValueError('Import or approve the original identity image for '+row['name']+' first.')
+                sheet = True
                 prompt = CHARACTER_SHEET.format(look=' of the same character as the identity reference, wearing the '
                                                 'appearance described below')+prompt
             elif row['category']=='cast':
+                sheet = True
                 prompt = CHARACTER_SHEET.format(look=' for the character described below')+prompt
             elif row['category']=='props':
                 prompt = OBJECT_GRID+prompt
@@ -326,6 +333,8 @@ def prepare(body):
         if row['role']=='location':
             prompt += '\nThe place is empty in every panel.'
         planned = dict(body,prompt=prompt,frame=0)
+        if sheet and not body.get('size') and all(recipe.get('bindings',{}).get('size',{}).get(d) for d in SHEET_SIZE):
+            planned['size'] = dict(SHEET_SIZE)
         return image_recipe.prepare(recipe,body['workflow'],planned,refs)
     except (ValueError,OSError,KeyError,TypeError) as error:
         return {'ok':False,'error':str(error)}
@@ -341,8 +350,21 @@ def _style(document, row):
     patterns = [re.compile(r'(?<!\w)'+re.escape(name)+r'(?!\w)', re.I) for name in names if name]
     if row['category']!='cast':
         patterns.append(PEOPLE)
+    # A sentence about another character that never names them ("orange appears only on the woman's jacket")
+    # shares several distinctive words with that character's description.
+    others = [_words(e.get('description', '')) for e in story_bible.entities(bible)
+              if e['kind']=='character' and e['id']!=row.get('entity')]
     sentences = re.split(r'(?<=[.!?])\s+', style.strip())
-    return ' '.join(s for s in sentences if not any(p.search(s) for p in patterns))
+    return ' '.join(s for s in sentences if not any(p.search(s) for p in patterns)
+                    and not any(len(_words(s) & words)>=2 for words in others))
+
+
+_COMMON = frozenset('with that this from over into onto than then them they their there where which while also only each both '
+                    'more most very without around across along about after before under above between'.split())
+
+
+def _words(text):
+    return {w for w in re.findall(r'[a-z]{4,}', text.lower()) if w not in _COMMON}
 
 
 def result(body):

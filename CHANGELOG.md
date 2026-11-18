@@ -4,6 +4,11 @@ All notable changes to H3 Continuity Studio are recorded here. Versions follow [
 
 ## [Unreleased]
 
+### Fixed
+
+- **Character sheets are 16:9 again.** A cast reference with no size set under **Advanced: seed and dimensions** now generates at 2048 × 1152 instead of inheriting the workflow's own size (a vertical Story gave a vertical sheet). Setting a width and height there still wins.
+- **Non-human characters no longer come out as people in someone else's clothes.** The Story style sentence "safety orange appears only on the woman's jacket" reached every character sheet, because only sentences that *name* another character were removed. Sentences that share two or more distinctive words with another character's description are now left out too. The sheet template also no longer assumes collarbones, arms and five fingers, and says that the character description decides species and anatomy.
+
 ## [1.2.3] - 2026-11-18
 
 ### Fixed

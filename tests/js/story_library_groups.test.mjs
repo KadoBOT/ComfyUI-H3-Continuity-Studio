@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {StoryLibrary} from '../../web/h3c_story_library.mjs?v=2199d880e037';
+import {StoryLibrary} from '../../web/h3c_story_library.mjs?v=e23c79737ea8';
 import {groupStories} from '../../web/h3c_story_groups.mjs?v=734f66b40a7e';
 
 test('opening a named checkpoint restores an editable copy before loading', async () => {
