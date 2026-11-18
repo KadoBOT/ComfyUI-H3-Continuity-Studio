@@ -138,10 +138,11 @@ class CastSheetSizeTest(unittest.TestCase):
 
     def assertSixteenByNine(self, size, area):
         self.assertEqual((size['width'] % 32, size['height'] % 32), (0, 0), size)
-        self.assertAlmostEqual(size['width'] / size['height'], 16 / 9, delta=0.02, msg=size)
-        self.assertAlmostEqual(size['width'] * size['height'] / area, 1, delta=0.06, msg=size)
+        self.assertEqual(size['width'] * 9, size['height'] * 16, size)
+        # The size only follows the workflow loosely: the nearest exact 16:9 step on the 32 grid.
+        self.assertTrue(0.7 < size['width'] * size['height'] / area < 1.45, size)
 
-    def test_a_sheet_keeps_the_pixel_area_of_the_connected_workflow(self):
+    def test_a_sheet_is_exactly_16_9_near_the_size_of_the_connected_workflow(self):
         for width, height in ((1088, 1920), (2160, 3840), (4000, 6000), (1920, 1088)):
             recipe, api = self.graph_sized(width, height)
             for key in ('entity:e2', 'entity:e3'):

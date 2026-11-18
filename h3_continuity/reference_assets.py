@@ -2,6 +2,7 @@
 import copy
 import hashlib
 import json
+import math
 import re
 
 from . import image_recipe, stills, story_bible, timeline as rules
@@ -319,10 +320,11 @@ def prepare(body):
 
 
 def sheet_size(recipe, graph):
-    """16:9 with about the pixel area of the size the connected image workflow is set to.
+    """A size that is exactly 16:9; the aspect ratio is all a sheet asks for.
 
-    The workflow's own width and height decide the area (a workflow that works from a megapixel setting only reads the
-    ratio, so the area is then just a way to get there). Falls back to SHEET_SIZE when those values cannot be read."""
+    Sizes are multiples of 32 and an exact 16:9 pair on that grid comes in steps of 512 x 288, so the step nearest the
+    size the workflow's width and height are set to is used. A workflow that works from a megapixel setting only reads the
+    ratio and renders at its own size. Falls back to SHEET_SIZE when the workflow's values cannot be read."""
     area = None
     try:
         bound = recipe['bindings']['size']
@@ -334,15 +336,9 @@ def sheet_size(recipe, graph):
         pass
     if not area or area < 512 * 512:
         return dict(SHEET_SIZE)
-    best = None
-    for w in range(32, 16384 + 1, 32):
-        h = round(w * 9 / 16 / 32) * 32
-        if h < 32:
-            continue
-        cost = abs(w * h - area) / area + 2 * abs(w / h - 16 / 9) / (16 / 9)
-        if best is None or cost < best[0]:
-            best = (cost, w, h)
-    return {'width': best[1], 'height': best[2]}
+    steps = range(1, 16384 // 512 + 1)
+    step = min(steps, key=lambda k: abs(math.log(k * k * 512 * 288 / area)))
+    return {'width': 512 * step, 'height': 288 * step}
 
 
 PART_IDS = ('layout', 'unoccupied', 'empty', 'style')
