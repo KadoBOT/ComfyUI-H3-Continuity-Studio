@@ -59,7 +59,7 @@ const CSS=`
 .h3ct-track-clip img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.45;pointer-events:none}.h3ct-track-clip span{position:relative}
 .h3ct-track-clip .h3ct-handle{position:absolute;right:0;top:0;bottom:0;width:8px;cursor:ew-resize;background:#ffffff18}.h3ct-track-add{display:flex;align-items:center;gap:6px;position:sticky;left:0;padding:6px 8px;width:max-content;color:#c3cad4;font-size:12px}
 .h3ct-track-footer{flex:0 0 auto;background:#1d2027;border-top:1px solid #3c4350}.h3ct-track-message{margin:0;padding:0 8px;max-width:80ch;color:#edbd83;font-size:12px}.h3ct-track-message:empty{display:none}.h3ct-snap-guide{position:absolute;top:0;bottom:0;width:1px;background:#c8dfff;pointer-events:none;z-index:5}
-.h3ct-track-editor .h3ct-empty{position:static;padding:8px;display:inline-flex;align-items:center;gap:6px}.h3ct-track-editor .h3ct-button{white-space:nowrap}
+.h3ct-track-editor .h3ct-empty{position:static;padding:8px;display:inline-flex;align-items:center;gap:6px;pointer-events:auto}.h3ct-track-editor .h3ct-button{white-space:nowrap}
 .h3ct-lane.h3ct-independent>.h3ct-track{display:none!important}
 .h3ct-lane.h3ct-independent>.h3ct-stills,.h3ct-lane.h3ct-independent>.h3ct-ruler{margin-left:var(--h3ct-track-head,96px);width:calc(100% * var(--h3ct-zoom,1) - var(--h3ct-track-head,96px))}
 .h3ct-lane>.h3ct-track-editor{width:calc(100% * var(--h3ct-zoom,1))}
