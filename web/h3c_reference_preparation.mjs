@@ -54,7 +54,8 @@ export class ReferenceClient {
     if(index<0)preparation.requests.push(structuredClone(receipt));
     else preparation.requests[index]={...preparation.requests[index],...structuredClone(receipt)};
     const asset=preparation.assets.find(a=>a.key===receipt.asset_key);
-    if(receipt.state==='complete' && asset && row?.status!=='orphan' && row?.input_fingerprint===receipt.input_fingerprint) {
+    // A finished image is kept even when the reference was edited while it rendered; it shows as out of date and cannot be approved.
+    if(receipt.state==='complete' && asset && row?.status!=='orphan') {
       for(const image of receipt.images??[]) {
         const id=image.prompt_id+':'+image.batch_index;
         if(!asset.candidates.some(c=>c.id===id))asset.candidates.push({id,file:structuredClone(image.file),sha256:image.sha256,
@@ -77,14 +78,33 @@ export class ReferenceClient {
     if(preparation.requests.some(r=>r.asset_key===key&&!r.historical&&!['complete','failed','cancelled'].includes(r.state)))throw Error('This reference already has a submitted image; recover it before generating another.');
     const state=structuredClone(before),stored=state.reference_preparation??=preparationOf(state);
     const index=stored.assets.findIndex(a=>a.key===key);
-    if(index<0)stored.assets.push(structuredClone(row));else stored.assets[index]={...stored.assets[index],...structuredClone(row)};
+    const {prompt_parts,...plain}=structuredClone(row);
+    if(index<0)stored.assets.push(plain);else stored.assets[index]={...stored.assets[index],...plain};
     await this.host.writeReferenceState(state);
     return this.jobs.generate({asset_key:key,input_fingerprint:row.input_fingerprint,prompt:row.prompt,...(row.seed!=null?{seed:row.seed}:{}),...(row.size?{size:row.size}:{})});
   }
   // The panel is told when a request changed, or the check failed, not after every check.
+  // A finished image whose candidate was never saved (the reference was edited while it rendered, before this was kept).
+  async adoptFinished() {
+    const context=this.host.referenceContext(),state=structuredClone(this.host.referenceState()),preparation=preparationOf(state);
+    let added=0;
+    for(const receipt of preparation.requests) {
+      const asset=receipt.state==='complete'?preparation.assets.find(a=>a.key===receipt.asset_key):null;
+      for(const image of asset?receipt.images??[]:[]) {
+        const id=image.prompt_id+':'+image.batch_index;
+        if(asset.candidates?.some(c=>c.id===id))continue;
+        (asset.candidates??=[]).push({id,file:structuredClone(image.file),sha256:image.sha256,provenance:structuredClone(receipt.provenance),
+          input_fingerprint:receipt.input_fingerprint,request_id:receipt.request_id,prompt_id:receipt.prompt_id,batch_index:image.batch_index});
+        added++;
+      }
+    }
+    if(!added||context!==this.host.referenceContext())return 0;
+    await this.host.writeReferenceState(state);
+    return added;
+  }
   async recover() {
     let changed=true;
-    try {changed=await this.jobs.recover();return changed;}
+    try {changed=await this.adoptFinished()+await this.jobs.recover();return changed;}
     finally {if(changed)this.host.referenceChanged();}
   }
   stopAfterCurrent() {if(this.batch&&!this.batch.stop){this.batch.stop=true;this.host.referenceChanged();}}
@@ -199,7 +219,7 @@ export class ReferencePreparationPanel {
       .h3cr-detail{min-width:0}.h3cr-detail .h3cr-asset{border:0;padding:0;gap:10px}.h3cr-detail .h3cr-title{gap:10px}.h3cr-detail .h3cr-title>strong{font-size:16px;font-weight:600;margin-right:auto}
       .h3cr-include{display:flex;align-items:center;gap:5px;font-size:12px;color:#c3cad4}.h3cr-detail textarea{font:13px/1.5 system-ui;min-height:110px;max-width:75ch;box-sizing:border-box}
       .h3cr-detail .h3cr-candidates{gap:10px;align-items:flex-start}.h3cr-detail .h3cr-candidate{flex:1 1 160px;max-width:320px}.h3cr-detail .h3cr-candidate img{width:100%;height:180px;border-radius:3px;background:#10131a}
-      .h3cr-detail .h3cr-candidate:only-child img{height:220px}.h3cr-parts{border-top:1px solid #343a46;padding-top:8px}.h3cr-parts summary{font-size:13px;font-weight:400}.h3cr-part{display:flex;flex-direction:column;gap:6px;align-items:flex-start;margin-top:10px}.h3cr-part textarea{width:100%}.h3cr-layouts{display:flex;flex-wrap:wrap;gap:10px}.h3cr-layout{display:flex;flex-direction:column;gap:4px;width:168px;padding:6px;border:2px solid #343a46;border-radius:6px;background:#10131a;color:#c9d1dd;font:inherit;font-size:12px;text-align:left;cursor:pointer}.h3cr-layout img{width:100%;aspect-ratio:16/9;display:block;border-radius:3px}.h3cr-layout[aria-checked=true]{border-color:#8ab4ff;background:#1a2230}.h3cr-layout:disabled{opacity:.55;cursor:default}.h3cr-layout-text{width:100%}.h3cr-layout-text summary{font-size:12px;cursor:pointer}.h3cr-advanced{border-top:1px solid #343a46;padding-top:8px}.h3cr-advanced summary{font-size:13px;font-weight:400}
+      .h3cr-detail .h3cr-candidate:only-child img{height:220px}.h3cr-parts{border-top:1px solid #343a46;padding-top:8px}.h3cr-parts summary{font-size:13px;font-weight:400}.h3cr-part-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.h3cr-part{display:flex;flex-direction:column;gap:6px;align-items:flex-start;margin-top:10px}.h3cr-part textarea{width:100%}.h3cr-layouts{display:flex;flex-wrap:wrap;gap:10px}.h3cr-layout{display:flex;flex-direction:column;gap:4px;width:168px;padding:6px;border:2px solid #343a46;border-radius:6px;background:#10131a;color:#c9d1dd;font:inherit;font-size:12px;text-align:left;cursor:pointer}.h3cr-layout img{width:100%;aspect-ratio:16/9;display:block;border-radius:3px}.h3cr-layout[aria-checked=true]{border-color:#8ab4ff;background:#1a2230}.h3cr-layout:disabled{opacity:.55;cursor:default}.h3cr-layout-text{width:100%}.h3cr-layout-text summary{font-size:12px;cursor:pointer}.h3cr-advanced{border-top:1px solid #343a46;padding-top:8px}.h3cr-advanced summary{font-size:13px;font-weight:400}
       .h3cr-advanced .h3cr-actions{margin-top:8px}.h3cr-advanced label{display:flex;flex-direction:column;gap:4px;flex:1 1 100px;font-size:12px;color:#c3cad4}
       .h3cr-used{display:flex;gap:5px;flex-wrap:wrap;font-size:12px}.h3cr-used .h3ct-button{font-size:12px;padding:2px 6px}.h3cr-back{display:none!important}.h3cr-batch-options{border-top:1px solid #343a46;padding-top:6px}.h3cr-batch-options summary{font-size:12px;font-weight:400}
       .h3cr-object{padding:10px 0;border-bottom:1px solid #343a46}.h3cr-empty{padding:20px 8px;color:#c3cad4;font-size:13px}
@@ -257,12 +277,14 @@ export class ReferencePreparationPanel {
     box.open=this.partsOpen?.has(row.key)??(off>0||changed>0);
     box.addEventListener('toggle',()=>{(this.partsOpen??=new Set())[box.open?'add':'delete'](row.key);});
     box.append(element('summary',null,'Also sent with this prompt'+(off||changed?` (${[changed&&changed+' edited',off&&off+' off'].filter(Boolean).join(', ')})`:'')));
-    box.append(element('p','h3cr-note','The Studio adds this text before and after the description above. Changes apply to this reference only; untick a part to leave it out.'));
+    box.append(element('p','h3cr-note','The Studio adds this text before and after the description above. Changes apply to this reference only; switch a part off to leave it out.'));
     for(const part of parts) {
-      const item=element('div','h3cr-part'),head=element('label','h3cr-include'),check=element('input');
-      check.type='checkbox';check.checked=part.enabled;check.disabled=readonly;check.setAttribute('aria-label','Send '+part.label.toLowerCase()+' with '+row.name);
-      check.addEventListener('change',()=>edit(part.id,{enabled:check.checked}));
-      head.append(check,element('span',null,part.label+(part.where==='before'?' (before the description)':' (after the description)')));
+      const item=element('div','h3cr-part'),head=element('div','h3cr-part-head'),send=element('button','h3cr-prepare');
+      send.type='button';send.setAttribute('role','switch');send.setAttribute('aria-checked',String(part.enabled));send.disabled=readonly;
+      send.setAttribute('aria-label','Send '+part.label.toLowerCase()+' with '+row.name);
+      send.addEventListener('click',()=>edit(part.id,{enabled:!part.enabled}));
+      send.append(element('span','h3cr-track'),element('span',null,part.label+(part.where==='before'?' (before the description)':' (after the description)')));
+      head.append(send);
       if(part.edited)head.append(element('span','h3cr-status','edited'));
       item.append(head);
       const custom=part.choice==='custom';

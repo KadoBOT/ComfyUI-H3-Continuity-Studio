@@ -57,11 +57,11 @@ test('a reference shows the text added to its prompt and edits or switches it of
  fields()[1].value='Visual style: Flat.';fields()[1].fire('change');await new Promise(setImmediate);
  assert.deepEqual(saved().part_overrides,{style:{text:'Visual style: Flat.'}});
  assert.equal(saved().prompt_parts,undefined);
- const off=()=>findAll(box(),n=>n.tagName==='INPUT'&&n.getAttribute('aria-label')==='Send visual style with Mara')[0];
- await new Promise(setImmediate);off().checked=false;off().fire('change');await new Promise(setImmediate);
+ const off=()=>findAll(box(),n=>n.getAttribute?.('role')==='switch'&&n.getAttribute('aria-label')==='Send visual style with Mara')[0];
+ await new Promise(setImmediate);off().fire('click');await new Promise(setImmediate);
  assert.deepEqual(saved().part_overrides,{style:{text:'Visual style: Flat.',enabled:false}});
  fields()[1].value='Visual style: Painted.';fields()[1].disabled=false;fields()[1].fire('change');await new Promise(setImmediate);
- off().checked=true;off().fire('change');
+ off().fire('click');
  assert.equal(saved().part_overrides,undefined);
 });
 
