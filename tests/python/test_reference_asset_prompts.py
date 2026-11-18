@@ -105,6 +105,65 @@ class CastSheetSizeTest(unittest.TestCase):
         self.assertNotIn('size', planned('entity:e3', recipe=SIZED))
 
 
+def with_overrides(key, overrides):
+    saved = document()
+    saved['reference_preparation'] = {'version': 1, 'generate': {}, 'requests': [],
+                                      'assets': [{'key': key, 'category': 'cast', 'role': 'identity',
+                                                  'part_overrides': overrides}]}
+    return saved
+
+
+def row_of(saved, key):
+    return next(r for r in reference_assets.catalog(saved) if r['key'] == key)
+
+
+class PromptPartsTest(unittest.TestCase):
+    def test_a_row_lists_every_text_the_studio_adds_in_the_order_it_is_sent(self):
+        parts = row_of(document(), 'entity:e2')['prompt_parts']
+        self.assertEqual([p['id'] for p in parts], ['layout', 'style'])
+        self.assertEqual([p['where'] for p in parts], ['before', 'after'])
+        self.assertTrue(parts[0]['text'].startswith('A 16:9 landscape character reference sheet'))
+        self.assertTrue(parts[1]['text'].startswith('Visual style: Painted angular planes'))
+        self.assertTrue(all(p['enabled'] and not p['edited'] for p in parts))
+        self.assertEqual([p['id'] for p in row_of(document(), 'entity:e3')['prompt_parts']], ['layout', 'style', 'empty'])
+
+    def test_the_prompt_is_what_the_parts_say(self):
+        saved = document()
+        parts = row_of(saved, 'entity:e2')['prompt_parts']
+        prompt = planned('entity:e2')['prompt']
+        self.assertEqual(prompt, '\n'.join([parts[0]['text'], 'A barrel-bodied grazer with long horns.', parts[1]['text']]))
+
+    def test_a_part_can_be_switched_off_for_one_reference(self):
+        saved = with_overrides('entity:e2', {'style': {'enabled': False}})
+        self.assertNotIn('Visual style', planned('entity:e2', saved=saved)['prompt'])
+        self.assertIn('Visual style', planned('entity:e1')['prompt'])
+        self.assertFalse(row_of(saved, 'entity:e2')['prompt_parts'][1]['enabled'])
+
+    def test_a_part_can_be_rewritten_for_one_reference(self):
+        saved = with_overrides('entity:e2', {'layout': {'text': 'A creature turnaround on ivory.'}})
+        prompt = planned('entity:e2', saved=saved)['prompt']
+        self.assertTrue(prompt.startswith('A creature turnaround on ivory.\n'), prompt)
+        self.assertNotIn('six equal-width', prompt)
+        self.assertTrue(row_of(saved, 'entity:e2')['prompt_parts'][0]['edited'])
+        self.assertEqual(saved['bible']['style']['look'], STYLE)
+
+    def test_a_sheet_without_its_layout_is_not_forced_to_16_9(self):
+        saved = with_overrides('entity:e2', {'layout': {'enabled': False}})
+        self.assertNotIn('size', planned('entity:e2', saved=saved, recipe=SIZED))
+
+    def test_edits_change_the_design_only_for_that_reference(self):
+        plain = row_of(document(), 'entity:e2')['input_fingerprint']
+        edited = row_of(with_overrides('entity:e2', {'style': {'enabled': False}}), 'entity:e2')['input_fingerprint']
+        self.assertNotEqual(plain, edited)
+        self.assertEqual(row_of(document(), 'entity:e1')['input_fingerprint'],
+                         row_of(with_overrides('entity:e2', {'style': {'enabled': False}}), 'entity:e1')['input_fingerprint'])
+
+    def test_bad_edits_are_refused(self):
+        for bad in ({'nope': {'enabled': False}}, {'style': {'enabled': 'no'}}, {'style': {'text': 3}}, {'style': 'x'}):
+            with self.assertRaises(ValueError):
+                reference_assets.catalog(with_overrides('entity:e2', bad))
+
+
 class LocationGridTest(unittest.TestCase):
     def test_location_is_an_empty_two_by_two_grid_of_camera_angles(self):
         prompt = planned_prompt('entity:e3')

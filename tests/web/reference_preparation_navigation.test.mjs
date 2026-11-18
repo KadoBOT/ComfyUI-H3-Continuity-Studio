@@ -39,3 +39,28 @@ test('stale candidate approval stays disabled, current candidate sends the selec
  const sent=[];panel.host.approveReference=async request=>sent.push(request);approve.fire('click');await new Promise(setImmediate);
  assert.deepEqual(sent,[{asset_key:'a',candidate_id:'candidate1',expected_revision:0}]);
 });
+
+test('a reference shows the text added to its prompt and edits or switches it off for that reference only',async()=>{
+ const parts=[{id:'layout',label:'Character sheet layout',where:'before',text:'A 16:9 sheet.',default:'A 16:9 sheet.',enabled:true,edited:false},
+  {id:'style',label:'Visual style',where:'after',text:'Visual style: Painted.',default:'Visual style: Painted.',enabled:true,edited:false}];
+ const panel=await open();
+ // The server answers with the saved edits applied, as catalog() does.
+ panel.host.referenceCatalog=async()=>{
+  const own=panel.editor.state.reference_preparation.assets.find(a=>a.key==='a')?.part_overrides??{};
+  return [{...rows[0],part_overrides:own,prompt_parts:parts.map(p=>({...p,text:own[p.id]?.text??p.text,enabled:own[p.id]?.enabled!==false,edited:own[p.id]?.text!=null}))},rows[1]];
+ };await panel.refresh();
+ const box=()=>findAll(panel.body,n=>n.classList?.contains('h3cr-parts'))[0];
+ assert.ok(box().textContent.includes('Also sent with this prompt'));
+ const fields=()=>findAll(box(),n=>n.tagName==='TEXTAREA');
+ assert.deepEqual(fields().map(n=>n.value),['A 16:9 sheet.','Visual style: Painted.']);
+ const saved=()=>panel.editor.state.reference_preparation.assets.find(a=>a.key==='a');
+ fields()[1].value='Visual style: Flat.';fields()[1].fire('change');await new Promise(setImmediate);
+ assert.deepEqual(saved().part_overrides,{style:{text:'Visual style: Flat.'}});
+ assert.equal(saved().prompt_parts,undefined);
+ const off=()=>findAll(box(),n=>n.tagName==='INPUT'&&n.getAttribute('aria-label')==='Send visual style with Mara')[0];
+ await new Promise(setImmediate);off().checked=false;off().fire('change');await new Promise(setImmediate);
+ assert.deepEqual(saved().part_overrides,{style:{text:'Visual style: Flat.',enabled:false}});
+ fields()[1].value='Visual style: Painted.';fields()[1].disabled=false;fields()[1].fire('change');await new Promise(setImmediate);
+ off().checked=true;off().fire('change');
+ assert.equal(saved().part_overrides,undefined);
+});

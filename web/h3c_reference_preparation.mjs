@@ -198,7 +198,7 @@ export class ReferencePreparationPanel {
       .h3cr-detail{min-width:0}.h3cr-detail .h3cr-asset{border:0;padding:0;gap:10px}.h3cr-detail .h3cr-title{gap:10px}.h3cr-detail .h3cr-title>strong{font-size:16px;font-weight:600;margin-right:auto}
       .h3cr-include{display:flex;align-items:center;gap:5px;font-size:12px;color:#c3cad4}.h3cr-detail textarea{font:13px/1.5 system-ui;min-height:110px;max-width:75ch;box-sizing:border-box}
       .h3cr-detail .h3cr-candidates{gap:10px;align-items:flex-start}.h3cr-detail .h3cr-candidate{flex:1 1 160px;max-width:320px}.h3cr-detail .h3cr-candidate img{width:100%;height:180px;border-radius:3px;background:#10131a}
-      .h3cr-detail .h3cr-candidate:only-child img{height:220px}.h3cr-advanced{border-top:1px solid #343a46;padding-top:8px}.h3cr-advanced summary{font-size:13px;font-weight:400}
+      .h3cr-detail .h3cr-candidate:only-child img{height:220px}.h3cr-parts{border-top:1px solid #343a46;padding-top:8px}.h3cr-parts summary{font-size:13px;font-weight:400}.h3cr-part{display:flex;flex-direction:column;gap:6px;align-items:flex-start;margin-top:10px}.h3cr-part textarea{width:100%}.h3cr-advanced{border-top:1px solid #343a46;padding-top:8px}.h3cr-advanced summary{font-size:13px;font-weight:400}
       .h3cr-advanced .h3cr-actions{margin-top:8px}.h3cr-advanced label{display:flex;flex-direction:column;gap:4px;flex:1 1 100px;font-size:12px;color:#c3cad4}
       .h3cr-used{display:flex;gap:5px;flex-wrap:wrap;font-size:12px}.h3cr-used .h3ct-button{font-size:12px;padding:2px 6px}.h3cr-back{display:none!important}.h3cr-batch-options{border-top:1px solid #343a46;padding-top:6px}.h3cr-batch-options summary{font-size:12px;font-weight:400}
       .h3cr-object{padding:10px 0;border-bottom:1px solid #343a46}.h3cr-empty{padding:20px 8px;color:#c3cad4;font-size:13px}
@@ -236,8 +236,42 @@ export class ReferencePreparationPanel {
     this.commit(state=>{
       const preparation=state.reference_preparation??=preparationOf(state);
       let stored=preparation.assets.find(a=>a.key===row.key);
-      if(!stored)preparation.assets.push(stored=structuredClone(row));Object.assign(stored,values);
+      if(!stored){const {prompt_parts,...plain}=row;preparation.assets.push(stored=structuredClone(plain));}
+      Object.assign(stored,values);
     });
+  }
+  // Everything the Studio adds around the description, each part editable and switchable for this reference only.
+  partsPanel(row,readonly) {
+    const parts=row.prompt_parts??[],box=element('details','h3cr-parts');
+    if(!parts.length)return box;
+    const edit=(id,change)=>{
+      const next=structuredClone(row.part_overrides??{}),own={...next[id],...change},part=parts.find(p=>p.id===id);
+      if(own.enabled!==false)delete own.enabled;
+      if(own.text==null||own.text.trim()===part.default)delete own.text;
+      if(Object.keys(own).length)next[id]=own;else delete next[id];
+      this.editRow(row,{part_overrides:Object.keys(next).length?next:undefined});
+    };
+    const off=parts.filter(p=>!p.enabled).length,changed=parts.filter(p=>p.edited).length;
+    box.open=this.partsOpen?.has(row.key)??(off>0||changed>0);
+    box.addEventListener('toggle',()=>{(this.partsOpen??=new Set())[box.open?'add':'delete'](row.key);});
+    box.append(element('summary',null,'Also sent with this prompt'+(off||changed?` (${[changed&&changed+' edited',off&&off+' off'].filter(Boolean).join(', ')})`:'')));
+    box.append(element('p','h3cr-note','The Studio adds this text before and after the description above. Changes apply to this reference only; untick a part to leave it out.'));
+    for(const part of parts) {
+      const item=element('div','h3cr-part'),head=element('label','h3cr-include'),check=element('input');
+      check.type='checkbox';check.checked=part.enabled;check.disabled=readonly;check.setAttribute('aria-label','Send '+part.label.toLowerCase()+' with '+row.name);
+      check.addEventListener('change',()=>edit(part.id,{enabled:check.checked}));
+      head.append(check,element('span',null,part.label+(part.where==='before'?' (before the description)':' (after the description)')));
+      if(part.edited)head.append(element('span','h3cr-status','edited'));
+      item.append(head);
+      const text=element('textarea','h3ct-text');text.rows=part.id==='layout'?8:3;text.value=this.drafts.get(row.key+':'+part.id)??part.text;
+      text.disabled=readonly||!part.enabled;text.setAttribute('aria-label',part.label+' for '+row.name);text.dataset.focus=row.key+':part:'+part.id;
+      text.addEventListener('input',()=>this.drafts.set(row.key+':'+part.id,text.value));
+      text.addEventListener('change',()=>{this.drafts.delete(row.key+':'+part.id);edit(part.id,{text:text.value});});
+      item.append(text);
+      if(part.edited){const reset=action('Reset to default',()=>edit(part.id,{text:null}));reset.disabled=readonly;item.append(reset);}
+      box.append(item);
+    }
+    return box;
   }
   async run(operation) {
     if(this.busy)return;this.busy=true;this.message='';this.render();
@@ -355,7 +389,7 @@ export class ReferencePreparationPanel {
         accept.disabled=readonly||!!busy||row.status==='orphan'||candidate.input_fingerprint!==row.input_fingerprint||row.approved?.candidate_id===candidate.id;
         item.append(image,accept);if(candidate.input_fingerprint!==row.input_fingerprint)item.append(element('span','h3cr-status','Out of date'));candidates.append(item);
       }
-      card.replaceChildren(title,used,candidates,description,prompt,controls,advanced);detail.append(card);
+      card.replaceChildren(title,used,candidates,description,prompt,this.partsPanel(row,readonly),controls,advanced);detail.append(card);
     }
     parts.push(workspace);this.body.replaceChildren(...parts);
     if(readonly)for(const input of this.body.querySelectorAll?.('input,textarea,select')??[])input.disabled=true;

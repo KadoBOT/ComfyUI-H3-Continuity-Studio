@@ -4,6 +4,10 @@ All notable changes to H3 Continuity Studio are recorded here. Versions follow [
 
 ## [Unreleased]
 
+### Added
+
+- **See, edit and switch off the text added to a reference's image prompt.** Each reference now has an **Also sent with this prompt** section listing what the Studio puts around your description (the sheet layout, the Visual style, and the empty-place lines for locations and scenes). Edit any part, or untick it to leave it out, for that reference only; the Story style and every other reference stay as they are. A reference with edited or switched-off parts is marked, and changing a part makes that reference's approved image out of date.
+
 ### Fixed
 
 - **Character sheets are 16:9 again.** A cast reference with no size set under **Advanced: seed and dimensions** now generates at 2048 × 1152 instead of inheriting the workflow's own size (a vertical Story gave a vertical sheet). Setting a width and height there still wins.

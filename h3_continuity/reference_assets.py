@@ -88,6 +88,12 @@ def validate(value):
         if 'seed' in row:
             if type(row['seed']) is not int or not 0 <= row['seed'] <= rules.MAX_SEED:
                 raise ValueError('Reference seed must be an unsigned 64-bit integer.')
+        edits = row.get('part_overrides', {})
+        if not isinstance(edits, dict) or any(
+                id not in PART_IDS or not isinstance(own, dict) or set(own)-{'text','enabled'}
+                or ('text' in own and not isinstance(own['text'], str))
+                or ('enabled' in own and type(own['enabled']) is not bool) for id,own in edits.items()):
+            raise ValueError('Reference prompt part edits must give text or enabled for layout, style, empty or unoccupied.')
         if not isinstance(row.get('candidates', []), list):
             raise ValueError('Reference candidates must be a list.')
         ids = set()
@@ -201,7 +207,7 @@ def catalog(document, body=None):
                      'sources':sources, 'pictures':[], 'clips':[b['id'] for b in members], 'included':False, 'candidates':[]})
     for row in rows:
         stored = saved.pop(row['key'], {})
-        for key in ('included','prompt','seed','size','candidates','approved','slot','sources','include_character','input_sources'):
+        for key in ('included','prompt','seed','size','candidates','approved','slot','sources','include_character','input_sources','part_overrides'):
             if key in stored:
                 row[key] = copy.deepcopy(stored[key])
         row.setdefault('prompt', row['description'])
@@ -213,7 +219,9 @@ def catalog(document, body=None):
         row['input_sources'] = descriptors
         row['input_fingerprint'] = fingerprint({k:row.get(k) for k in ('key','role','description','prompt','clips','sources','include_character')}
                                                | {'pictures':source_pictures,'identity':identity,'files':descriptors,
-                                                  'style':story_bible.style(document.get('bible'))})
+                                                  'style':story_bible.style(document.get('bible'))}
+                                               | ({'parts':row['part_overrides']} if row.get('part_overrides') else {}))
+        row['prompt_parts'] = resolve_parts(document, row)
         accepted = row.get('approved') or {}
         candidate = next((c for c in row['candidates'] if c['id']==accepted.get('candidate_id')), None)
         enabled = [s for s in row['pictures'] if s not in disabled]
@@ -290,7 +298,6 @@ def prepare(body):
         if not isinstance(body.get('prompt'),str) or not body['prompt'].strip():
             raise ValueError('Write a still-image reference prompt before generating.')
         refs = []
-        sheet = False
         prompt = body['prompt']
         if row['role']=='scene_layout':
             for key in row['sources']:
@@ -300,10 +307,8 @@ def prepare(body):
                 refs.extend(_approved_pixels(document,source,body))
             if not refs:
                 raise ValueError('Choose and approve location/object references before composing the scene.')
-            if not row.get('include_character'):
-                prompt = 'An unoccupied location, with no people. '+prompt
         elif row['category']=='locations':
-            prompt = LOCATION_GRID+prompt
+            pass
         else:
             # Only explicit asset inputs: never shot anchors, prior frames or video memory.
             identity = row['identity_pictures'] if row['role']=='appearance' else []
@@ -319,25 +324,55 @@ def prepare(body):
                     refs = _approved_pixels(document,base,body)+refs
                 if not refs:
                     raise ValueError('Import or approve the original identity image for '+row['name']+' first.')
-                sheet = True
-                prompt = CHARACTER_SHEET.format(look=' of the same character as the identity reference, wearing the '
-                                                'appearance described below')+prompt
-            elif row['category']=='cast':
-                sheet = True
-                prompt = CHARACTER_SHEET.format(look=' for the character described below')+prompt
-            elif row['category']=='props':
-                prompt = OBJECT_GRID+prompt
-        style = _style(document, row)
-        if style:
-            prompt += '\nVisual style: '+style
-        if row['role']=='location':
-            prompt += '\nThe place is empty in every panel.'
-        planned = dict(body,prompt=prompt,frame=0)
+        parts = [p for p in resolve_parts(document, row) if p['enabled']]
+        lines = lambda where: [p['text'].strip() for p in parts if p['where']==where and p['text'].strip()]
+        planned = dict(body,prompt='\n'.join([*lines('before'), prompt, *lines('after')]),frame=0)
+        sheet = row['category']=='cast' and any(p['id']=='layout' for p in parts)
         if sheet and not body.get('size') and all(recipe.get('bindings',{}).get('size',{}).get(d) for d in SHEET_SIZE):
             planned['size'] = dict(SHEET_SIZE)
         return image_recipe.prepare(recipe,body['workflow'],planned,refs)
     except (ValueError,OSError,KeyError,TypeError) as error:
         return {'ok':False,'error':str(error)}
+
+
+PART_IDS = ('layout', 'unoccupied', 'empty', 'style')
+
+
+def _parts(document, row):
+    """Text the Studio adds around a reference's own description, in the order it is sent."""
+    parts = []
+    def add(id, label, where, text):
+        parts.append({'id':id, 'label':label, 'where':where, 'text':text.strip()})
+    if row['role']=='scene_layout':
+        if not row.get('include_character'):
+            add('unoccupied', 'Empty scene', 'before', 'An unoccupied location, with no people.')
+    elif row['category']=='locations':
+        add('layout', 'Location sheet layout', 'before', LOCATION_GRID)
+    elif row['category']=='props':
+        add('layout', 'Object sheet layout', 'before', OBJECT_GRID)
+    elif row['role']=='appearance':
+        add('layout', 'Character sheet layout', 'before', CHARACTER_SHEET.format(
+            look=' of the same character as the identity reference, wearing the appearance described below'))
+    else:
+        add('layout', 'Character sheet layout', 'before', CHARACTER_SHEET.format(look=' for the character described below'))
+    style = _style(document, row)
+    if style:
+        add('style', 'Visual style', 'after', 'Visual style: '+style)
+    if row['role']=='location':
+        add('empty', 'Empty place', 'after', 'The place is empty in every panel.')
+    return parts
+
+
+def resolve_parts(document, row):
+    """The parts with this reference's own edits applied; `default` is what the Studio would send without them."""
+    overrides = row.get('part_overrides') or {}
+    result = []
+    for part in _parts(document, row):
+        own = overrides.get(part['id']) or {}
+        text = own['text'] if isinstance(own.get('text'), str) else part['text']
+        result.append(dict(part, default=part['text'], text=text, enabled=own.get('enabled') is not False,
+                           edited=text.strip()!=part['text']))
+    return result
 
 
 def _style(document, row):
