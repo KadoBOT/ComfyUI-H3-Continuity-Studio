@@ -17,7 +17,13 @@ export function editOverlap(state,from,to,value) {
 export class OverlapInspector {
  constructor(editor){this.editor=editor;this.root=el('div','h3ct-overlap-inspector');this.root.hidden=true;}
  show(from,to){this.target={from,to};this.render();this.root.hidden=false;this.editor.inspect({kind:'overlap',from,to});}
+ // Removing a focused field blurs it, which can fire its change again while the children are being replaced.
  render(){
+  if(this.rendering)return;
+  this.rendering=true;
+  try{this.draw();}finally{this.rendering=false;}
+ }
+ draw(){
   if(!this.target)return;
   const {from,to}=this.target,state=this.editor.state;
   this.root.replaceChildren();

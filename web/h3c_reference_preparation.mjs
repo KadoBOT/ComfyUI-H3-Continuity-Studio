@@ -97,7 +97,7 @@ export class ReferenceClient {
         const row=(await this.host.referenceCatalog()).find(row=>row.key===key);
         if(!row||row.status==='orphan'||!preparationOf(this.host.referenceState()).generate[row.category])break;
         if(row.status==='approved'||row.candidates?.some(c=>c.input_fingerprint===row.input_fingerprint)){this.batch.completed++;continue;}
-        this.batch.current=key;this.host.referenceChanged();
+        this.batch.current=row.name;this.host.referenceChanged();
         let receipt=await this.generateAsset(key);
         while(!['complete','failed','cancelled'].includes(receipt.state)) {
           await this.recover();
@@ -312,7 +312,7 @@ export class ReferencePreparationPanel {
     if(this.showObject)parts.push(this.objectForm());
     const workspace=element('div','h3cr-workspace');workspace.classList.toggle('h3cr-mobile-detail',this.mobileDetail);
     const master=element('div','h3cr-master');master.setAttribute('aria-label','Reference list');
-    const statusLabel=row=>row.existing_images?.length&&row.status==='missing'?'Ready':({approved:'Approved',missing:row.candidates?.length?'Needs approval':'Missing',outdated:'Out of date',candidate:'Needs approval'}[row.status]??row.status);
+    const statusLabel=row=>row.existing_images?.length&&row.status==='missing'?'Ready':({approved:'Approved',missing:row.candidates?.length?'Needs approval':'Missing',outdated:'Out of date',candidates:'Needs approval'}[row.status]??row.status);
     for(const row of filtered){const button=action('',()=>this.choose(row.key));button.className='h3cr-item';button.setAttribute('aria-label',`Edit ${row.name} reference`);button.setAttribute('aria-pressed',String(row.key===this.selectedKey));
       const approved=row.candidates?.find(c=>c.id===row.approved?.candidate_id),picture=approved??row.existing_images?.[0]??row.candidates?.[0];
       if(picture){const image=element('img');image.src=this.host.viewUrl(picture.file);image.alt='';button.append(image);}else{const placeholder=element('span','h3cr-thumb');placeholder.append(icon('stills'));button.append(placeholder);}
