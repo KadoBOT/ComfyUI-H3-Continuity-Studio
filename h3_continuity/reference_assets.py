@@ -12,38 +12,11 @@ HASH = re.compile(r'[a-f0-9]{64}')
 NO_TEXT = 'The image contains no text, letters or numbers.'
 # Character sheets are 16:9 unless the reference sets its own size (Advanced: seed and dimensions).
 SHEET_SIZE = {'width': 2048, 'height': 1152}
-CHARACTER_SHEET = (
-    'A 16:9 landscape character reference sheet{look}. Clean ivory background, six equal-width vertical columns separated by thin rules and generous gutters. The sheet is purely visual, with blank ivory margins and unmarked panels.\n'
-    '\n'
-    'The character description below is authoritative for species, anatomy and number of limbs. Never turn a non-human character into a person, and never add clothing or props it does not describe. Where these instructions say arms, hands or feet, a four-legged or non-human character shows its own limbs, paws or hooves in its natural standing posture.\n'
-    '\n'
-    'FACE RULE\n'
-    'The face appears exactly once on the entire sheet: in the headshot in columns 1-2. That headshot shows the head only, with NO shoulders, NO chest, NO torso, NO arms and NO clothing. Columns 3, 4, 5 and 6 contain NO head, NO face and NO hair. Every body figure is cut off at the base of the neck by the top edge of its panel; the head lies outside the frame, above the panel edge.\n'
-    '\n'
-    'LAYOUT\n'
-    'Columns 1-2 (merged): one tight headshot of the face, floating in the vertical center of the panel like a cut-out head study. It runs from the top of the head to just below the chin, ending in a short stretch of upper neck that fades into the ivory. Plain empty ivory fills the panel above and below the head. This is the ONLY head and the ONLY face on the sheet.\n'
-    'Column 3: front body view, neck-down only.\n'
-    'Column 4: true 90-degree profile body view, neck-down only, facing left, showing the left side.\n'
-    'Column 5: back body view, neck-down only.\n'
-    'Column 6: relaxed standing body view, neck-down only.\n'
-    '\n'
-    'Each of the four body panels is framed from the base of the neck down to the floor. The figure fills the panel height, with the base of the neck touching the top edge, so there is no room above it for a head. Each panel shows the body, limbs and feet only. All four figures share one scale and one floor baseline, with clear ivory space around every limb end.\n'
-    '\n'
-    'FACE (columns 1-2 only, head only)\n'
-    'An extreme close-up of the face, front-facing, filling the width of the panel, in soft even studio light, gaze to camera. Take every facial feature, skin, eyes, hair and expression from the character description below. The image ends just under the chin: only bare upper neck, then ivory.\n'
-    '\n'
-    'BODY (columns 3-6 only)\n'
-    'The same body in every body panel, with the build, proportions, skin and outfit from the character description below. Limbs, hands or paws relaxed, exactly as the character description gives them.\n'
-    '\n'
-    'TURNAROUND (columns 3-5, faceless, neck-down)\n'
-    'Neutral standing pose in all three views: arms held slightly away from the torso, legs slightly apart, feet flat on the floor. In the profile view the near arm hangs slightly forward and the far leg is a half-step back, so both arms and both legs can be seen. The same outfit and carried items in all three, only if the description gives any. Flat, even studio lighting on ivory. No head, face or hair in any of these three panels.\n'
-    '\n'
-    'RELAXED VIEW (column 6, faceless, neck-down)\n'
-    'The same body in the same outfit, cut off at the base of the neck by the top edge of the panel, standing relaxed with the weight on one leg and both arms loose at the sides, hands visible. Flat, even studio lighting on ivory. No head, face or hair in this panel.\n'
-    '\n'
-    'FINAL CHECK\n'
-    'Columns 1-2: a head-only close-up, ending under the chin, with no shoulders, body or clothing. Columns 3-6: four neck-down body views with no head, no face and no hair. No extra portraits, busts or head studies. Same body, same proportions, same scale throughout.\n'
-    + NO_TEXT + '\nCharacter: ')
+# {description} marks where the character description goes; {look} is filled in for a look or a first design.
+HUMAN_SHEET = 'A 16:9 landscape character reference sheet{look}, on a plain ivory background. The left third holds two large head studies stacked one above the other. The right two thirds hold four whole-figure studies standing side by side in four equal columns. Thin lines separate the panels. There is no text anywhere.\n\nTHE CHARACTER\n{description}\n\nLEFT THIRD, TOP HALF: HEAD, FRONT\nA close-up of the head and neck seen straight on, from the top of the head to the base of the neck, with every feature, covering and accessory exactly as described above.\n\nLEFT THIRD, BOTTOM HALF: HEAD, LEFT PROFILE\nDirectly below, the same head and neck at the same size in exact left profile, facing left.\n\nTHE FOUR FIGURES (right two thirds)\nFour whole-body views of the same character, head to feet, each as tall as its column, all the same size and standing on the same floor line, in the same neutral standing pose with the arms slightly away from the body and the feet flat on the floor.\nColumn 3, FRONT: facing the viewer.\nColumn 4, LEFT SIDE: in exact profile facing the left edge of the panel, showing the outside of the left arm and leg.\nColumn 5, BACK: with the back to the viewer.\nColumn 6, RIGHT SIDE: in exact profile facing the right edge of the panel, showing the outside of the right arm and leg.\n\nFINAL CHECK\nTwo stacked close-ups on the left: front above, left profile below. Four whole figures on the right: front, left side, back, right side. The same head, build, skin, outfit and carried items in every view, exactly as described. Nothing is added that the description does not give.'
+CREATURE_SHEET = "A 16:9 landscape creature reference sheet{look}, on a plain ivory background. The left third is one tall panel; the right two thirds are a grid of 2 rows and 2 columns of wide panels. Thin lines separate the panels. There is no text anywhere.\n\nTHE CREATURE\n{description}\n\nLEFT PANEL: HEAD\nOne close study of the head and the start of the neck, in three-quarter view turned towards the left of the panel, filling the width of the panel, with every feature exactly as described above. It is the only head on the sheet.\n\nTHE FOUR BODY VIEWS (right two thirds)\nThe same body in four panels, seen without its head: the neck ends at the edge of the panel and nothing continues past it. Neutral standing pose in the creature's natural stance, feet or paws flat on the floor, with clear space around every foot.\nRow 1, column 1: left side view. The neck meets the left edge of the panel. The far legs are a half-step offset, so every leg can be seen.\nRow 1, column 2: right side view at the same scale and floor line. The neck meets the right edge of the panel.\nRow 2, column 1: back view from directly behind.\nRow 2, column 2: top-down view of the back, with the neck meeting the top edge of the panel.\n\nFINAL CHECK\nOne head study on the left. Four headless body views on the right: left side, right side, back, top-down. The same hide, markings, proportions and scale throughout. Nothing is added that the description does not give."
+# The layout a reference's sheet follows; 'custom' sends only the text the user writes.
+SHEET_LAYOUTS = {'human': HUMAN_SHEET, 'creature': CREATURE_SHEET, 'custom': ''}
 LOCATION_GRID = ('A location reference sheet: one image divided into a grid of 2 rows and 2 columns by thin ivory gutters, '
                  'showing the same place from four clearly different camera positions: in row 1, column 1, a wide establishing '
                  'view from the front; in row 1, column 2, the reverse view from the opposite side, looking back the other way; '
@@ -90,7 +63,8 @@ def validate(value):
                 raise ValueError('Reference seed must be an unsigned 64-bit integer.')
         edits = row.get('part_overrides', {})
         if not isinstance(edits, dict) or any(
-                id not in PART_IDS or not isinstance(own, dict) or set(own)-{'text','enabled'}
+                id not in PART_IDS or not isinstance(own, dict) or set(own)-{'text','enabled','choice'}
+                or ('choice' in own and (id!='layout' or own['choice'] not in SHEET_LAYOUTS))
                 or ('text' in own and not isinstance(own['text'], str))
                 or ('enabled' in own and type(own['enabled']) is not bool) for id,own in edits.items()):
             raise ValueError('Reference prompt part edits must give text or enabled for layout, style, empty or unoccupied.')
@@ -326,7 +300,11 @@ def prepare(body):
                     raise ValueError('Import or approve the original identity image for '+row['name']+' first.')
         parts = [p for p in resolve_parts(document, row) if p['enabled']]
         lines = lambda where: [p['text'].strip() for p in parts if p['where']==where and p['text'].strip()]
-        planned = dict(body,prompt='\n'.join([*lines('before'), prompt, *lines('after')]),frame=0)
+        before = lines('before')
+        # A layout that says where the description goes gets it there; any other text comes first and the description follows.
+        placed = any('{description}' in text for text in before)
+        before = [text.replace('{description}', prompt) for text in before]
+        planned = dict(body,prompt='\n'.join([*before, *([] if placed else [prompt]), *lines('after')]),frame=0)
         sheet = row['category']=='cast' and any(p['id']=='layout' for p in parts)
         if sheet and not body.get('size') and all(recipe.get('bindings',{}).get('size',{}).get(d) for d in SHEET_SIZE):
             planned['size'] = dict(SHEET_SIZE)
@@ -338,7 +316,7 @@ def prepare(body):
 PART_IDS = ('layout', 'unoccupied', 'empty', 'style')
 
 
-def _parts(document, row):
+def _parts(document, row, layout='human'):
     """Text the Studio adds around a reference's own description, in the order it is sent."""
     parts = []
     def add(id, label, where, text):
@@ -350,11 +328,10 @@ def _parts(document, row):
         add('layout', 'Location sheet layout', 'before', LOCATION_GRID)
     elif row['category']=='props':
         add('layout', 'Object sheet layout', 'before', OBJECT_GRID)
-    elif row['role']=='appearance':
-        add('layout', 'Character sheet layout', 'before', CHARACTER_SHEET.format(
-            look=' of the same character as the identity reference, wearing the appearance described below'))
     else:
-        add('layout', 'Character sheet layout', 'before', CHARACTER_SHEET.format(look=' for the character described below'))
+        look = (' of the same character as the identity reference, wearing the appearance described below'
+                if row['role']=='appearance' else ' for the character described below')
+        add('layout', 'Character sheet layout', 'before', SHEET_LAYOUTS[layout].replace('{look}', look))
     style = _style(document, row)
     if style:
         add('style', 'Visual style', 'after', 'Visual style: '+style)
@@ -366,12 +343,16 @@ def _parts(document, row):
 def resolve_parts(document, row):
     """The parts with this reference's own edits applied; `default` is what the Studio would send without them."""
     overrides = row.get('part_overrides') or {}
+    layout = (overrides.get('layout') or {}).get('choice', 'human')
     result = []
-    for part in _parts(document, row):
+    for part in _parts(document, row, layout):
         own = overrides.get(part['id']) or {}
         text = own['text'] if isinstance(own.get('text'), str) else part['text']
-        result.append(dict(part, default=part['text'], text=text, enabled=own.get('enabled') is not False,
-                           edited=text.strip()!=part['text']))
+        part = dict(part, default=part['text'], text=text, enabled=own.get('enabled') is not False,
+                    edited=text.strip()!=part['text'])
+        if part['id']=='layout' and row['category']=='cast':
+            part.update(choice=layout, choices=list(SHEET_LAYOUTS))
+        result.append(part)
     return result
 
 

@@ -64,3 +64,30 @@ test('a reference shows the text added to its prompt and edits or switches it of
  off().checked=true;off().fire('change');
  assert.equal(saved().part_overrides,undefined);
 });
+
+test('a character sheet layout is picked from pictures, with a layout of your own as the third',async()=>{
+ const layout=(choice,text)=>({id:'layout',label:'Character sheet layout',where:'before',text,default:text,enabled:true,edited:false,choice,choices:['human','creature','custom']});
+ const panel=await open();
+ panel.host.referenceCatalog=async()=>{
+  const own=panel.editor.state.reference_preparation.assets.find(a=>a.key==='a')?.part_overrides??{};
+  const choice=own.layout?.choice??'human';
+  return [{...rows[0],part_overrides:own,prompt_parts:[layout(choice,choice==='custom'?'':'Sheet for {description}')]},rows[1]];
+ };await panel.refresh();
+ const picks=()=>findAll(panel.body,n=>n.getAttribute?.('role')==='radio');
+ assert.deepEqual(picks().map(n=>n.dataset.layout),['human','creature','custom']);
+ assert.deepEqual(picks().map(n=>n.getAttribute('aria-checked')),['true','false','false']);
+ assert.ok(findAll(picks()[0],n=>n.tagName==='IMG')[0].src.startsWith('data:image/svg+xml'));
+ for(const word of ['Person template','Creature template'])assert.ok(!panel.body.textContent.includes(word));
+ const saved=()=>panel.editor.state.reference_preparation.assets.find(a=>a.key==='a');
+ picks()[1].fire('click');await new Promise(setImmediate);
+ assert.deepEqual(saved().part_overrides,{layout:{choice:'creature'}});
+ assert.deepEqual(picks().map(n=>n.getAttribute('aria-checked')),['false','true','false']);
+ picks()[2].fire('click');await new Promise(setImmediate);
+ assert.deepEqual(saved().part_overrides,{layout:{choice:'custom'}});
+ const own=findAll(panel.body,n=>n.tagName==='TEXTAREA'&&n.getAttribute('aria-label')==='Character sheet layout for Mara')[0];
+ assert.ok(own.placeholder.includes('{description}'));
+ own.value='A turnaround on ivory.';own.fire('change');await new Promise(setImmediate);
+ assert.deepEqual(saved().part_overrides,{layout:{choice:'custom',text:'A turnaround on ivory.'}});
+ picks()[0].fire('click');await new Promise(setImmediate);
+ assert.equal(saved().part_overrides,undefined);
+});

@@ -1,4 +1,5 @@
 import {icon,iconButton} from './h3c_icons.mjs';
+import {SHEET_LAYOUT_CHOICES,sheetLayoutPicture} from './h3c_sheet_layouts.mjs?v=6900854427bd';
 import {stringifyJSON,seedValue} from './h3c_project.mjs?v=0882b8a6265a';
 import {ImageJobClient} from './h3c_image_jobs.mjs?v=c02f98fb5ed8';
 export const REFERENCE_CATEGORIES = ['cast','locations','props'];
@@ -198,7 +199,7 @@ export class ReferencePreparationPanel {
       .h3cr-detail{min-width:0}.h3cr-detail .h3cr-asset{border:0;padding:0;gap:10px}.h3cr-detail .h3cr-title{gap:10px}.h3cr-detail .h3cr-title>strong{font-size:16px;font-weight:600;margin-right:auto}
       .h3cr-include{display:flex;align-items:center;gap:5px;font-size:12px;color:#c3cad4}.h3cr-detail textarea{font:13px/1.5 system-ui;min-height:110px;max-width:75ch;box-sizing:border-box}
       .h3cr-detail .h3cr-candidates{gap:10px;align-items:flex-start}.h3cr-detail .h3cr-candidate{flex:1 1 160px;max-width:320px}.h3cr-detail .h3cr-candidate img{width:100%;height:180px;border-radius:3px;background:#10131a}
-      .h3cr-detail .h3cr-candidate:only-child img{height:220px}.h3cr-parts{border-top:1px solid #343a46;padding-top:8px}.h3cr-parts summary{font-size:13px;font-weight:400}.h3cr-part{display:flex;flex-direction:column;gap:6px;align-items:flex-start;margin-top:10px}.h3cr-part textarea{width:100%}.h3cr-advanced{border-top:1px solid #343a46;padding-top:8px}.h3cr-advanced summary{font-size:13px;font-weight:400}
+      .h3cr-detail .h3cr-candidate:only-child img{height:220px}.h3cr-parts{border-top:1px solid #343a46;padding-top:8px}.h3cr-parts summary{font-size:13px;font-weight:400}.h3cr-part{display:flex;flex-direction:column;gap:6px;align-items:flex-start;margin-top:10px}.h3cr-part textarea{width:100%}.h3cr-layouts{display:flex;flex-wrap:wrap;gap:10px}.h3cr-layout{display:flex;flex-direction:column;gap:4px;width:168px;padding:6px;border:2px solid #343a46;border-radius:6px;background:#10131a;color:#c9d1dd;font:inherit;font-size:12px;text-align:left;cursor:pointer}.h3cr-layout img{width:100%;aspect-ratio:16/9;display:block;border-radius:3px}.h3cr-layout[aria-checked=true]{border-color:#8ab4ff;background:#1a2230}.h3cr-layout:disabled{opacity:.55;cursor:default}.h3cr-layout-text{width:100%}.h3cr-layout-text summary{font-size:12px;cursor:pointer}.h3cr-advanced{border-top:1px solid #343a46;padding-top:8px}.h3cr-advanced summary{font-size:13px;font-weight:400}
       .h3cr-advanced .h3cr-actions{margin-top:8px}.h3cr-advanced label{display:flex;flex-direction:column;gap:4px;flex:1 1 100px;font-size:12px;color:#c3cad4}
       .h3cr-used{display:flex;gap:5px;flex-wrap:wrap;font-size:12px}.h3cr-used .h3ct-button{font-size:12px;padding:2px 6px}.h3cr-back{display:none!important}.h3cr-batch-options{border-top:1px solid #343a46;padding-top:6px}.h3cr-batch-options summary{font-size:12px;font-weight:400}
       .h3cr-object{padding:10px 0;border-bottom:1px solid #343a46}.h3cr-empty{padding:20px 8px;color:#c3cad4;font-size:13px}
@@ -247,11 +248,12 @@ export class ReferencePreparationPanel {
     const edit=(id,change)=>{
       const next=structuredClone(row.part_overrides??{}),own={...next[id],...change},part=parts.find(p=>p.id===id);
       if(own.enabled!==false)delete own.enabled;
+      if(own.choice==='human')delete own.choice;
       if(own.text==null||own.text.trim()===part.default)delete own.text;
       if(Object.keys(own).length)next[id]=own;else delete next[id];
       this.editRow(row,{part_overrides:Object.keys(next).length?next:undefined});
     };
-    const off=parts.filter(p=>!p.enabled).length,changed=parts.filter(p=>p.edited).length;
+    const off=parts.filter(p=>!p.enabled).length,changed=parts.filter(p=>p.edited||(p.choice&&p.choice!=='human')).length;
     box.open=this.partsOpen?.has(row.key)??(off>0||changed>0);
     box.addEventListener('toggle',()=>{(this.partsOpen??=new Set())[box.open?'add':'delete'](row.key);});
     box.append(element('summary',null,'Also sent with this prompt'+(off||changed?` (${[changed&&changed+' edited',off&&off+' off'].filter(Boolean).join(', ')})`:'')));
@@ -263,12 +265,33 @@ export class ReferencePreparationPanel {
       head.append(check,element('span',null,part.label+(part.where==='before'?' (before the description)':' (after the description)')));
       if(part.edited)head.append(element('span','h3cr-status','edited'));
       item.append(head);
-      const text=element('textarea','h3ct-text');text.rows=part.id==='layout'?8:3;text.value=this.drafts.get(row.key+':'+part.id)??part.text;
+      const custom=part.choice==='custom';
+      // A character sheet follows one of the layouts below; the pictures only show where the studies sit.
+      if(part.choices) {
+        const group=element('div','h3cr-layouts');group.setAttribute('role','radiogroup');group.setAttribute('aria-label','Sheet layout for '+row.name);
+        for(const choice of SHEET_LAYOUT_CHOICES.filter(c=>part.choices.includes(c.id))) {
+          const pick=element('button','h3cr-layout');pick.type='button';pick.setAttribute('role','radio');pick.setAttribute('aria-checked',String(part.choice===choice.id));
+          pick.setAttribute('aria-label',choice.label);pick.disabled=readonly||!part.enabled;pick.dataset.layout=choice.id;
+          const picture=element('img');picture.src=sheetLayoutPicture(choice.id);picture.alt='';picture.draggable=false;
+          pick.append(picture,element('span',null,choice.label));
+          pick.addEventListener('click',()=>{if(part.choice!==choice.id)edit(part.id,{choice:choice.id,text:null});});
+          group.append(pick);
+        }
+        item.append(group);
+      }
+      const text=element('textarea','h3ct-text');text.rows=part.id==='layout'?(custom?8:14):3;text.value=this.drafts.get(row.key+':'+part.id)??part.text;
       text.disabled=readonly||!part.enabled;text.setAttribute('aria-label',part.label+' for '+row.name);text.dataset.focus=row.key+':part:'+part.id;
+      if(custom)text.placeholder='Describe how the sheet is laid out. Put {description} where the character description should go, or leave it out and the description follows your text.';
       text.addEventListener('input',()=>this.drafts.set(row.key+':'+part.id,text.value));
       text.addEventListener('change',()=>{this.drafts.delete(row.key+':'+part.id);edit(part.id,{text:text.value});});
-      item.append(text);
-      if(part.edited){const reset=action('Reset to default',()=>edit(part.id,{text:null}));reset.disabled=readonly;item.append(reset);}
+      if(part.choices&&!custom) {
+        const more=element('details','h3cr-layout-text');more.open=part.edited;more.append(element('summary',null,'Edit the layout text'),text);
+        if(part.edited){const reset=action('Reset to default',()=>edit(part.id,{text:null}));reset.disabled=readonly;more.append(reset);}
+        item.append(more);
+      } else {
+        item.append(text);
+        if(part.edited){const reset=action('Reset to default',()=>edit(part.id,{text:null}));reset.disabled=readonly;item.append(reset);}
+      }
       box.append(item);
     }
     return box;

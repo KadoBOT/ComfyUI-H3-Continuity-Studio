@@ -48,19 +48,22 @@ def planned_prompt(key, approved_identity=None):
 
 
 class CastSheetTest(unittest.TestCase):
-    def test_cast_is_a_six_column_sheet_with_one_head_and_four_headless_bodies(self):
+    def test_the_default_layout_is_two_head_studies_and_four_whole_figures(self):
         prompt = planned_prompt('entity:e2')
-        self.assertTrue(prompt.startswith('A 16:9 landscape character reference sheet'), prompt)
-        self.assertIn('ivory background', prompt)
-        self.assertIn('six equal-width vertical columns', prompt)
-        self.assertIn('The face appears exactly once', prompt)
-        for column in ('Columns 1-2 (merged)', 'Column 3: front', 'Column 4: true 90-degree profile',
-                       'Column 5: back', 'Column 6: relaxed'):
+        self.assertTrue(prompt.startswith('A 16:9 landscape character reference sheet for the character described below'), prompt)
+        self.assertIn('plain ivory background', prompt)
+        self.assertIn('two large head studies stacked', prompt)
+        self.assertIn('four whole-figure studies', prompt)
+        for column in ('Column 3, FRONT', 'Column 4, LEFT SIDE', 'Column 5, BACK', 'Column 6, RIGHT SIDE'):
             self.assertIn(column, prompt)
-        self.assertIn('neck-down only', prompt)
-        self.assertIn('NO head, NO face and NO hair', prompt)
-        self.assertIn('A barrel-bodied grazer with long horns.', prompt)
-        self.assertIn('no text, letters or numbers', prompt)
+        self.assertIn('There is no text anywhere.', prompt)
+
+    def test_the_description_goes_where_the_layout_puts_it(self):
+        prompt = planned_prompt('entity:e2')
+        self.assertIn('THE CHARACTER\nA barrel-bodied grazer with long horns.\n\nLEFT THIRD, TOP HALF', prompt)
+        self.assertEqual(prompt.count('A barrel-bodied grazer with long horns.'), 1)
+        self.assertNotIn('{description}', prompt)
+        self.assertNotIn('{look}', prompt)
 
     def test_a_look_is_a_character_sheet_of_the_same_identity(self):
         identity = [{'slot': 'image17', 'roles': ['identity: STRAY'], 'sha256': 'a' * 64}]
@@ -85,11 +88,32 @@ class CastSheetTest(unittest.TestCase):
         self.assertNotIn('Safety orange', prompt)
         self.assertNotIn('jacket', prompt)
 
-    def test_the_sheet_does_not_assume_a_human_body(self):
-        prompt = planned_prompt('entity:e2')
-        self.assertIn('Never turn a non-human character into a person', prompt)
-        for human in ('collarbone', 'five fingers'):
+    def test_the_creature_layout_is_one_head_and_a_two_by_two_of_headless_body_views(self):
+        saved = with_overrides('entity:e2', {'layout': {'choice': 'creature'}})
+        prompt = planned('entity:e2', saved=saved)['prompt']
+        self.assertTrue(prompt.startswith('A 16:9 landscape creature reference sheet'), prompt)
+        self.assertIn('2 rows and 2 columns', prompt)
+        for view in ('Row 1, column 1: left side', 'Row 1, column 2: right side', 'Row 2, column 1: back',
+                     'Row 2, column 2: top-down'):
+            self.assertIn(view, prompt)
+        self.assertIn('THE CREATURE\nA barrel-bodied grazer with long horns.\n', prompt)
+        for human in (' arms', 'collarbone', 'five fingers', 'outfit', 'clothing'):
             self.assertNotIn(human, prompt)
+
+    def test_a_layout_of_your_own_replaces_the_template(self):
+        saved = with_overrides('entity:e2', {'layout': {'choice': 'custom', 'text': 'A turnaround on ivory.'}})
+        prompt = planned('entity:e2', saved=saved)['prompt']
+        self.assertTrue(prompt.startswith('A turnaround on ivory.\nA barrel-bodied grazer with long horns.'), prompt)
+        self.assertNotIn('reference sheet', prompt)
+        placed = with_overrides('entity:e2', {'layout': {'choice': 'custom', 'text': 'Sheet of {description} on ivory.'}})
+        self.assertTrue(planned('entity:e2', saved=placed)['prompt'].startswith('Sheet of A barrel-bodied grazer with long horns. on ivory.'))
+        empty = with_overrides('entity:e2', {'layout': {'choice': 'custom'}})
+        self.assertTrue(planned('entity:e2', saved=empty)['prompt'].startswith('A barrel-bodied grazer with long horns.'))
+
+    def test_every_cast_layout_is_sixteen_by_nine(self):
+        for choice in ('human', 'creature', 'custom'):
+            saved = with_overrides('entity:e2', {'layout': {'choice': choice}})
+            self.assertEqual(planned('entity:e2', saved=saved, recipe=SIZED).get('size'), {'width': 2048, 'height': 1152}, choice)
 
 
 class CastSheetSizeTest(unittest.TestCase):
@@ -131,7 +155,16 @@ class PromptPartsTest(unittest.TestCase):
         saved = document()
         parts = row_of(saved, 'entity:e2')['prompt_parts']
         prompt = planned('entity:e2')['prompt']
-        self.assertEqual(prompt, '\n'.join([parts[0]['text'], 'A barrel-bodied grazer with long horns.', parts[1]['text']]))
+        layout = parts[0]['text'].replace('{description}', 'A barrel-bodied grazer with long horns.')
+        self.assertEqual(prompt, '\n'.join([layout, parts[1]['text']]))
+
+    def test_a_cast_layout_offers_the_human_creature_and_custom_choices(self):
+        layout = row_of(document(), 'entity:e2')['prompt_parts'][0]
+        self.assertEqual((layout['choice'], layout['choices']), ('human', ['human', 'creature', 'custom']))
+        self.assertNotIn('choices', row_of(document(), 'entity:e3')['prompt_parts'][0])
+        saved = with_overrides('entity:e2', {'layout': {'choice': 'creature'}})
+        self.assertEqual(row_of(saved, 'entity:e2')['prompt_parts'][0]['choice'], 'creature')
+        self.assertFalse(row_of(saved, 'entity:e2')['prompt_parts'][0]['edited'])
 
     def test_a_part_can_be_switched_off_for_one_reference(self):
         saved = with_overrides('entity:e2', {'style': {'enabled': False}})
@@ -159,7 +192,8 @@ class PromptPartsTest(unittest.TestCase):
                          row_of(with_overrides('entity:e2', {'style': {'enabled': False}}), 'entity:e1')['input_fingerprint'])
 
     def test_bad_edits_are_refused(self):
-        for bad in ({'nope': {'enabled': False}}, {'style': {'enabled': 'no'}}, {'style': {'text': 3}}, {'style': 'x'}):
+        for bad in ({'nope': {'enabled': False}}, {'style': {'enabled': 'no'}}, {'style': {'text': 3}}, {'style': 'x'},
+                    {'layout': {'choice': 'dragon'}}, {'style': {'choice': 'human'}}):
             with self.assertRaises(ValueError):
                 reference_assets.catalog(with_overrides('entity:e2', bad))
 

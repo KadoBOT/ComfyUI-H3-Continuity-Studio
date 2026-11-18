@@ -7,6 +7,7 @@ All notable changes to H3 Continuity Studio are recorded here. Versions follow [
 ### Added
 
 - **See, edit and switch off the text added to a reference's image prompt.** Each reference now has an **Also sent with this prompt** section listing what the Studio puts around your description (the sheet layout, the Visual style, and the empty-place lines for locations and scenes). Edit any part, or untick it to leave it out, for that reference only; the Story style and every other reference stay as they are. A reference with edited or switched-off parts is marked, and changing a part makes that reference's approved image out of date.
+- **Pick a character sheet layout from pictures.** A cast reference chooses between two layouts, shown as small diagrams: two head studies with four whole figures (a person), or one head study with a two-by-two of headless body views (a creature). A third choice lets you write your own layout; put `{description}` in it where the character description should go. Both built-in layouts place the description inside the template, say nothing about clothes or limbs that the description does not give, and are 16:9.
 
 ### Fixed
 

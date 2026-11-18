@@ -1,4 +1,4 @@
-import {settledPreparation} from './h3c_reference_preparation.mjs?v=6c745b20a18c';
+import {settledPreparation} from './h3c_reference_preparation.mjs?v=59ed7b619191';
 import {parseJSON,stringifyJSON} from './h3c_project.mjs?v=0882b8a6265a';
 function validate(archive){
  if(archive?.format!=='h3-generation'||archive.version!==1||typeof archive.timeline!=='string'||!archive.story||!Array.isArray(archive.assets))throw Error('Choose a generation export version 1.');
