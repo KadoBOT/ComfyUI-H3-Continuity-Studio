@@ -10,7 +10,8 @@ CATEGORIES = ('cast', 'locations', 'props')
 ROLES = ('identity', 'appearance', 'location', 'prop', 'scene_layout')
 HASH = re.compile(r'[a-f0-9]{64}')
 NO_TEXT = 'The image contains no text, letters or numbers.'
-# Character sheets are 16:9 unless the reference sets its own size (Advanced: seed and dimensions).
+# Character and location sheets are 16:9 at the workflow's own area unless the reference sets a size (Advanced: seed and
+# dimensions); this is the size when that area cannot be read.
 SHEET_SIZE = {'width': 2048, 'height': 1152}
 # {description} marks where the character description goes; {look} is filled in for a look or a first design.
 HUMAN_SHEET = 'A 16:9 landscape character reference sheet{look}, on a plain ivory background. The left third holds two large head studies stacked one above the other. The right two thirds hold four whole-figure studies standing side by side in four equal columns. Thin lines separate the panels. There is no text anywhere.\n\nTHE CHARACTER\n{description}\n\nLEFT THIRD, TOP HALF: HEAD, FRONT\nA close-up of the head and neck seen straight on, from the top of the head to the base of the neck, with every feature, covering and accessory exactly as described above.\n\nLEFT THIRD, BOTTOM HALF: HEAD, LEFT PROFILE\nDirectly below, the same head and neck at the same size in exact left profile, facing left.\n\nTHE FOUR FIGURES (right two thirds)\nFour whole-body views of the same character, head to feet, each as tall as its column, all the same size and standing on the same floor line, in the same neutral standing pose with the arms slightly away from the body and the feet flat on the floor.\nColumn 3, FRONT: facing the viewer.\nColumn 4, LEFT SIDE: in exact profile facing the left edge of the panel, showing the outside of the left arm and leg.\nColumn 5, BACK: with the back to the viewer.\nColumn 6, RIGHT SIDE: in exact profile facing the right edge of the panel, showing the outside of the right arm and leg.\n\nFINAL CHECK\nTwo stacked close-ups on the left: front above, left profile below. Four whole figures on the right: front, left side, back, right side. The same head, build, skin, outfit and carried items in every view, exactly as described. Nothing is added that the description does not give.'
@@ -311,10 +312,37 @@ def prepare(body):
         # Character and location sheets are 16:9 unless the reference sets a size; a composed scene follows the workflow.
         sheet = row['role']!='scene_layout' and row['category'] in ('cast','locations') and any(p['id']=='layout' for p in parts)
         if sheet and not body.get('size') and all(recipe.get('bindings',{}).get('size',{}).get(d) for d in SHEET_SIZE):
-            planned['size'] = dict(SHEET_SIZE)
+            planned['size'] = sheet_size(recipe, body['workflow'].get('api', {}))
         return image_recipe.prepare(recipe,body['workflow'],planned,refs)
     except (ValueError,OSError,KeyError,TypeError) as error:
         return {'ok':False,'error':str(error)}
+
+
+def sheet_size(recipe, graph):
+    """16:9 with about the pixel area of the size the connected image workflow is set to.
+
+    The workflow's own width and height decide the area (a workflow that works from a megapixel setting only reads the
+    ratio, so the area is then just a way to get there). Falls back to SHEET_SIZE when those values cannot be read."""
+    area = None
+    try:
+        bound = recipe['bindings']['size']
+        width, height = [image_recipe._scalar(graph, graph[bound[d][-1]['node']]['inputs'][bound[d][-1]['input']])
+                         for d in ('width', 'height')]
+        if all(type(v) in (int, float) and v > 0 for v in (width, height)):
+            area = width * height
+    except (KeyError, IndexError, TypeError, ValueError):
+        pass
+    if not area or area < 512 * 512:
+        return dict(SHEET_SIZE)
+    best = None
+    for w in range(32, 16384 + 1, 32):
+        h = round(w * 9 / 16 / 32) * 32
+        if h < 32:
+            continue
+        cost = abs(w * h - area) / area + 2 * abs(w / h - 16 / 9) / (16 / 9)
+        if best is None or cost < best[0]:
+            best = (cost, w, h)
+    return {'width': best[1], 'height': best[2]}
 
 
 PART_IDS = ('layout', 'unoccupied', 'empty', 'style')

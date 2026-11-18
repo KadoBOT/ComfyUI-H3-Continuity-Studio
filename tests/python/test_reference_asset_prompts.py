@@ -27,10 +27,10 @@ def document():
 SIZED = {'version': 2, 'adapter': 'pixels', 'bindings': {'size': {'width': [{}], 'height': [{}]}}}
 
 
-def planned(key, approved_identity=None, saved=None, recipe=None, size=None):
+def planned(key, approved_identity=None, saved=None, recipe=None, size=None, api=None):
     saved = saved or document()
     recipe = recipe or {'version': 2, 'adapter': 'pixels'}
-    body = {'timeline': json.dumps(saved), 'recipe': recipe, 'workflow': {'api': {}}}
+    body = {'timeline': json.dumps(saved), 'recipe': recipe, 'workflow': {'api': api or {}}}
     row = next(r for r in reference_assets.catalog(saved, body) if r['key'] == key)
     body.update(asset_key=key, input_fingerprint=row['input_fingerprint'], prompt=row['prompt'])
     if size:
@@ -130,6 +130,36 @@ class CastSheetSizeTest(unittest.TestCase):
         own = {'width': 1024, 'height': 1536}
         self.assertEqual(planned('entity:e3', recipe=SIZED, size=own).get('size'), own)
         self.assertNotIn('size', planned('entity:e3'))
+
+    def graph_sized(self, width, height):
+        recipe = {'version': 2, 'adapter': 'pixels', 'bindings': {'size': {
+            'width': [{'node': 'gen', 'input': 'width'}], 'height': [{'node': 'gen', 'input': 'height'}]}}}
+        return recipe, {'gen': {'inputs': {'width': width, 'height': height}}}
+
+    def assertSixteenByNine(self, size, area):
+        self.assertEqual((size['width'] % 32, size['height'] % 32), (0, 0), size)
+        self.assertAlmostEqual(size['width'] / size['height'], 16 / 9, delta=0.02, msg=size)
+        self.assertAlmostEqual(size['width'] * size['height'] / area, 1, delta=0.06, msg=size)
+
+    def test_a_sheet_keeps_the_pixel_area_of_the_connected_workflow(self):
+        for width, height in ((1088, 1920), (2160, 3840), (4000, 6000), (1920, 1088)):
+            recipe, api = self.graph_sized(width, height)
+            for key in ('entity:e2', 'entity:e3'):
+                size = planned(key, recipe=recipe, api=api)['size']
+                self.assertSixteenByNine(size, width * height)
+
+    def test_the_area_is_read_through_a_native_primitive(self):
+        recipe, api = self.graph_sized(['p1', 0], ['p2', 0])
+        api.update(p1={'class_type': 'PrimitiveInt', 'inputs': {'value': 2160}},
+                   p2={'class_type': 'PrimitiveInt', 'inputs': {'value': 3840}})
+        self.assertSixteenByNine(planned('entity:e2', recipe=recipe, api=api)['size'], 2160 * 3840)
+
+    def test_an_unreadable_workflow_size_falls_back_to_the_default_16_9(self):
+        recipe, api = self.graph_sized(['math', 0], ['math', 1])
+        api['math'] = {'class_type': 'ComfyMathExpression', 'inputs': {}}
+        self.assertEqual(planned('entity:e2', recipe=recipe, api=api)['size'], {'width': 2048, 'height': 1152})
+        recipe, api = self.graph_sized(16, 9)
+        self.assertEqual(planned('entity:e2', recipe=recipe, api=api)['size'], {'width': 2048, 'height': 1152})
 
     def test_a_composed_scene_and_an_object_keep_the_workflow_size(self):
         saved = document()

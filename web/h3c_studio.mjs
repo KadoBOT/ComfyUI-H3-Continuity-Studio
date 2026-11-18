@@ -9,7 +9,7 @@ import { soundtrackLine, soundtrackSlots } from './h3c_timeline_model.mjs?v=1dfc
 
 import { ideaImagesRow } from './h3c_idea_images.mjs?v=990e7177d821';
 import { partialBadge, partialTitle, previewBadge, previewLabel, previewTitle, timelineFrame, videoSeconds } from './h3c_partial_video.mjs?v=201bf0f48645';
-import {historyShortcut} from './h3c_history.mjs?v=6d0cd35b06ef';
+import {historyShortcut} from './h3c_history.mjs?v=7fd74e6b1728';
 import {setText} from './h3c_dom.mjs?v=584a9bf55653';
 
 const LIBRARY = ['references', 'cast', 'story', 'pictures', 'refmods', 'assets'];

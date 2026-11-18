@@ -123,5 +123,15 @@ test('a location picks the grid of views or a layout of your own, and is drawn 1
  picks()[0].fire('click');await new Promise(setImmediate);
  assert.equal(saved().part_overrides,undefined);
  const sizes=findAll(panel.body,n=>n.tagName==='INPUT'&&/ (width|height)$/.test(n.getAttribute('aria-label')??''));
- assert.deepEqual(sizes.map(n=>n.placeholder),['width (16:9 sheet)','height (16:9 sheet)']);
+ assert.deepEqual(sizes.map(n=>n.placeholder),['width (16:9, native size)','height (16:9, native size)']);
+});
+
+test('typing one dimension of a sheet fills the other at 16:9, and an object keeps the native size',async()=>{
+ const panel=await open();
+ const input=(label)=>findAll(panel.body,n=>n.tagName==='INPUT'&&n.getAttribute('aria-label')===label)[0];
+ const saved=()=>panel.editor.state.reference_preparation.assets.find(a=>a.key==='a');
+ const width=input('Mara width');width.value='3072';width.fire('change');await new Promise(setImmediate);
+ assert.deepEqual(saved().size,{width:3072,height:1728});
+ const prop=await open();prop.host.referenceCatalog=async()=>[{...row('c','Pry bar','props'),role:'prop'}];await prop.refresh();
+ assert.equal(findAll(prop.body,n=>n.tagName==='INPUT'&&n.getAttribute('aria-label')==='Pry bar width')[0].placeholder,'width (native)');
 });
