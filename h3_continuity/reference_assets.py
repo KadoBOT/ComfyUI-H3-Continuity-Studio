@@ -396,7 +396,7 @@ def _style(document, row):
     patterns = [re.compile(r'(?<!\w)'+re.escape(name)+r'(?!\w)', re.I) for name in names if name]
     if row['category']!='cast':
         patterns.append(PEOPLE)
-    # A sentence about another character that never names them ("orange appears only on the woman's jacket")
+    # A sentence about another character that never names them ("only the curator wears a cobalt coat")
     # shares several distinctive words with that character's description.
     others = [_words(e.get('description', '')) for e in story_bible.entities(bible)
               if e['kind']=='character' and e['id']!=row.get('entity')]

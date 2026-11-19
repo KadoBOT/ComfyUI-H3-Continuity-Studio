@@ -4,7 +4,7 @@ from unittest import mock
 
 from h3_continuity import image_recipe, reference_assets, stills
 
-STYLE = ("Painted angular planes and hard rim light. Safety orange belongs only to STRAY's jacket. "
+STYLE = ("Soft graphite shading and diffuse light. Cobalt blue belongs only to MIRA's coat. "
          "Characters move as living animated figures.")
 
 
@@ -18,10 +18,10 @@ def document():
                       {'id': 'b2', 'frames': 22, 'prompt': '',
                        'schedule': {'entities': ['e1'], 'place': 'e3'}}],
             'bible': {'style': {'look': STYLE}, 'entities': [
-                entity('e1', 'character', 'STRAY', 'A wiry woman in a safety-orange jacket.',
-                       [{'from': 'b2', 'description': 'Her jacket is torn.', 'pictures': []}]),
-                entity('e2', 'character', 'Wounded grazer', 'A barrel-bodied grazer with long horns.'),
-                entity('e3', 'place', 'Overpass and Grassland', 'A collapsed highway in dry grass.')]}}
+                entity('e1', 'character', 'MIRA', 'A museum curator in a cobalt-blue coat.',
+                       [{'from': 'b2', 'description': 'Her coat is buttoned.', 'pictures': []}]),
+                entity('e2', 'character', 'Garden lizard', 'A speckled lizard with a curled tail.'),
+                entity('e3', 'place', 'Museum Courtyard', 'A paved courtyard with a stone fountain.')]}}
 
 
 SIZED = {'version': 2, 'adapter': 'pixels', 'bindings': {'size': {'width': [{}], 'height': [{}]}}}
@@ -60,33 +60,33 @@ class CastSheetTest(unittest.TestCase):
 
     def test_the_description_goes_where_the_layout_puts_it(self):
         prompt = planned_prompt('entity:e2')
-        self.assertIn('THE CHARACTER\nA barrel-bodied grazer with long horns.\n\nLEFT THIRD, TOP HALF', prompt)
-        self.assertEqual(prompt.count('A barrel-bodied grazer with long horns.'), 1)
+        self.assertIn('THE CHARACTER\nA speckled lizard with a curled tail.\n\nLEFT THIRD, TOP HALF', prompt)
+        self.assertEqual(prompt.count('A speckled lizard with a curled tail.'), 1)
         self.assertNotIn('{description}', prompt)
         self.assertNotIn('{look}', prompt)
 
     def test_a_look_is_a_character_sheet_of_the_same_identity(self):
-        identity = [{'slot': 'image17', 'roles': ['identity: STRAY'], 'sha256': 'a' * 64}]
+        identity = [{'slot': 'image17', 'roles': ['identity: MIRA'], 'sha256': 'a' * 64}]
         prompt = planned_prompt('entity:e1:look:b2', identity)
         self.assertTrue(prompt.startswith('A 16:9 landscape character reference sheet of the same character'), prompt)
         self.assertIn('same character as the identity reference', prompt)
-        self.assertIn('Her jacket is torn.', prompt)
+        self.assertIn('Her coat is buttoned.', prompt)
 
     def test_style_sentences_about_other_cast_are_left_out(self):
         prompt = planned_prompt('entity:e2')
-        self.assertIn('Painted angular planes and hard rim light.', prompt)
-        self.assertNotIn('STRAY', prompt)
-        self.assertIn('STRAY', planned_prompt('entity:e1'))
+        self.assertIn('Soft graphite shading and diffuse light.', prompt)
+        self.assertNotIn('MIRA', prompt)
+        self.assertIn('MIRA', planned_prompt('entity:e1'))
 
 
     def test_a_style_sentence_about_another_character_without_naming_them_is_left_out(self):
         saved = document()
-        saved['bible']['style']['look'] = ('Painted angular planes and hard rim light. '
-                                           "Safety orange appears only on the woman's jacket.")
+        saved['bible']['style']['look'] = ('Soft graphite shading and diffuse light. '
+                                           "Cobalt blue appears only on the curator's coat.")
         prompt = planned('entity:e2', saved=saved)['prompt']
-        self.assertIn('Painted angular planes', prompt)
-        self.assertNotIn('Safety orange', prompt)
-        self.assertNotIn('jacket', prompt)
+        self.assertIn('Soft graphite shading', prompt)
+        self.assertNotIn('Cobalt blue', prompt)
+        self.assertNotIn('coat', prompt)
 
     def test_the_creature_layout_is_one_head_and_a_two_by_two_of_headless_body_views(self):
         saved = with_overrides('entity:e2', {'layout': {'choice': 'creature'}})
@@ -96,19 +96,19 @@ class CastSheetTest(unittest.TestCase):
         for view in ('Row 1, column 1: left side', 'Row 1, column 2: right side', 'Row 2, column 1: back',
                      'Row 2, column 2: top-down'):
             self.assertIn(view, prompt)
-        self.assertIn('THE CREATURE\nA barrel-bodied grazer with long horns.\n', prompt)
+        self.assertIn('THE CREATURE\nA speckled lizard with a curled tail.\n', prompt)
         for human in (' arms', 'collarbone', 'five fingers', 'outfit', 'clothing'):
             self.assertNotIn(human, prompt)
 
     def test_a_layout_of_your_own_replaces_the_template(self):
         saved = with_overrides('entity:e2', {'layout': {'choice': 'custom', 'text': 'A turnaround on ivory.'}})
         prompt = planned('entity:e2', saved=saved)['prompt']
-        self.assertTrue(prompt.startswith('A turnaround on ivory.\nA barrel-bodied grazer with long horns.'), prompt)
+        self.assertTrue(prompt.startswith('A turnaround on ivory.\nA speckled lizard with a curled tail.'), prompt)
         self.assertNotIn('reference sheet', prompt)
         placed = with_overrides('entity:e2', {'layout': {'choice': 'custom', 'text': 'Sheet of {description} on ivory.'}})
-        self.assertTrue(planned('entity:e2', saved=placed)['prompt'].startswith('Sheet of A barrel-bodied grazer with long horns. on ivory.'))
+        self.assertTrue(planned('entity:e2', saved=placed)['prompt'].startswith('Sheet of A speckled lizard with a curled tail. on ivory.'))
         empty = with_overrides('entity:e2', {'layout': {'choice': 'custom'}})
-        self.assertTrue(planned('entity:e2', saved=empty)['prompt'].startswith('A barrel-bodied grazer with long horns.'))
+        self.assertTrue(planned('entity:e2', saved=empty)['prompt'].startswith('A speckled lizard with a curled tail.'))
 
     def test_every_cast_layout_is_sixteen_by_nine(self):
         for choice in ('human', 'creature', 'custom'):
@@ -164,7 +164,7 @@ class CastSheetSizeTest(unittest.TestCase):
 
     def test_a_composed_scene_and_an_object_keep_the_workflow_size(self):
         saved = document()
-        saved['bible']['entities'].append(entity('e4', 'prop', 'Pry bar', 'A long steel pry bar.'))
+        saved['bible']['entities'].append(entity('e4', 'prop', 'Brass key', 'A small brass key.'))
         saved['boxes'][0]['schedule']['props'] = ['e4']
         self.assertNotIn('size', planned('entity:e4', saved=saved, recipe=SIZED))
 
@@ -187,7 +187,7 @@ class PromptPartsTest(unittest.TestCase):
         self.assertEqual([p['id'] for p in parts], ['layout', 'style'])
         self.assertEqual([p['where'] for p in parts], ['before', 'after'])
         self.assertTrue(parts[0]['text'].startswith('A 16:9 landscape character reference sheet'))
-        self.assertTrue(parts[1]['text'].startswith('Visual style: Painted angular planes'))
+        self.assertTrue(parts[1]['text'].startswith('Visual style: Soft graphite shading'))
         self.assertTrue(all(p['enabled'] and not p['edited'] for p in parts))
         self.assertEqual([p['id'] for p in row_of(document(), 'entity:e3')['prompt_parts']], ['layout', 'style', 'empty'])
 
@@ -195,14 +195,14 @@ class PromptPartsTest(unittest.TestCase):
         saved = document()
         parts = row_of(saved, 'entity:e2')['prompt_parts']
         prompt = planned('entity:e2')['prompt']
-        layout = parts[0]['text'].replace('{description}', 'A barrel-bodied grazer with long horns.')
+        layout = parts[0]['text'].replace('{description}', 'A speckled lizard with a curled tail.')
         self.assertEqual(prompt, '\n'.join([layout, parts[1]['text']]))
 
     def test_a_cast_layout_offers_the_human_creature_and_custom_choices(self):
         layout = row_of(document(), 'entity:e2')['prompt_parts'][0]
         self.assertEqual((layout['choice'], layout['choices']), ('human', ['human', 'creature', 'custom']))
         saved = document()
-        saved['bible']['entities'].append(entity('e4', 'prop', 'Pry bar', 'A long steel pry bar.'))
+        saved['bible']['entities'].append(entity('e4', 'prop', 'Brass key', 'A small brass key.'))
         saved['boxes'][0]['schedule']['props'] = ['e4']
         self.assertNotIn('choices', row_of(saved, 'entity:e4')['prompt_parts'][0])
         saved = with_overrides('entity:e2', {'layout': {'choice': 'creature'}})
@@ -257,13 +257,13 @@ class LocationLayoutTest(unittest.TestCase):
 
     def test_the_description_goes_where_the_grid_puts_it(self):
         prompt = planned_prompt('entity:e3')
-        self.assertIn('Location: A collapsed highway in dry grass.', prompt)
+        self.assertIn('Location: A paved courtyard with a stone fountain.', prompt)
         self.assertNotIn('{description}', prompt)
 
     def test_a_location_layout_of_your_own_replaces_the_grid(self):
         saved = self.location({'layout': {'choice': 'custom', 'text': 'One wide establishing view.'}})
         prompt = planned('entity:e3', saved=saved)['prompt']
-        self.assertTrue(prompt.startswith('One wide establishing view.\nA collapsed highway in dry grass.'), prompt)
+        self.assertTrue(prompt.startswith('One wide establishing view.\nA paved courtyard with a stone fountain.'), prompt)
         self.assertNotIn('2 rows and 2 columns', prompt)
         self.assertIn('The place is empty in every panel.', prompt)
 
@@ -281,9 +281,9 @@ class LocationGridTest(unittest.TestCase):
         self.assertIn('2 rows and 2 columns', prompt)
         for cell in ('row 1, column 1', 'row 1, column 2', 'row 2, column 1', 'row 2, column 2'):
             self.assertIn(cell, prompt)
-        self.assertIn('A collapsed highway in dry grass.', prompt)
+        self.assertIn('A paved courtyard with a stone fountain.', prompt)
         self.assertIn('no people, characters, animals or creatures', prompt)
-        self.assertNotIn('STRAY', prompt)
+        self.assertNotIn('MIRA', prompt)
         self.assertNotIn('Characters move', prompt)
 
     def test_a_place_with_an_interior_gets_one_interior_camera(self):
@@ -295,7 +295,7 @@ class LocationGridTest(unittest.TestCase):
 class ObjectGridTest(unittest.TestCase):
     def test_object_is_a_two_by_two_ivory_grid_of_angles_of_only_the_object(self):
         saved = document()
-        saved['bible']['entities'].append(entity('e4', 'prop', 'Pry bar', 'A long steel pry bar, sharpened at one end.'))
+        saved['bible']['entities'].append(entity('e4', 'prop', 'Brass key', 'A long steel pry bar, sharpened at one end.'))
         saved['boxes'][0]['schedule']['props'] = ['e4']
         body = {'timeline': json.dumps(saved), 'recipe': {'version': 2, 'adapter': 'pixels'}, 'workflow': {'api': {}}}
         row = next(r for r in reference_assets.catalog(saved, body) if r['key'] == 'entity:e4')
