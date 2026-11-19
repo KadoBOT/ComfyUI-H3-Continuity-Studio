@@ -46,8 +46,9 @@ Use image inputs that are optional on the node that reads them (for example the
 picture inputs of an edit model's text encoder) when stills should also work
 without references.
 
-A picture you connect to one of these inputs yourself is kept and sent with
-every still as `@still1`, `@still2` and so on, by input position.
+Pictures wired directly to these inputs are available as `@still1`, `@still2`
+and so on, by input position. Mention an alias in the frame image prompt or
+the selected shot of the fallback video prompt to send that picture.
 
 ## How the prompt names pictures
 

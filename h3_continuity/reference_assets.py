@@ -435,12 +435,17 @@ def _candidate(row):
     return next((c for c in row.get('candidates',[]) if c['id']==accepted.get('candidate_id')),None)
 
 
-def references(document, box_id, body=None):
+def references(document, box_id, body=None, *, entities=None):
     if not document.get('reference_preparation') and body is None:
         return []
     disabled = document.get('disabled_refs', [])
     refs = []
     rows = catalog(document)
+    if entities is not None:
+        locations = {row['key'] for row in rows if row['role']=='location' and row.get('entity') in entities
+                     and box_id in row['clips']}
+        rows = [row for row in rows if row.get('entity') in entities or
+                (row['role']=='scene_layout' and locations.intersection(row.get('sources', [])))]
     for row in rows:
         candidate = _candidate(row)
         if not candidate or box_id not in row['clips'] or row.get('slot') in disabled:
@@ -463,10 +468,11 @@ def references(document, box_id, body=None):
     return refs
 
 
-def identity_slots(document, box_id):
+def identity_slots(document, box_id, *, entities=None):
     if not document.get('reference_preparation'):
         return []
     return list(dict.fromkeys(slot for row in catalog(document) if row['role']=='appearance' and _candidate(row)
+                             and (entities is None or row.get('entity') in entities)
                              and box_id in row['clips'] and row.get('slot') not in document.get('disabled_refs',[])
                              for slot in row['identity_pictures']))
 

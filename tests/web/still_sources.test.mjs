@@ -29,30 +29,52 @@ function panel() {
 
 const pin = (take) => ({sequence: 's', box: 'a', take, created: '2026-11-01T10:00:00', layout: 'h3', latent_stamp: [1, 2], moment: 0});
 
-test('candidate generation always uses the current clip prompt without hidden or prepared text', async () => {
+test('frame prompt edits persist separately and blank text uses the latest clip prompt', async () => {
   const {frames, editor} = panel();
-  editor.state.prompt="Painted angular planes. Safety orange belongs only to STRAY's jacket.";
-  editor.state.boxes[0].prompt='integrated_multimodal_description:\n\n[Shot 1] The collapsed overpass in tall dry grass. Nobody.\n\noverall_soundscape:\nDry wind.\n\nnon_diegetic_music:\nN/A';
+  editor.state.prompt="Soft graphite shading. MIRA carries a blue umbrella.";
+  editor.state.boxes[0].prompt='integrated_multimodal_description:\n\n[Shot 1] The stone fountain in a quiet courtyard. Nobody.\n\noverall_soundscape:\nSoft rain.\n\nnon_diegetic_music:\nN/A';
   frames.adapter='pixels';frames.referenceLabel='<Picture {index}>';
-  frames.promptEl.value=frames.prompt();
   assert.equal(frames.promptEl.value,'');
   frames.refreshControls=()=>{};
   const submitted=[];
   frames.host.generateStill=async request=>{submitted.push(request);return {state:'complete', request};};
   frames.renderGenerateControls();
   assert.equal(frames.generateButton.disabled,false);
-  assert.equal((await frames.generate()).request.prompt,'integrated_multimodal_description:\n\n[Shot 1] The collapsed overpass in tall dry grass. Nobody.\n\noverall_soundscape:\nDry wind.\n\nnon_diegetic_music:\nN/A');
-  editor.state.boxes[0].prompt='The overpass at dusk. Nobody.';
+  assert.equal((await frames.generate()).request.prompt,'integrated_multimodal_description:\n\n[Shot 1] The stone fountain in a quiet courtyard. Nobody.\n\noverall_soundscape:\nSoft rain.\n\nnon_diegetic_music:\nN/A');
+  editor.state.boxes[0].prompt='The courtyard at dusk. Nobody.';
   frames.promptEl.value='   ';
   frames.renderGenerateControls();
   assert.equal(frames.generateButton.disabled,false);
-  assert.equal((await frames.generate()).request.prompt,'The overpass at dusk. Nobody.');
+  assert.equal((await frames.generate()).request.prompt,'The courtyard at dusk. Nobody.');
   frames.promptEl.value='An explicit still.';
-  editor.state.still_prompt_preparation={prompts:[{members:[{box:'a',target:{kind:'first'}}],prompt:'A person in an orange jacket.'}]};
+  frames.promptEl.dispatchEvent({type:'input'});
+  frames.promptEl.dispatchEvent({type:'change'});
+  assert.equal(editor.state.boxes[0].previews[0].still_prompt,'An explicit still.');
+  assert.equal(editor.state.boxes[0].prompt,'The courtyard at dusk. Nobody.');
+  editor.state=model.parseState(model.serialize(editor.state));
+  frames.promptEl.value='';
   frames.renderGenerateControls();
   assert.equal(frames.generateButton.disabled,false);
-  assert.equal((await frames.generate()).request.prompt,'The overpass at dusk. Nobody.');
-  assert.equal(submitted.length,3);
+  assert.equal((await frames.generate()).request.prompt,'An explicit still.');
+  frames.promptEl.dispatchEvent({type:'input'});
+  frames.promptEl.dispatchEvent({type:'change'});
+  assert.equal((await frames.generate()).request.prompt,'The courtyard at dusk. Nobody.');
+  assert.equal(submitted.length,4);
+});
+
+test('a frame edit overrides a shared prepared prompt only for its own target', async () => {
+  const {frames, editor}=panel();
+  const first={kind:'first'},last={kind:'last'};
+  editor.state.boxes[0].prompt='';
+  editor.state.still_prompt_preparation={prompts:[{members:[{box:'a',target:first},{box:'a',target:last}],prompt:'A prepared still.'}]};
+  frames.refreshControls=()=>{};
+  frames.host.generateStill=async request=>({state:'complete',request});
+  assert.ok(frames.promptSummary.children[0].children.includes(frames.promptEl));
+  frames.saveField('still_prompt','First frame only.');
+  assert.equal((await frames.generate()).request.prompt,'First frame only.');
+  frames.target=last;
+  assert.equal((await frames.generate()).request.prompt,'A prepared still.');
+  assert.equal(editor.state.boxes[0].prompt,'');
 });
 
 test('Generate stays disabled only when neither still nor video text is available', async () => {
@@ -63,7 +85,7 @@ test('Generate stays disabled only when neither still nor video text is availabl
   frames.host.generateStill=async()=>assert.fail('No request should be submitted');
   frames.renderGenerateControls();
   assert.equal(frames.generateButton.disabled,true);
-  await assert.rejects(frames.generate(),/prompt for this clip/);
+  await assert.rejects(frames.generate(),/frame image prompt or a clip video prompt/);
 });
 
 test('an empty image seed draws a new random seed for every candidate request', async () => {

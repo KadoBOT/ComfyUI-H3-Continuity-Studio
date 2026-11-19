@@ -12,7 +12,7 @@ import * as videoLayers from './h3c_layers.mjs?v=1dfc1612e462';
 import {audioSourceLocked} from './h3c_audio_windows.mjs?v=cdefbd77b246';
 import { AudioLanes } from './h3c_audio_lanes.mjs?v=2c8422417f0a';
 import { shotFrames, frameTargets, syncTargets, acceptedGuideFrames, endpointGuide, endpointReference, adoptEndpointGuides } from './h3c_shot_preview.mjs?v=1dfc1612e462';
-import {FrameImages, targetLabel, imageDrop} from './h3c_frame_images.mjs?v=f1342e7ccbe1';
+import {FrameImages, targetLabel, imageDrop} from './h3c_frame_images.mjs?v=8328028de648';
 import { splitBox, splitTiming } from './h3c_shot_split.mjs?v=d147aa313f65';
 import { fillReferenceSwitches } from './h3c_reference_switches.mjs?v=e94b5b02e02b';
 import { ReferenceReplacements } from './h3c_reference_replacements.mjs?v=00c628e63671';
@@ -255,8 +255,7 @@ const CSS = `
 .h3ct-image-actions > .h3ci-button:has(> .h3ci-sr):not([hidden]) ~ .h3ci-button { margin-left: 0; }
 .h3cx-inspector .h3ct-saved-controls .h3ct-number { width: 80px; flex: 0 0 80px; }
 .h3ct-prompt-summary { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border-radius: 6px; background: #ffffff06; border: 1px solid #2c313c; }
-.h3ct-prompt-summary-head { justify-content: space-between; }
-.h3ct-prompt-excerpt.empty { color: #8b93a1; font-style: italic; }
+.h3ct-prompt-excerpt[hidden] { display: none; }
 .h3ct-candidate-title { font-size: 12px; font-weight: 600; }
 .h3ct-empty-state { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 24px 12px; margin-bottom: 8px; color: #8b93a1; font-size: 12px; text-align: center; }
 .h3ct-empty-state[hidden] { display: none; }
