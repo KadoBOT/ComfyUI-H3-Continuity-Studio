@@ -1,7 +1,7 @@
 // Marker images own editable still prompts, candidates and the acceptance transaction. Queue recovery belongs to the host.
-import {frameTargets, buildStillPrompt, applyFrameGuide, endpointGuide, endpointReference} from './h3c_shot_preview.mjs?v=1dfc1612e462';
+import {frameTargets, applyFrameGuide, endpointGuide, endpointReference} from './h3c_shot_preview.mjs?v=1dfc1612e462';
 import {parseState, serialize, newSeed} from './h3c_timeline_model.mjs?v=1dfc1612e462';
-import {StillPromptPreparation,preparedStillPrompt,setPreparedStillPrompt} from './h3c_still_prompt_preparation.mjs?v=9ea1bfd9b6b5';
+import {StillPromptPreparation,preparedStillPrompt} from './h3c_still_prompt_preparation.mjs?v=9ea1bfd9b6b5';
 
 import {seedValue, stringifyJSON} from './h3c_project.mjs?v=0882b8a6265a';
 import {decorateIcon,icon,setIconLabel} from './h3c_icons.mjs';
@@ -64,12 +64,8 @@ export class FrameImages {
     this.root=el('div',null,'h3ct-frame-images');
     this.root.addEventListener('h3c-image-error',event=>this.note(event.detail));
     this.titleEl=el('strong');this.titleEl.tabIndex=-1;this.promptEl=el('textarea',null,'h3ct-text');this.promptEl.rows=5;
-    this.promptEl.setAttribute('aria-label','Still image prompt');
-    this.promptEl.placeholder='Prepare all still prompts, or enter one visible instant with its subject, setting, style and lighting.';
-    this.instructionEl=el('input',null,'h3ct-note');this.instructionEl.placeholder='Optional still instruction';
-    this.instructionEl.setAttribute('aria-label','Still instruction');
-    this.extraEl=el('textarea',null,'h3ct-text');this.extraEl.rows=2;this.extraEl.placeholder='Extra still details';
-    this.extraEl.setAttribute('aria-label','Extra still details');
+    this.promptEl.setAttribute('aria-label','Frame image prompt');
+    this.promptEl.placeholder='Leave blank to use the clip video prompt.';
     this.sourcePins=[];this.sourceEl=el('select',null,'h3ct-note');
     this.sourceEl.setAttribute('aria-label','Pinned still source');
     this.sourceEl.hidden=typeof this.host.stillSources!=='function';
@@ -94,18 +90,14 @@ export class FrameImages {
       if(this.seedEl.value!==''&&seed===undefined) {this.note('Image seed must be an unsigned 64-bit integer.');return;}
       this.saveField('still_seed',seed);
     });
-    this.promptEl.addEventListener('input',()=>{this.promptEditing=true;this.autoPrompt=undefined;this.preparation.invalidate();this.renderGenerateControls();});
-    this.promptEl.addEventListener('change',()=>{this.promptEditing=false;this.autoPrompt=undefined;this.saveField('still_prompt',this.promptEl.value);});
-    this.instructionEl.addEventListener('change',()=>{this.instructionEdited=true;this.rebuildFromControls();});
-    this.extraEl.addEventListener('change',()=>this.rebuildFromControls());
-    this.copyButton=button('Copy prompt',()=>this.copy());
+    this.promptEl.addEventListener('input',()=>{this.promptEditing=true;this.preparation.invalidate();this.renderGenerateControls();});
+    this.promptEl.addEventListener('change',()=>{this.promptEditing=false;this.saveField('still_prompt',this.promptEl.value);});
     this.uploadButton=decorateIcon(button('',()=>this.chooseUpload()),'upload','Upload guide…');
     this.uploadButton.title='Upload a picture as this frame’s guide. You can also drop one on the image.';
     this.generateButton=decorateIcon(button('',()=>this.generate()),'stills','Generate candidates',{text:true});
     this.settingsButton=decorateIcon(button('',async()=>{try{await this.host.openStillGenerator?.();}catch(error){this.note(error.message);}}),'settings','Generator settings');
     this.settingsButton.title='Open the connected generator in the graph to change models, sampler settings or LoRAs.';
     this.settingsButton.hidden=!this.host.openStillGenerator;
-    this.resetButton=button('Rebuild prompt',()=>{this.promptEl.value=this.prompt();this.autoPrompt=this.promptEl.value;this.saveField('still_prompt',this.promptEl.value);});
     this.generateButton.classList.add('h3ct-primary');
     const actions=el('div',null,'h3ct-row h3ct-image-actions');actions.append(this.generateButton,this.uploadButton,this.settingsButton);
     this.additionalReferencesEl=el('p',null,'h3ct-hint');this.additionalReferencesEl.hidden=true;
@@ -115,21 +107,12 @@ export class FrameImages {
     this.noteEl=el('p',null,'h3ct-hint');this.noteEl.setAttribute('role','status');
     this.preparation=new StillPromptPreparation(editor,()=>{this.promptEditing=false;this.render();});
     this.promptExcerpt=el('p',null,'h3ct-prompt-excerpt');
-    const editPrompt=decorateIcon(button('',()=>this.editor.focusClipPrompt?.()),'prompt','Edit clip prompt');
-    editPrompt.title='Candidates use this clip’s prompt. Edit it in the Prompt tab.';
     this.promptSummary=el('div',null,'h3ct-prompt-summary');
-    const summaryHead=el('div',null,'h3ct-row h3ct-prompt-summary-head');summaryHead.append(el('span','Prompt','h3ct-label'),editPrompt);
-    this.promptSummary.append(summaryHead,this.promptExcerpt);
-    const promptDetails=el('details',null,'h3ct-image-details');
-    this.preparedHintEl=el('p',null,'h3ct-hint');
-    const promptActions=el('div',null,'h3ct-row');promptActions.append(this.copyButton,this.resetButton);
-    promptDetails.append(el('summary','Edit image prompt'),this.preparedHintEl,field('Final still prompt',this.promptEl),promptActions);
+    this.promptSummary.append(field('Frame image prompt',this.promptEl),this.promptExcerpt);
     this.seedSection=new SwitchSection('Fixed image seed',{className:'h3ct-image-seed',onToggle:on=>{
       this.seedEdited=true;this.seedEl.value=on?String(newSeed()):'';this.saveField('still_seed',on?seedValue(this.seedEl.value):undefined);
     }});
     this.seedSection.body.append(field('Image seed',this.seedEl));
-    const instructionDetails=el('details',null,'h3ct-image-details');
-    instructionDetails.append(el('summary','Still instructions'),field('Reusable still instruction',this.instructionEl),field('Extra still details',this.extraEl));
     this.candidateTitle=el('strong',null,'h3ct-candidate-title');
     this.candidateHint=el('p','Candidates stay separate until you choose Use as guide.','h3ct-hint');
     const head=el('div',null,'h3ct-row h3ct-image-head');head.append(this.titleEl);
@@ -159,14 +142,6 @@ export class FrameImages {
     if (!resolved) throw new Error('The selected target was removed or its timing is unreadable.');
     return {box:state.boxes[index],index,...resolved};
   }
-  prompt() {
-    const {index}=this.location();
-    return buildStillPrompt(this.editor.state,index,this.target,{adapter:this.adapter,referenceLabel:this.referenceLabel,sourcePrompt:this.sourcePrompt,references:this.host.connected().images,instruction:this.instructionEl.value,extra:this.extraEl.value});
-  }
-  rebuildFromControls() {
-    if(preparedStillPrompt(this.editor.state,this.boxId,this.target)) {this.note('Edit the prepared final prompt to change its image details.');return;}
-    this.promptEl.value=this.prompt();this.autoPrompt=this.promptEl.value;this.saveField('still_prompt',this.promptEl.value);
-  }
   open(boxId,target) {
     this.host.touchStills?.();
     if (target.kind==='shot'&&target.shot===1) target={kind:'first'};
@@ -174,10 +149,10 @@ export class FrameImages {
     this.boxId=boxId;this.target=structuredClone(target);
     if (moved) {
       this.promptEditing=false;
-      this.previousGuide=null;this.sourcePrompt=undefined;
+      this.previousGuide=null;
       const saved=this.location().box.previews?.find(item=>key(itemTarget(item))===key(target));
-      this.recipeAvailable=undefined;this.instructionEdited=false;this.seedEdited=false;this.instructionEl.value='';this.extraEl.value='';this.seedEl.value=saved?.still_seed==null?'':String(saved.still_seed);
-      this.promptEl.value=saved?.still_prompt??this.prompt();this.autoPrompt=saved?.still_prompt==null&&!preparedStillPrompt(this.editor.state,boxId,target)?this.promptEl.value:undefined;this.note('');
+      this.recipeAvailable=undefined;this.seedEdited=false;this.seedEl.value=saved?.still_seed==null?'':String(saved.still_seed);
+      this.note('');
       for(const details of this.root.querySelectorAll(':scope > details')) details.open=false;
       this.refreshControls();
     }
@@ -194,16 +169,15 @@ export class FrameImages {
     const box=this.editor.state.boxes.find(box=>box.id===this.boxId);
     if(!box) return;
     const boxId=this.boxId,stamp=key(this.target);
-    const saved=box.previews?.find(item=>key(itemTarget(item))===stamp);
-    const ready=this.controlsReady=this.loadControls(saved);
+    const ready=this.controlsReady=this.loadControls();
     ready.catch(error=>{
       if(this.controlsReady===ready&&this.boxId===boxId&&key(this.target)===stamp) this.note(error.message);
     });
     return ready;
   }
-  async loadControls(saved) {
+  async loadControls() {
     if(!this.host.stillControls) return;
-    const boxId=this.boxId,stamp=key(this.target),before=this.promptEl.value,instructionBefore=this.instructionEl.value;
+    const boxId=this.boxId,stamp=key(this.target);
     const generation=this.host.referenceContext?.(),load=this.controlLoad={};
     this.controlsFailed=false;
     let controls;
@@ -213,10 +187,6 @@ export class FrameImages {
     this.recipeAvailable=!!controls;
     this.generatorLabel=controls?.label;this.adapter=controls?.adapter;this.referenceLabel=controls?.referenceLabel;this.seedScope=controls?.seedScope;
     this.additionalReferences=controls?.additionalReferences??[];
-    if(controls) {
-      if(!this.instructionEdited&&this.instructionEl.value===instructionBefore) this.instructionEl.value=controls.instruction;
-      if(!this.promptEditing&&!preparedStillPrompt(this.editor?.state,boxId,this.target)&&saved?.still_prompt==null && (this.autoPrompt!=null?this.promptEl.value===this.autoPrompt:this.promptEl.value===before)) {this.promptEl.value=this.prompt();this.autoPrompt=this.promptEl.value;}
-    }
     this.render();
   }
   saveField(field,value) {
@@ -225,9 +195,6 @@ export class FrameImages {
       this.promptEditing=false;
     }
     this.host.undoStep?.();
-    if(field==='still_prompt'&&setPreparedStillPrompt(this.editor.state,this.boxId,this.target,value)) {
-      this.editor.commit(false);this.host.undoStep?.();this.render();return;
-    }
     let saved=box.previews?.find(item=>key(itemTarget(item))===key(this.target));
     if(!saved) (box.previews??=[]).push(saved={target:structuredClone(this.target),frame});
     if(value===undefined) delete saved[field];else saved[field]=value;
@@ -242,7 +209,7 @@ export class FrameImages {
   }
   async loadSources() {
     if (!this.host.stillSources) return;
-    const box=this.boxId,target=structuredClone(this.target),stamp=key(target),{frame}=this.location(),load=new AbortController(),before=this.promptEl?.value,automatic=this.promptEl&&this.promptEl.value===this.prompt();
+    const box=this.boxId,target=structuredClone(this.target),stamp=key(target),{frame}=this.location(),load=new AbortController();
     const generation=this.host.referenceContext?.();
     this.sourceLoad?.abort();this.sourceLoad=load;this.sourcesFailed=false;this.sourceEl.disabled=true;
     if(!this.sourcePins?.length) {
@@ -262,8 +229,6 @@ export class FrameImages {
     this.sourceEl.disabled=false;
     this.live?.();
     const saved=this.location().box?.previews?.find(item=>key(itemTarget(item))===stamp);
-    this.sourcePrompt=result.source_prompt;
-    if(!preparedStillPrompt(this.editor?.state,box,this.target)&&this.promptEl&&saved?.still_prompt==null&&(this.autoPrompt!=null?this.promptEl.value===this.autoPrompt:automatic&&this.promptEl.value===before)){this.promptEl.value=this.prompt();this.autoPrompt=this.promptEl.value;}
     this.previousGuide=structuredClone(result.guide_source??null);
     const selected=null;
     if (!Object.hasOwn(saved ?? {},'still_source')) this.saveSource(selected);
@@ -293,20 +258,14 @@ export class FrameImages {
     this.uploadButton.disabled=typeof this.host.importGuide!=='function';
     const additionalReferences=this.additionalReferences??[];
     this.additionalReferencesEl.hidden=!additionalReferences.length;
-    setText(this.additionalReferencesEl,additionalReferences.length?`Additional identity references included: ${additionalReferences.join(', ')}. Use an alias in the clip prompt to match it to a subject, e.g. “Use ${additionalReferences[0]} for the person's identity.” These names stay separate from Story references.`:'');
+    setText(this.additionalReferencesEl,additionalReferences.length?`Connected picture aliases: ${additionalReferences.join(', ')}. Mention an alias in the frame image prompt to include that picture.`:'');
     const saved=box.previews?.find(item=>key(itemTarget(item))===key(this.target));
-    const prepared=preparedStillPrompt(this.editor.state,this.boxId,this.target);
-    if(prepared&&!this.promptEditing) {this.promptEl.value=saved?.still_prompt??prepared.prompt;this.autoPrompt=undefined;}
+    if(!this.promptEditing) {
+      const prompt=this.framePrompt();
+      if(this.promptEl.value!==prompt) this.promptEl.value=prompt;
+    }
     this.renderGenerateControls();
-    setText(this.resetButton,prepared?'Use prepared prompt':'Rebuild prompt');
-    this.resetButton.title=prepared?'Replace this target’s earlier override with its shared prepared prompt.':'';
-    this.preparedHintEl.hidden=!prepared||saved?.still_prompt==null;
-    setText(this.preparedHintEl,'Earlier saved prompt active. Use prepared prompt to use the new batch result; the earlier text stays saved for Undo.');
     this.preparation.render(this.boxId,this.target);
-    const source=this.candidatePrompt(),summary=promptSections(source)?.find(section=>section.key==='summary');
-    const excerpt=summary?summary.fields.map(part=>part.value.trim()).filter(Boolean).join(' '):source.trim();
-    setText(this.promptExcerpt,excerpt||'No prompt yet. Candidates use this clip’s prompt.');
-    this.promptExcerpt.classList.toggle('empty',!excerpt);
     this.seedSection.set(this.seedEl.value!=='',{state:this.seedEl.value?'':'Random for each candidate'});
     this.guideSourceEl.hidden=true;
     setText(this.guideSourceEl,this.previousGuide?`Continuity: ${guideLabel(this.editor.state,this.previousGuide)} accepted guide. The requested scene controls the new image.`:'');
@@ -378,15 +337,28 @@ export class FrameImages {
       card.append(details);this.candidatesEl.append(card);
     }
   }
+  framePrompt() {
+    if(this.promptEditing) return this.promptEl.value;
+    const {box}=this.location();
+    const saved=box.previews?.find(item=>key(itemTarget(item))===key(this.target));
+    return saved?.still_prompt??preparedStillPrompt(this.editor.state,this.boxId,this.target)?.prompt??'';
+  }
   candidatePrompt() {
-    return this.location().box.prompt;
+    const prompt=this.framePrompt();
+    return prompt.trim()?prompt:this.location().box.prompt;
   }
   renderGenerateControls() {
-    const empty=!this.candidatePrompt().trim();
+    const source=this.candidatePrompt(),empty=!source.trim();
+    this.promptExcerpt.hidden=!!this.framePrompt().trim();
+    if(!this.promptExcerpt.hidden) {
+      const summary=promptSections(source)?.find(section=>section.key==='summary');
+      const excerpt=summary?summary.fields.map(part=>part.value.trim()).filter(Boolean).join(' '):source.trim();
+      setText(this.promptExcerpt,excerpt?`Using video prompt: ${excerpt}`:'Enter a frame image prompt or a clip video prompt.');
+    }
     this.generateButton.disabled=!!this.generating||empty||typeof this.host.generateStill!=='function'||this.recipeAvailable===false;
     setIconLabel(this.generateButton,this.generating?'Generating candidates…':'Generate candidates');
-    this.generateButton.title=this.generating?'Preparing or submitting still candidates.':empty?'Write a prompt for this clip to generate candidates.':
-      this.generateButton.disabled?'Configure a local still recipe to generate images.':'Generate image candidates for this frame from the clip prompt';
+    this.generateButton.title=this.generating?'Preparing or submitting still candidates.':empty?'Enter a frame image prompt or a clip video prompt.':
+      this.generateButton.disabled?'Configure a local still recipe to generate images.':'Generate image candidates for this frame';
   }
   renderRecovery() {
     const owner=this.editor.state.boxes.length?this.root:this.editor.root;
@@ -431,13 +403,6 @@ export class FrameImages {
   }
   destroy() {
     const dialog=this.previewDialog;this.previewDialog=null;dialog?.close();dialog?.remove();
-  }
-  editedPrompt() {if(this.autoPrompt!=null&&this.promptEl.value===this.autoPrompt){this.live?.();this.promptEl.value=this.prompt();this.autoPrompt=this.promptEl.value;}return this.promptEl.value;}
-  async copy() {
-    if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(this.editedPrompt());
-    else {const copy=el('textarea');copy.value=this.editedPrompt();this.root.append(copy);copy.select();
-      const copied=document.execCommand('copy');copy.remove();if (!copied) throw new Error('Select the prompt and copy it.');}
-    this.note('Prompt copied.');
   }
   chooseUpload() {
     const input=el('input');input.type='file';input.accept='image/*';
@@ -515,10 +480,12 @@ export class FrameImages {
       if(boxId!==this.boxId || key(target)!==key(this.target)) throw new Error('The selected still target changed. Generate from the current target.');
       const missing=await this.host.referenceReadiness?.(boxId)??[];
       if(missing.length){await this.host.openReferencePreparation(missing);this.note('Prepare and approve the missing references, or disable their preparation requirement.');return;}
-      const {box,frame}=this.location(boxId,target),chosen=box.previews?.find(item=>key(itemTarget(item))===key(target));
+      if(boxId!==this.boxId || key(target)!==key(this.target)) throw new Error('The selected still target changed. Generate from the current target.');
+      this.live();
+      const {frame}=this.location(boxId,target);
       const seed=this.seedEl.value===''?undefined:seedValue(this.seedEl.value);
       if(this.seedEl.value!=='' && seed===undefined) throw new Error('Image seed must be an unsigned 64-bit integer.');
-      const prompt=this.candidatePrompt();if(!prompt.trim())throw new Error('Write a prompt for this clip before generating candidates.');
+      const prompt=this.candidatePrompt();if(!prompt.trim())throw new Error('Enter a frame image prompt or a clip video prompt before generating candidates.');
       const request={box:boxId,target,frame,prompt,seed:seed??newSeed(),source:null};
       this.note('Submitting still candidates…');
       const receipt=await this.host.generateStill(request);

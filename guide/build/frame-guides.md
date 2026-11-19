@@ -19,7 +19,7 @@ The panel offers:
 | **Upload guide…** | Accepts a local image as this marker's guide. |
 | **Generate candidates** | Asks the connected still generator for images (see below). Candidates stay candidates until you accept one. |
 | **Generator settings** | Selects and centres the connected generator's node group in the graph so you can edit models, steps or sampler. |
-| **Prompt excerpt** | The selected clip's prompt, used directly for every candidate. Edit the clip prompt to change it. |
+| **Frame image prompt** | Enter a separate prompt for this First, Last or Shot target. Leave it blank to use the clip's current video prompt. |
 | **Image seed** | Leave it empty to give every candidate a new random seed. Enter a number to repeat one exact seed; each candidate records the seed it used. |
 | **Candidates (N)** | Each candidate keeps its prompt, exact seed and source. **Use as guide** assigns it; click a thumbnail for a large preview (**Esc** closes). |
 | **Remove guide** | Removes the assignment. The image stays in your candidates. |
@@ -51,11 +51,11 @@ Still generation needs an image generator connected to the Timeline. The simples
 Select models you have installed; nothing is downloaded. Other image generators connect through `still_image` with no extra node. The **Still Recipe** node's `bindings` input, which declares where a generator's prompt, seed, size and reference inputs are, remains for workflows that already use it; see the Qwen Story Studio notes in the repository for the schema.
 
 !!! info "Which prompt is used"
-    Generate candidates always uses the selected clip's prompt. Shared text, saved prepared still prompts, extra descriptions and generator instructions are not appended. **MiniMax H3 Image Still** sends that text as written unless its optional prompt enhancer is turned on, and splits a location sheet into separate views; see [Stills with MiniMax H3 Image](minimax-h3-image-stills.md#location-sheets). References remain image inputs; their labels and descriptions remain in candidate metadata. The subgraph's own prompt and instruction are used when you run it standalone.
+    Generate candidates uses the **Frame image prompt** shown in the target panel. If it is blank, generation uses the selected clip's video prompt. Editing the frame field saves to that target and leaves the video prompt intact. **MiniMax H3 Image Still** sends that text as written unless its optional prompt enhancer is turned on, and splits a location sheet into separate views; see [Stills with MiniMax H3 Image](minimax-h3-image-stills.md#location-sheets). References remain image inputs; their labels and descriptions remain in candidate metadata. The subgraph's own prompt and instruction are used when you run it standalone.
 
 ### Continuity between stills
 
-- Still requests receive only relevant Cast images, images mentioned in the still prompt, and images connected to the Still Recipe. Scene anchors and earlier guides are not added automatically.
+- Still requests use relevant Cast pictures and references named in the frame image prompt. With the video prompt fallback, reference selection follows the selected shot. Mention a picture wired directly to the still generator by its `@stillN` alias to include it.
 - **Use as scene anchor** promotes the current accepted image; **Choose an accepted scene anchor** then **Use selected scene anchor** reuses an anchor from another scene when you return to a place.
 - A camera cut keeps the anchor; a new scene starts another one. Changing an anchor marks dependent candidates as out of date.
 - Without a chosen video take, accept First first, then Shot and Last in order: each new candidate receives the preceding accepted guide.
@@ -63,7 +63,7 @@ Select models you have installed; nothing is downloaded. Other image generators 
 
 ### Prepare all still prompts
 
-Saved still-prompt preparation data remains available as writing notes. It does not override **Generate candidates**, which always uses the clip prompt. To use different prose for a candidate, edit the clip prompt itself. Generation never calls the converter.
+A prepared still prompt fills the frame field when the target has no saved edit. You can edit it for that target or clear it to use the video prompt. Generation never calls the converter.
 
 ## How guides meet neighbouring clips
 
