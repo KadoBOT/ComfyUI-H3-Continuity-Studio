@@ -2,7 +2,13 @@
 
 All notable changes to H3 Continuity Studio are recorded here. Versions follow [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [1.3.1] - 2026-11-25
+
+### Changed
+
+- **Selected moments are picked from the playing video.** Choose an earlier clip and its rendered video plays in the panel; **At** follows the playhead (type a time to jump there). Type what to remember next to **Remember** and press it, or Enter, to keep that exact moment. Remembered moments are listed with their clip and time, an editable description, **Show** to play from there and **Remove**. Moments a cut remembers on its own are listed apart, under **Also remembered at the cut**, and the mode's explanation is shorter.
+
+## [1.3.0] - 2026-11-19
 
 ### Added
 
@@ -14,6 +20,11 @@ All notable changes to H3 Continuity Studio are recorded here. Versions follow [
 - **A generated reference image no longer vanishes when you edit the reference while it renders.** The image was made, but the Studio dropped it because the reference's design had changed in the meantime, leaving the reference "Missing". It is now kept and shown as out of date (it cannot be approved until you regenerate), and images dropped this way earlier are recovered when the references are next checked.
 - **Character and location sheets are 16:9 again.** A cast or location reference with no size set under **Advanced: seed and dimensions** now asks the image workflow connected to **still_image** for exactly 16:9, instead of inheriting that workflow's own shape (a vertical Story gave a vertical sheet). Only the aspect ratio is chosen: a workflow that renders from a megapixel setting keeps rendering at that size. Because sizes are multiples of 32, the width and height sent are the 16:9 pair (a multiple of 512 × 288) nearest the size the workflow is set to, or 2048 × 1152 when that cannot be read. Setting a width and height there still wins; typing just one fills the other at 16:9. Objects and composed scenes still follow the workflow's size.
 - **Non-human characters no longer come out as people in someone else's clothes.** The Story style sentence "only the curator wears a cobalt coat" reached every character sheet, because only sentences that *name* another character were removed. Sentences that share two or more distinctive words with another character's description are now left out too. The sheet template also no longer assumes collarbones, arms and five fingers, and says that the character description decides species and anatomy.
+
+### Frame image generation
+
+- Edit the image prompt for each First, Last, or Shot target independently. A blank frame prompt uses the clip's current video prompt.
+- Attach only the pictures used by the frame or selected shot. Unused generator inputs are detached from each queued still.
 
 ## [1.2.3] - 2026-11-18
 

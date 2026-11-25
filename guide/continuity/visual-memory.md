@@ -32,11 +32,11 @@ A cut marked **New scene** starts a new scene and keeps that visual history whil
 ## Selected moments, step by step
 
 1. Select the **later** clip and open **Settings → Visual memory**; choose **Selected moments**.
-2. Press **Remember a moment**. In the new row, pick the **earlier clip** and the **time** within its delivered footage. **View source moment** plays it.
-3. Describe what matters, for example `red brick house, blue door, three upstairs windows`.
-4. **Render the source clip first**. A clip whose source is missing, stale or incompatible stops with a clear "render the source first" message.
+2. Pick the **Earlier clip**. Its rendered video plays in the panel, and **At** follows the playhead; you can also type a time to jump there.
+3. Stop where the clip shows what matters, describe it next to **Remember**, for example `red brick house, blue door, three upstairs windows`, and press **Remember** (or Enter). The moment is kept at that exact time. Up to three can be remembered.
+4. **Render the source clip first**. Until it is rendered you can still type the time, but there is nothing to watch, and a clip whose source is missing, stale or incompatible stops with a clear "render the source first" message.
 
-The panel lists the moments in force, for example *Clip 3 · Full video · the previous shot before this cut / Clip 1 · 0.7 s · the living room, wide view / Clip 1 · 5.0 s · the living room by the front door*, and reminds you that *H3 snaps each moment to a 17-frame boundary and reads 5 frames*. The window can therefore begin slightly before the time you picked. For a continuing source clip, the time refers to the delivered footage, and a window never starts inside the replayed overlap.
+Remembered moments are listed under **Remembered**, for example *Clip 1 · 0.70 s · the living room, wide view*. Edit the description in place, **Show** plays the earlier clip from that moment, and **Remove** forgets it. Moments the clip remembers on its own at a cut are listed below, for example *Also remembered at the cut: Clip 3 · Full video · the previous shot before this cut*. H3 snaps each moment to a 17-frame boundary and reads 5 frames, so the window can begin slightly before the time you picked. For a continuing source clip, the time refers to the delivered footage, and a window never starts inside the replayed overlap.
 
 ## What re-rendering does
 
