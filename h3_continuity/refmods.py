@@ -1,5 +1,6 @@
 """Optional integration with the installed H3 RefMod numbered encoder."""
 
+import math
 import os
 import sys
 
@@ -113,7 +114,47 @@ class ReferenceClip:
         return result
 
 
+def prepare_references(prompt, mods, vae, reference_fps=24.0):
+    """Present loaded RefMods as (items, blocks), whether or not the installed backend exports the helper.
+
+    ComfyUI-MiniMaxH3Mod 0.2.x keeps this logic inside MiniMaxH3RefModTextEncode.encode(), so the same
+    steps run here: skip zero strength, decode the weakened latent the DiT receives, sample video at 2 fps."""
+    native = getattr(prompt, "prepare_references", None)
+    if native is not None:
+        return native(mods, vae)
+    active = []
+    for mod, strength in mods:
+        if not math.isfinite(strength) or not 0 <= strength <= 1:
+            raise ValueError("H3 Timeline: RefMod strength must be between 0 and 1")
+        if strength > 0:
+            active.append((mod, strength))
+    if vae is None and any(mod.kind != "audio" for mod, _ in active):
+        raise ValueError("H3 Timeline: connect the H3 video VAE to use visual RefMods")
+    items, blocks = [], []
+    for mod, strength in active:
+        block = mod.ref_block(strength)
+        block["refmod"] = True
+        kind = block["kind"]
+        item = {"type": kind}
+        if kind != "audio":
+            pixels = vae.decode(block["latent"])
+            if pixels.ndim == 5 and pixels.shape[0] == 1:
+                pixels = pixels[0]
+            if pixels.ndim != 4 or pixels.shape[-1] != 3 or pixels.shape[0] < 1:
+                raise ValueError(f"H3 Timeline: the H3 video VAE must decode RefMods to frames of height, width and 3 channels; got {tuple(pixels.shape)}")
+            if kind == "image":
+                item["data"] = pixels[:1].cpu().clone()
+            else:
+                times = [i / 2 for i in range(math.ceil(pixels.shape[0] * 2 / reference_fps))]
+                indices = [min(round(t * reference_fps), pixels.shape[0] - 1) for t in times]
+                item["data"] = pixels[indices].cpu()
+                item["timestamps"] = times
+        items.append(item)
+        blocks.append(block)
+    return items, blocks
+
+
 def prepare(clip, vae, refs):
     _, prompt = backend()
-    items, blocks = prompt.prepare_references(load(refs), vae)
+    items, blocks = prepare_references(prompt, load(refs), vae)
     return ReferenceClip(clip, items), blocks

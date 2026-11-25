@@ -1,30 +1,30 @@
-import {ReferenceClient,applyReferenceApproval,requiredAssets,preparationOf} from './h3c_reference_preparation.mjs?v=5ae76a0edff0';
-import {generationControl,setGenerationControl} from './h3c_generation_archive.mjs?v=cc8f0dd38e59';
+import {ReferenceClient,applyReferenceApproval,requiredAssets,preparationOf} from './h3c_reference_preparation.mjs?v=9773fd8680c8';
+import {generationControl,setGenerationControl} from './h3c_generation_archive.mjs?v=b545a781b430';
 // Mounts the H3 Timeline face on H3C_Timeline nodes, edits the Timeline in the Studio, and keeps its status in sync
 // with the server. Browsers may cache the .mjs helpers, so their ?v= tags come from node tools/module_versions.mjs --write.
 import { freshProject } from './h3c_new_project.mjs?v=96adbc29f06d';
-import { saveBeforeNewProject } from './h3c_story_library.mjs?v=2d0984ea641c';
+import { saveBeforeNewProject } from './h3c_story_library.mjs?v=b75deb286b1d';
 import { app } from '../../scripts/app.js';
-import {syncImageOutputs,compileImageOutputs} from './h3c_timeline_images.mjs?v=f276b2ccd8b2';
+import {syncImageOutputs,compileImageOutputs} from './h3c_timeline_images.mjs?v=8161b6a7728c';
 import { api } from '../../scripts/api.js';
 import { mountSavedState, autosaveEnabled, AUTOSAVE_IDLE_MS, AUTOSAVE_OFF, userBusy, releaseUser } from './h3c_saved_state.mjs?v=633682c759bb';
 import {setText} from './h3c_dom.mjs?v=584a9bf55653';
 import { showOwnElement } from './h3c_dom_widget.mjs?v=961e6d7f3bb7';
 import { WATCH_EVENTS, idleWatch, progressText, watchEvent } from './h3c_render_watch.mjs?v=7c8222569836';
 import { DEFAULT_AHEAD, QueueFeed, feedNote, queueAhead } from './h3c_queue_feed.mjs?v=9392f926e4e3';
-import { studio } from './h3c_studio.mjs?v=0cfdc40ad356';
-import { FACE_HEIGHT, TimelineFace } from './h3c_timeline_face.mjs?v=f87ad7bf252b';
-import { TimelineEditor } from './h3c_timeline_editor.mjs?v=d8b49839a79f';
-import { referenceFile, referenceSource, referencePools, referenceType, effectiveRefmods, parseState, serialize, unknownFeatures, readOnlyNote } from './h3c_timeline_model.mjs?v=1dfc1612e462';
-import {referenceImageFile} from './h3c_reference_sources.mjs?v=107846e10a11';
-import { pictureRefs } from './h3c_pictures.mjs?v=220c235a7923';
-import { voiceRefs } from './h3c_voices.mjs?v=efb0f83d17e1';
+import { studio } from './h3c_studio.mjs?v=ca394a06a8f0';
+import { FACE_HEIGHT, TimelineFace } from './h3c_timeline_face.mjs?v=9e7e2265c00b';
+import { TimelineEditor } from './h3c_timeline_editor.mjs?v=f7f58d22a4b7';
+import { referenceFile, referenceSource, referencePools, referenceType, effectiveRefmods, parseState, serialize, unknownFeatures, readOnlyNote } from './h3c_timeline_model.mjs?v=03f370baf50a';
+import {referenceImageFile} from './h3c_reference_sources.mjs?v=3f1e2241a14f';
+import { pictureRefs } from './h3c_pictures.mjs?v=b13ece205589';
+import { voiceRefs } from './h3c_voices.mjs?v=5ec3c15965b6';
 import {captureRecipe,captureTimelineId,captureStillBody,stillTimelineBody,recipeControls,StillClient,isolateVideoPrompt,videoOutputs,hasVideoOutput as compiledVideoOutput,graphWiring} from './h3c_stills.mjs?v=0925953008c8';
-import {boundarySnapshot} from './h3c_frame_images.mjs?v=f1342e7ccbe1';
+import {boundarySnapshot} from './h3c_frame_images.mjs?v=be45c49cb8fd';
 import {stillPromptSource,sameStillPromptSource} from './h3c_still_prompt_preparation.mjs?v=9ea1bfd9b6b5';
-import { TakesClient } from './h3c_takes.mjs?v=15deab5acdd6';
+import { TakesClient } from './h3c_takes.mjs?v=b881254039e2';
 import {ProjectSession, forkProject, parseJSON, projectErrorMessage, stringifyJSON} from './h3c_project.mjs?v=0882b8a6265a';
-import {TimelineHistory, dropReceipts, withLiveReceipts} from './h3c_history.mjs?v=e4fece99d8a4';
+import {TimelineHistory, dropReceipts, withLiveReceipts} from './h3c_history.mjs?v=a3b5f0d772f7';
 import {confirmRegeneration} from './h3c_regeneration.mjs?v=44ff3a1a199c';
 import {startGeneration,useGeneration} from './h3c_generations.mjs?v=2ed8014b9ec0';
 
@@ -870,8 +870,8 @@ export class TimelineHost {
     const read=this.controlsRead=(async()=>{
       await this.settled();await afterPaint();
       this.controlsRead=null;
-      // Without a connected still recipe there is nothing to read; compiling the workflow would only say so.
-      if(this.node.graph===(app.rootGraph??app.graph)&&this.node.mode!==MUTED&&this.node.mode!==BYPASSED&&!isLinked(this.node,'still_recipe'))return null;
+      // Without a connected still recipe or still_image workflow there is nothing to read; compiling the workflow would only say so.
+      if(this.node.graph===(app.rootGraph??app.graph)&&this.node.mode!==MUTED&&this.node.mode!==BYPASSED&&!isLinked(this.node,'still_recipe')&&!isLinked(this.node,'still_image'))return null;
       const snapshot=await app.graphToPrompt();
       const id=captureTimelineId(snapshot,this.node.id,{root:this.node.graph===(app.rootGraph??app.graph)});
       const recipe=captureRecipe(snapshot,id);

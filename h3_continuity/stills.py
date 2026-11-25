@@ -310,16 +310,21 @@ def prepare(body):
         index = next((i for i, box in enumerate(parsed.boxes) if box.id == body.get('box')), None)
         if index is None:
             raise ValueError('H3 still target box is missing')
-        body = dict(body, prompt=parsed.boxes[index].prompt)
-        if not body['prompt'].strip():
-            raise ValueError('Write a prompt for this clip before generating candidates.')
+        prompt = body.get('prompt', '')
+        if not isinstance(prompt, str):
+            raise ValueError('H3 still prompt must be text')
+        prompt = prompt if prompt.strip() else parsed.boxes[index].prompt
+        if not prompt.strip():
+            raise ValueError('Enter a frame image prompt or a clip video prompt before generating candidates.')
+        body = dict(body, prompt=prompt)
         context = int((body.get('settings') or {}).get('context_frames') or 39)
         frame = _target_frame(parsed, index, body.get('target') or {'kind': 'first'}, context)
+        reference_text, entities = _frame_reference_scope(body, parsed, index, frame, context)
         from . import reference_assets
         reference_assets.require_ready(json.loads(body['timeline']), parsed.boxes[index].id, body)
         recipe = body['recipe']
         if recipe.get('version') == 2 and recipe.get('adapter') == 'pixels':
-            return _prepare_pixels(body, parsed, index, frame, name)
+            return _prepare_pixels(body, parsed, index, frame, name, reference_text, entities)
         graph = copy.deepcopy(body['workflow']['api'])
         bindings = recipe['bindings']
         output, condition = recipe['output'], bindings['conditioning']['node']
@@ -331,8 +336,6 @@ def prepare(body):
             raise ValueError('H3 still recipe final prompt must bind the native conditioner prompt')
         native = graph[condition]['inputs']
         native['prompt'] = body['prompt']
-        if not isinstance(native['prompt'], str):
-            raise ValueError('H3 still prompt must be text')
         if body.get('seed') is not None:
             locator = bindings['seed']
             if type(body['seed']) is not int or locator['node'] not in graph or locator['input'] not in graph[locator['node']]['inputs']:
@@ -356,7 +359,7 @@ def prepare(body):
         source = None
         mode = None
         guide_source = None
-        owners, tags = _references(body, parsed, index, frame, graph, native, ports)
+        owners, tags = _references(body, parsed, index, frame, graph, native, ports, reference_text)
         native['prompt'] = rules.rewrite(native['prompt'], tags) if tags else native['prompt']
         native['source_pin'] = json.dumps({'body': request_context, 'pin': source, 'references': owners,
                                          'guide_source': guide_source})
@@ -405,13 +408,14 @@ def _timeline_inputs(body, graph, required):
             if re.fullmatch(r'(images|videos|audios|video_audios)\.(image|video|audio|video_audio)[1-9]\d*', key)}
 
 
-def _references(body, parsed, index, frame, graph, native, ports):
-    mentioned = [name for _, name in rules.mentions(native['prompt'])
+def _references(body, parsed, index, frame, graph, native, ports, reference_text=None):
+    mentioned = [name for _, name in rules.mentions(native['prompt'] if reference_text is None else reference_text)
                  if not rules.reference_disabled(name, parsed.disabled_refs)]
     if len(mentioned) != len(set(mentioned)):
         mentioned = list(dict.fromkeys(mentioned))
-    for port in ports:
-        native.pop(port, None)
+    for port in list(native):
+        if REFERENCE_PORT.fullmatch(port):
+            del native[port]
     if not mentioned:
         return [], {}
     for slot in list(mentioned):
@@ -670,39 +674,75 @@ def _pixel_link(owner, link, graph):
             json.dumps(ancestry, sort_keys=True).encode()).hexdigest())
 
 
-def _recipe_references(body):
+def _recipe_references(body, reference_text):
     graph=body['workflow']['api']
     ports=body['recipe']['bindings']['references']
+    requested = dict.fromkeys(match.lower() for match in re.findall(r'@still[1-9]\d*\b', reference_text, flags=re.I))
     refs=[]
     for number,loc in enumerate(ports,1):
+        slot=f'still{number}'
+        if '@'+slot not in requested:
+            continue
         if loc['node'] not in graph:
             raise ValueError('Still recipe reference IMAGE port is missing')
         link=graph[loc['node']]['inputs'].get(loc['input'])
         if link is None:
             continue
-        slot=f'still{number}'
         ref={'slot':slot,'kind':'image','roles':['additional identity: '+slot],'source_port':copy.deepcopy(loc)}
         _pixel_link(ref,link,graph)
         refs.append(ref)
     connected={ref['slot'] for ref in refs}
-    for slot in re.findall(r'@still[1-9]\d*\b',body['prompt'],flags=re.I):
-        if slot[1:].lower() not in connected:
+    for slot in requested:
+        if slot[1:] not in connected:
             raise ValueError(f'Still reference {slot} is not connected')
     return refs
 
 
-def _prepare_pixels(body, parsed, index, frame, name):
-    selection = copy.deepcopy(body)
-    if isinstance(selection.get('prompt'), str):
-        selection['prompt'] = re.sub(r'<image([1-9]\d*)>', lambda m:'@image'+m[1], selection['prompt'], flags=re.I)
+def _frame_reference_scope(body, parsed, index, frame, context):
+    from .still_prompt_preparation import _shots, _visual
+
+    clip = parsed.boxes[index].prompt
+    prompt = body['prompt']
+    shots, style = _shots(prompt)
+    target = body.get('target') or {'kind': 'first'}
+    number = target.get('shot', 1)
+    if len(shots) > 1 and target['kind'] == 'last':
+        played, carried = rules.box_length(parsed, index, context)
+        frames = rules._shot_frames(prompt, carried, played - (0 if carried else 1))
+        number = max((n for n in frames if frames[n] <= frame), key=lambda n: (frames[n], n), default=1)
+    shot = shots[0] if len(shots) == 1 else next((shot for shot in shots if shot['number'] == number), None)
+    text = '\n'.join(filter(None, (_visual(style), _visual(shot['text']) if shot else '')))
+    labels = set(re.findall(r'<Subject [1-9]\d*>', text))
+    definitions = story_bible.subject_lines(clip) | story_bible.subject_lines(prompt)
+    text += ''.join('\n' + definitions[label][2] for label in sorted(labels & definitions.keys()))
+    text = re.sub(r'<image([1-9]\d*)>', lambda m:'@image'+m[1], text, flags=re.I)
+    if len(shots) == 1 and prompt == clip:
+        return text, None  # A single-shot clip's Cast and schedule already describe this shot.
+    box = json.loads(body['timeline'])['boxes'][index]
+    slots = {slot for kind, slot in rules.mentions(text) if kind == 'image'}
+    cast = box.get('cast') or {}
+    entities = {cast[label] for label in labels if label in cast}
+    place = (box.get('schedule') or {}).get('place')
+    if prompt == clip and place:
+        entities.add(place)
+    ids = [box.id for box in parsed.boxes]
+    for entity in (parsed.bible or {}).get('entities', []):
+        if slots.intersection(story_bible.pictures_at(entity, ids, index)) or re.search(
+                r'(?<!\w)' + re.escape(entity['name']) + r'(?!\w)', text, re.I):
+            entities.add(entity['id'])
+    return text, entities
+
+
+def _prepare_pixels(body, parsed, index, frame, name, reference_text=None, entities=None):
+    selection = dict(body, prompt=body['prompt'] if reference_text is None else reference_text)
     from . import reference_assets
     document = json.loads(body['timeline'])
-    prepared = reference_assets.references(document, parsed.boxes[index].id, dict(body, frame=frame))
-    identity = reference_assets.identity_slots(document, parsed.boxes[index].id)
+    prepared = reference_assets.references(document, parsed.boxes[index].id, dict(body, frame=frame), entities=entities)
+    identity = reference_assets.identity_slots(document, parsed.boxes[index].id, entities=entities)
     selection['prompt'] += ' ' + ' '.join('@' + slot for slot in identity)
     refs = prepared + _pixel_references(selection, parsed, index, frame, body['workflow']['api'])
     for ref in refs:
         if ref.get('slot') in identity and 'identity' not in ref['roles']:
             ref['roles'].append('identity')
-    refs += _recipe_references(body)
+    refs += _recipe_references(body, selection['prompt'])
     return image_recipe.prepare(body['recipe'], body['workflow'], dict(body, frame=frame), refs)

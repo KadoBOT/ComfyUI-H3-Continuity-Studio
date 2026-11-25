@@ -48,6 +48,50 @@ def prepare(references=(), **request):
 
 
 class PrepareTest(unittest.TestCase):
+    def test_still_graph_keeps_only_two_of_ten_connected_recipe_pictures(self):
+        saved = workflow()
+        made = recipe()
+        made['reference_limit'] = 10
+        made['bindings']['references'] = [at(f'images.image_{n}') for n in range(1, 11)]
+        for n in range(1, 11):
+            saved['api'][f'picture{n}'] = {'class_type': 'IndependentImage', 'inputs': {}}
+            saved['api'][NODE]['inputs'][f'images.image_{n}'] = [f'picture{n}', 0]
+        document = {'boxes': [{'id': 'b1', 'frames': 96, 'prompt':
+                     '[Shot 1] Use @still2 and @still7.\n[Shot 2] At 0:02.000, use @still9.'}]}
+        body = dict(name='shot-reference-test', box='b1', target={'kind': 'first'},
+                    timeline=json.dumps(document), workflow=saved, recipe=made)
+        with mock.patch.object(image_recipe, '_image_port', return_value=False):
+            result = stills.prepare(body)
+        self.assertTrue(result.get('ok'), result)
+        self.assertEqual([ref['slot'] for ref in result['provenance']['references']], ['still2', 'still7'])
+        self.assertEqual({node for node in result['prompt'] if node.startswith('picture')}, {'picture2', 'picture7'})
+        self.assertEqual(len([port for port in result['prompt'][NODE]['inputs'] if port.startswith('images.')]), 2)
+        self.assertEqual(len([port for port in saved['api'][NODE]['inputs'] if port.startswith('images.')]), 10)
+
+    def test_timeline_pictures_follow_the_selected_shot_or_frame_prompt(self):
+        saved = workflow()
+        saved['timeline_node'] = 'timeline'
+        inputs = {f'images.image{n}': [f'picture{n}', 0] for n in range(1, 11)}
+        for n in range(1, 11):
+            saved['api'][f'picture{n}'] = {'class_type': 'IndependentImage', 'inputs': {}}
+        clip = ('[Shot 1] @image2 beside @image7.\n'
+                '[Shot 2] At 0:02.000, @image9 in close-up.')
+        document = {'boxes': [{'id': 'b1', 'frames': 96, 'prompt': clip}]}
+        body = dict(name='timeline-shot-test', box='b1', timeline=json.dumps(document),
+                    workflow=saved, recipe=recipe())
+        inputs.update(name=body['name'], timeline=body['timeline'])
+        saved['api']['timeline'] = {'class_type': 'H3C_Timeline', 'inputs': inputs}
+        with mock.patch.object(image_recipe, '_image_port', return_value=False):
+            for target, prompt, wanted in [('first', '', {2, 7}), ('last', '', {9}),
+                                           ('first', '@image4 alone.', {4}), ('first', 'Empty field.', set())]:
+                with self.subTest(target=target, prompt=prompt):
+                    result = stills.prepare(dict(body, target={'kind': target}, prompt=prompt))
+                    self.assertTrue(result.get('ok'), result)
+                    self.assertEqual({ref['slot'] for ref in result['provenance']['references']},
+                                     {f'image{n}' for n in wanted})
+                    self.assertEqual({node for node in result['prompt'] if node.startswith('picture')},
+                                     {f'picture{n}' for n in wanted})
+
     def test_still_preparation_includes_cast_and_mentioned_images_without_anchors(self):
         document = {'boxes': [{'id': 'b1', 'frames': 22, 'prompt': ''}]}
         body = {'timeline': json.dumps(document), 'prompt': '@image17 close-up',

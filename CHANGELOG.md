@@ -2,7 +2,50 @@
 
 All notable changes to H3 Continuity Studio are recorded here. Versions follow [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [1.3.1] - 2026-11-25
+
+### Changed
+
+- **Selected moments are picked from the playing video.** Choose an earlier clip and its rendered video plays in the panel; **At** follows the playhead (type a time to jump there). Type what to remember next to **Remember** and press it, or Enter, to keep that exact moment. Remembered moments are listed with their clip and time, an editable description, **Show** to play from there and **Remove**. Moments a cut remembers on its own are listed apart, under **Also remembered at the cut**, and the mode's explanation is shorter.
+
+## [1.3.0] - 2026-11-19
+
+### Added
+
+- **See, edit and switch off the text added to a reference's image prompt.** Each reference now has an **Also sent with this prompt** section listing what the Studio puts around your description (the sheet layout, the Visual style, and the empty-place lines for locations and scenes). Edit any part, or untick it to leave it out, for that reference only; the Story style and every other reference stay as they are. A reference with edited or switched-off parts is marked, and changing a part makes that reference's approved image out of date.
+- **Pick a character sheet layout from pictures.** A cast reference chooses between two layouts, shown as small diagrams: two head studies with four whole figures (a person), or one head study with a two-by-two of headless body views (a creature). A third choice lets you write your own layout; put `{description}` in it where the character description should go. Both built-in layouts place the description inside the template, say nothing about clothes or limbs that the description does not give, and are 16:9. A location picks the same way between the two-by-two of views from different angles and a layout of your own.
+
+### Fixed
+
+- **A generated reference image no longer vanishes when you edit the reference while it renders.** The image was made, but the Studio dropped it because the reference's design had changed in the meantime, leaving the reference "Missing". It is now kept and shown as out of date (it cannot be approved until you regenerate), and images dropped this way earlier are recovered when the references are next checked.
+- **Character and location sheets are 16:9 again.** A cast or location reference with no size set under **Advanced: seed and dimensions** now asks the image workflow connected to **still_image** for exactly 16:9, instead of inheriting that workflow's own shape (a vertical Story gave a vertical sheet). Only the aspect ratio is chosen: a workflow that renders from a megapixel setting keeps rendering at that size. Because sizes are multiples of 32, the width and height sent are the 16:9 pair (a multiple of 512 × 288) nearest the size the workflow is set to, or 2048 × 1152 when that cannot be read. Setting a width and height there still wins; typing just one fills the other at 16:9. Objects and composed scenes still follow the workflow's size.
+- **Non-human characters no longer come out as people in someone else's clothes.** The Story style sentence "only the curator wears a cobalt coat" reached every character sheet, because only sentences that *name* another character were removed. Sentences that share two or more distinctive words with another character's description are now left out too. The sheet template also no longer assumes collarbones, arms and five fingers, and says that the character description decides species and anatomy.
+
+### Frame image generation
+
+- Edit the image prompt for each First, Last, or Shot target independently. A blank frame prompt uses the clip's current video prompt.
+- Attach only the pictures used by the frame or selected shot. Unused generator inputs are detached from each queued still.
+
+## [1.2.3] - 2026-11-18
+
+### Fixed
+
+- **Generate candidates works when only `still_image` is connected.** The button stayed disabled with "Configure a local still recipe" for a Timeline fed by your own image workflow, because the Studio looked for the legacy `still_recipe` link only. A connected `still_image` now counts.
+- **The empty-lane add button takes a real click.** Clicking **Add clip** on an empty video lane did nothing with a mouse.
+- **The overlap inspector no longer re-renders itself while a focused field blurs.**
+- **Reference batches show the reference name** while they run, and references that await approval are labelled **Needs approval**.
+
+## [1.2.2] - 2026-11-17
+
+### Fixed
+
+- **Video RefMods render with ComfyUI-MiniMaxH3Mod 0.2.x.** Reference preparation failed with `module ... has no attribute 'prepare_references'` because that package keeps the logic inside its RefMod text encoder. The Studio now prepares the references itself when the helper is missing (same strength, VAE decode and 2 fps video sampling as the encoder) and still uses the package's helper when it has one. Reported and diagnosed by @toto025fr-cloud in #97.
+
+## [1.2.1] - 2026-11-16
+
+### Fixed
+
+- **MCP renders no longer stay in `needs_reconciliation` after ComfyUI finishes them.** ComfyUI rewrites whole numbers in the prompt it keeps (an integer given for a FLOAT input comes back as `24.0`), so the graph in its history never hashed to the one the receipt recorded and `h3_job_status` and `h3_resume_job` refused to call the finished prompt ours. The prompt id and `h3c_agent` provenance are still required, and the history graph is now compared with the retained submission with whole-number floats treated as the same integer; a changed value still holds the job. Receipts already stuck on this recover on the next status call.
 
 ### Added
 

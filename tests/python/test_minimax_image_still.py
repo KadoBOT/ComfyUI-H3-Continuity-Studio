@@ -25,9 +25,9 @@ class MiniMaxImageTest(unittest.TestCase):
         self.addCleanup(self.files.stop)
 
     def test_clip_candidate_model_text_is_only_the_clip_even_with_reference_metadata_and_node_instruction(self):
-        clip = 'integrated_multimodal_description:\n[Shot 1] An empty field. Nobody.\n\noverall_soundscape:\nWind.\n\nnon_diegetic_music:\nN/A'
+        clip = 'integrated_multimodal_description:\n[Shot 1] A quiet library. Nobody.\n\noverall_soundscape:\nWind.\n\nnon_diegetic_music:\nN/A'
         saved = {'api': {'5': {'class_type': 'H3C_MiniMaxH3ImageStill', 'inputs': {**ARGS, 'instruction': 'Add a person.'}}}}
-        ref = {**reference('image20', ['location: Field'], 'a' * 64), 'description': 'Shared hidden style with STRAY in an orange jacket.'}
+        ref = {**reference('image20', ['location: Field'], 'a' * 64), 'description': 'Shared hidden style with MIRA holding a blue umbrella.'}
         with mock.patch.dict('nodes.NODE_CLASS_MAPPINGS', {'H3C_MiniMaxH3ImageStill': image.H3C_MiniMaxH3ImageStill}):
             result = image_recipe.prepare(recipe(), saved, {'box': 'b1', 'prompt': clip}, [ref])
         native = result['prompt']['5']['inputs']
@@ -116,7 +116,7 @@ class MiniMaxImageTest(unittest.TestCase):
         from PIL import Image
         from tests.python.test_reference_panels import picture
         saved = {'api': {'5': {'class_type': 'H3C_MiniMaxH3ImageStill', 'inputs': {**ARGS}}}}
-        refs = [reference('image17', ['identity: STRAY'], 'b' * 64), reference('image20', ['location: Overpass'], 'a' * 64)]
+        refs = [reference('image17', ['identity: MIRA'], 'b' * 64), reference('image20', ['location: Courtyard'], 'a' * 64)]
         with tempfile.TemporaryDirectory() as folder:
             sheet = Path(folder) / 'sheet.png'
             Image.fromarray(picture(3000, 1600, [(1490, 1512, 0, 1600)], [(790, 810, 0, 3000)])).save(sheet)
@@ -143,16 +143,18 @@ class MiniMaxImageTest(unittest.TestCase):
             whole = prepare({'box': 'b1', 'asset_key': 'entity:e5', 'prompt': 'A sheet.'}, refs[1:])['prompt']['5']['inputs']
             self.assertEqual(whole['images.image_1'], ['h3c_still_source_0', 0])
 
-    def test_server_uses_the_selected_clip_even_when_a_stale_client_submits_other_text(self):
-        clip = 'An empty field. Nobody.'
+    def test_server_uses_submitted_frame_text_or_falls_back_to_clip(self):
+        clip = 'A quiet library. Nobody.'
         saved = {'api': {'5': {'class_type': 'H3C_MiniMaxH3ImageStill', 'inputs': {**ARGS}}}}
         body = dict(name='clip-verbatim-test', box='b1', target={'kind':'first'},
-                    timeline=json.dumps({'prompt':'STRAY has an orange jacket.', 'boxes':[{'id':'b1','frames':22,'prompt':clip}]}),
-                    prompt='A stale prepared person.', workflow=saved, recipe=recipe())
+                    timeline=json.dumps({'prompt':'MIRA carries a blue umbrella.', 'boxes':[{'id':'b1','frames':22,'prompt':clip}]}),
+                    workflow=saved, recipe=recipe())
         with mock.patch.dict('nodes.NODE_CLASS_MAPPINGS', {'H3C_MiniMaxH3ImageStill': image.H3C_MiniMaxH3ImageStill}):
-            result = stills.prepare(body)
-        self.assertTrue(result.get('ok'), result)
-        self.assertEqual(result['prompt']['5']['inputs']['prompt'], clip)
+            for prompt, expected in [('A close-up of an open book.', 'A close-up of an open book.'), ('   ', clip), (None, clip)]:
+                with self.subTest(prompt=prompt):
+                    result = stills.prepare(body if prompt is None else dict(body, prompt=prompt))
+                    self.assertTrue(result.get('ok'), result)
+                    self.assertEqual(result['prompt']['5']['inputs']['prompt'], expected)
 
     def test_schema_filters_image_weights_and_keeps_shared_video_encoder(self):
         schema = {item.id: item.options for item in image.H3C_MiniMaxH3ImageStill.define_schema().inputs if hasattr(item, 'options')}

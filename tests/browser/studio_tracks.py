@@ -38,6 +38,10 @@ with sync_playwright() as p:
  page.get_by_role('button',name='Delete Video 2',exact=True).click()
  assert page.evaluate("stored().tracks.filter(t=>t.type==='video').length")==1
  page.get_by_role('button',name='Add video lane',exact=True).click()
+ # The empty lane's add button takes a real mouse click, not only a scripted one.
+ page.get_by_role('button',name='Add clip to Video 2',exact=True).click(timeout=3000)
+ assert page.evaluate("stored().boxes.at(-1).track==='v2'")
+ page.evaluate('editor.host.history.undo()')
  page.evaluate('editor.playheadFrame=0;editor.trackEditor.addClip()')
  assert page.evaluate("editor.box().track===stored().tracks.filter(t=>t.type==='video').at(-1).id")
  clip=page.locator('.h3ct-track-row[data-track="v2"] .h3ct-track-clip').last

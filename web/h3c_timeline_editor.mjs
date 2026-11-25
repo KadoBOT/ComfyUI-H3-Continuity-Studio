@@ -4,27 +4,27 @@ import {Pins, SwitchSection} from './h3c_switch_section.mjs?v=c253500f4908';
 import * as tracks from './h3c_tracks.mjs';
 // The H3 Timeline editor: a track of boxes, the selected box and the shared prompt.
 // Plain DOM without ComfyUI imports; the host object connects it to the node.
-import { MentionCard, MentionLayer } from './h3c_mentions.mjs?v=7d543c4a1ce8';
+import { MentionCard, MentionLayer } from './h3c_mentions.mjs?v=b6060b24bccd';
 import { promptSections, promptShots, writePromptSections } from './h3c_prompt_sections.mjs?v=1f35473e5668';
-import {PromptFormPanel} from './h3c_prompt_form.mjs?v=f43a53953089';
-import * as model from './h3c_timeline_model.mjs?v=1dfc1612e462';
-import * as videoLayers from './h3c_layers.mjs?v=1dfc1612e462';
+import {PromptFormPanel} from './h3c_prompt_form.mjs?v=92d4177f9413';
+import * as model from './h3c_timeline_model.mjs?v=03f370baf50a';
+import * as videoLayers from './h3c_layers.mjs?v=03f370baf50a';
 import {audioSourceLocked} from './h3c_audio_windows.mjs?v=cdefbd77b246';
-import { AudioLanes } from './h3c_audio_lanes.mjs?v=2c8422417f0a';
-import { shotFrames, frameTargets, syncTargets, acceptedGuideFrames, endpointGuide, endpointReference, adoptEndpointGuides } from './h3c_shot_preview.mjs?v=1dfc1612e462';
-import {FrameImages, targetLabel, imageDrop} from './h3c_frame_images.mjs?v=f1342e7ccbe1';
-import { splitBox, splitTiming } from './h3c_shot_split.mjs?v=d147aa313f65';
+import { AudioLanes } from './h3c_audio_lanes.mjs?v=b7ce72d3c40a';
+import { shotFrames, frameTargets, syncTargets, acceptedGuideFrames, endpointGuide, endpointReference, adoptEndpointGuides } from './h3c_shot_preview.mjs?v=03f370baf50a';
+import {FrameImages, targetLabel, imageDrop} from './h3c_frame_images.mjs?v=be45c49cb8fd';
+import { splitBox, splitTiming } from './h3c_shot_split.mjs?v=cd50f9b95037';
 import { fillReferenceSwitches } from './h3c_reference_switches.mjs?v=e94b5b02e02b';
-import { ReferenceReplacements } from './h3c_reference_replacements.mjs?v=00c628e63671';
+import { ReferenceReplacements } from './h3c_reference_replacements.mjs?v=31ebebe93ea0';
 import { fillPicturePicker, mentionedReferences, referenceChip } from './h3c_reference_pictures.mjs?v=8198307be3fa';
-import { CastPage } from './h3c_cast.mjs?v=fe7f2982bec0';
-import { PicturesPanel, highestSlot } from './h3c_pictures.mjs?v=220c235a7923';
+import { CastPage } from './h3c_cast.mjs?v=e0fbe24e6526';
+import { PicturesPanel, highestSlot } from './h3c_pictures.mjs?v=b13ece205589';
 import { CheckPanel } from './h3c_check.mjs?v=0ba848400498';
-import { BridgePanel, bridgeLine } from './h3c_bridges.mjs?v=a8d5483a8299';
-import { DialoguePanel } from './h3c_dialogue.mjs?v=0c9058202c42';
+import { BridgePanel, bridgeLine } from './h3c_bridges.mjs?v=e7c9e657382f';
+import { DialoguePanel } from './h3c_dialogue.mjs?v=edce77aa63e7';
 import { ChainSettings } from './h3c_chain_settings.mjs?v=9f2d4061a6d6';
 import { exportedVideo } from './h3c_partial_video.mjs?v=201bf0f48645';
-import { MAX_TAKES, TakesPanel, followNote, renderLabel } from './h3c_takes.mjs?v=15deab5acdd6';
+import { MAX_TAKES, TakesPanel, followNote, renderLabel } from './h3c_takes.mjs?v=b881254039e2';
 import { drawsSame, replaceChanged, setText, showImages } from './h3c_dom.mjs?v=584a9bf55653';
 
 const STYLE_ID = 'h3ct-style';
@@ -81,6 +81,12 @@ const CSS = `
 .h3ct-video-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 4px 8px; margin: 4px 0;
   border: 1px solid #343a46; border-left-width: 4px; border-radius: 4px; }
 .h3ct-video-label { min-width: 54px; font-weight: 600; }
+.h3ct-moment-player { width: 100%; max-height: 220px; background: #000; border-radius: 4px; }
+.h3ct-moment-player[hidden] { display: none; }
+.h3ct-field > input.h3ct-moment-time.h3ct-number { width: 72px; flex: 0 0 72px; }
+.h3ct-field > .h3ct-moment-time + .h3ct-hint { white-space: nowrap; }
+.h3ct-moment-text { flex: 1 1 180px; min-width: 0; }
+.h3ct-moment-at { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .h3ct-video-settings > [hidden] { display: none; }
 .h3ct-switch .h3ct-field { flex-wrap: wrap; }
 .h3ct-stills { position: relative; height: 74px; }
@@ -255,8 +261,7 @@ const CSS = `
 .h3ct-image-actions > .h3ci-button:has(> .h3ci-sr):not([hidden]) ~ .h3ci-button { margin-left: 0; }
 .h3cx-inspector .h3ct-saved-controls .h3ct-number { width: 80px; flex: 0 0 80px; }
 .h3ct-prompt-summary { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border-radius: 6px; background: #ffffff06; border: 1px solid #2c313c; }
-.h3ct-prompt-summary-head { justify-content: space-between; }
-.h3ct-prompt-excerpt.empty { color: #8b93a1; font-style: italic; }
+.h3ct-prompt-excerpt[hidden] { display: none; }
 .h3ct-candidate-title { font-size: 12px; font-weight: 600; }
 .h3ct-empty-state { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 24px 12px; margin-bottom: 8px; color: #8b93a1; font-size: 12px; text-align: center; }
 .h3ct-empty-state[hidden] { display: none; }
@@ -362,6 +367,7 @@ function videosToRender(box, status) {
 }
 
 const VIDEO_COLORS = ['143,188,255', '240,180,90', '199,146,234', '127,209,199'];
+const MAX_MOMENTS = 3;
 
 function percent(fraction) {
   return `${(fraction * 100).toFixed(3)}%`;
@@ -1038,7 +1044,8 @@ export class TimelineEditor {
     this.replacements.close();
     this.state = model.parseState(this.host.read());
     syncTargets(this.state,this.host.context());
-    if (!this.readOnly.length && this.adoptEndpoints()) this.save(model.serialize(this.state));
+    // Endpoints adopted and Cast ids made e1-style are written back at once, before any status is read from the text.
+    if (!this.readOnly.length && [this.adoptEndpoints(), model.renumberEntities(this.state)].some(Boolean)) this.save(model.serialize(this.state));
     this.selected = Math.min(this.selected, Math.max(0, this.state.boxes.length - 1));
     this.stale = true;
     this.render();
@@ -2182,7 +2189,10 @@ export class TimelineEditor {
     mode.value = box.memory;
     mode.addEventListener('change', () => { box.memory = mode.value; this.commit(); });
     mode.setAttribute('aria-label', 'Visual memory mode');
-    root.append(field('Mode', mode), el('p', 'h3ct-hint', box.memory === 'cast'
+    root.append(field('Mode', mode), el('p', 'h3ct-hint', box.memory === 'selected'
+      ? 'Up to three moments you pick from earlier clips. At a cut the clip also sees the previous shot, or only its '
+        + 'last moment when someone speaks, so lips don’t copy.'
+      : box.memory === 'cast'
       ? "Cuts also receive the full preceding video for layout and movement, even when character pictures are supplied. When someone speaks on either side of the cut, they remember the moment before it instead, because H3 would copy the earlier lip movement. Cast adds earlier character and place views. A new scene follows its new setting prompt; a clip without a schedule uses Same scene."
       : 'Cuts receive the full preceding video for layout, object appearance and movement. When someone speaks on either side of the cut, they remember the moment before it instead, because H3 would copy the earlier lip movement. Same scene also remembers its establishing view; a new scene follows its new setting prompt. Selected moments add chosen earlier views.'));
     const sources = model.memorySources(layer ? videoLayers.layerView(this.state, this.selected, layer.id) : this.state,
@@ -2195,49 +2205,125 @@ export class TimelineEditor {
       return;
     }
     if (box.memory !== 'selected') return;
-    if (sources.some(source => !(box.memories ?? []).includes(source))) root.append(el('p', 'h3ct-hint', listed));
-    for (const [index, memory] of (box.memories ?? []).entries()) {
-      const row = el('div', 'h3ct-row');
-      const source = el('select', 'h3ct-select');
-      source.append(option('', 'Choose earlier clip'));
-      this.state.boxes.slice(0, this.selected).forEach((item, i) => source.append(option(item.id, `Clip ${i + 1}`)));
-      source.value = memory.box;
-      source.addEventListener('change', () => { memory.box = source.value; memory.frame = 0; this.commit(); });
-      const seconds = el('input', 'h3ct-number');
-      seconds.type = 'number'; seconds.min = '0'; seconds.step = String(1 / model.FPS);
-      seconds.value = (memory.frame / model.FPS).toFixed(3);
-      seconds.setAttribute('aria-label', 'Remembered time in source clip, seconds');
-      seconds.addEventListener('change', () => {
-        const frame = Math.round(Number(seconds.value) * model.FPS);
-        if (Number.isFinite(frame)) { memory.frame = Math.max(0, frame); this.commit(); }
-      });
-      const label = el('input', 'h3ct-select');
-      label.style.cssText = 'flex:1;min-width:180px';
-      label.value = memory.label ?? ''; label.placeholder = 'What to remember, e.g. house exterior';
-      label.setAttribute('aria-label', 'Details to remember');
-      label.addEventListener('change', () => { memory.label = label.value; this.commit(); });
-      row.append(source, field('Time (s)', seconds), label, button('Remove', 'Remove this remembered moment', () => {
-        box.memories.splice(index, 1); this.commit();
-      }));
-      root.append(row);
-      const status = this.statusById.get(memory.box);
-      if (status?.video) {
-        const preview = el('details');
-        preview.append(el('summary', '', 'View source moment'));
-        const video = el('video');
-        video.controls = true; video.muted = true; video.preload = 'none';
-        video.style.cssText = 'width:100%;max-height:180px';
-        video.src = `${this.host.viewUrl(status.video.file)}#t=${memory.frame / model.FPS}`;
-        preview.append(video); root.append(preview);
-      }
+    const earlier = this.state.boxes.slice(0, this.selected), memories = box.memories ?? [];
+    if (!earlier.length) {
+      root.append(el('p', 'h3ct-hint', 'The first clip has no earlier clip to remember.'));
+      return;
     }
-    const add = button('Remember a moment', 'Add a 5-frame view from an earlier rendered box (maximum 3)', () => {
+    const clipOf = (id) => this.state.boxes.findIndex(item => item.id === id) + 1;
+    const at = (frame) => `${(frame / model.FPS).toFixed(2)} s`;
+
+    // The draft is the moment being picked: which earlier clip plays, where its playhead is, and what to keep there.
+    let seek = false;
+    if (this.memoryDraft?.clip !== box.id || !earlier.some(item => item.id === this.memoryDraft.source)) {
+      this.memoryDraft = {clip: box.id, source: earlier.at(-1).id, frame: 0, label: ''};
+      seek = true;
+    }
+    const draft = this.memoryDraft, source = earlier.find(item => item.id === draft.source);
+    draft.last = Math.max(0, source.frames - 1);
+    draft.frame = Math.min(draft.frame, draft.last);
+
+    const picker = el('select', 'h3ct-select');
+    picker.setAttribute('aria-label', 'Earlier clip to remember');
+    earlier.forEach((item, i) => picker.append(option(item.id, `Clip ${i + 1}`)));
+    picker.value = draft.source;
+    picker.addEventListener('change', () => {
+      Object.assign(draft, {source: picker.value, frame: 0});
+      this.renderMemory();
+    });
+
+    const player = this.memoryPlayer ??= this.createMemoryPlayer();
+    const file = this.statusById.get(draft.source)?.video?.file, url = file ? this.host.viewUrl(file) : '';
+    if (player.dataset.url !== url) {
+      player.dataset.url = url;
+      if (url) player.src = url;
+      else { player.removeAttribute('src'); player.load(); }
+      seek = true;
+    }
+    if (seek && url) player.currentTime = draft.frame / model.FPS;
+    player.hidden = !url;
+
+    const time = this.memoryTimeEl = el('input', 'h3ct-number h3ct-moment-time');
+    Object.assign(time, {type: 'number', min: '0', max: String(draft.last / model.FPS), step: String(1 / model.FPS),
+      value: (draft.frame / model.FPS).toFixed(2)});
+    time.setAttribute('aria-label', 'Time in the earlier clip, seconds');
+    time.title = url ? 'Follows the video’s playhead; type a time to jump there' : 'Time in the earlier clip';
+    time.addEventListener('change', () => {
+      const frame = Math.round(Number(time.value) * model.FPS);
+      if (!Number.isFinite(frame)) return;
+      draft.frame = Math.min(draft.last, Math.max(0, frame));
+      time.value = (draft.frame / model.FPS).toFixed(2);
+      if (url) player.currentTime = draft.frame / model.FPS;
+    });
+
+    const full = memories.length >= MAX_MOMENTS;
+    const text = el('input', 'h3ct-select h3ct-moment-text');
+    text.value = draft.label;
+    text.placeholder = 'What to remember here';
+    text.title = 'For example: red brick house, blue door';
+    text.setAttribute('aria-label', 'What to remember at this moment');
+    const remember = button('Remember', '', () => {
       box.memories ??= [];
-      box.memories.push({box: this.state.boxes[this.selected - 1].id, frame: 0, label: ''});
+      box.memories.push({box: draft.source, frame: draft.frame, label: draft.label.trim()});
+      draft.label = '';
       this.commit();
     });
-    add.disabled = this.selected === 0 || (box.memories?.length ?? 0) >= 3;
-    root.append(add, el('p', 'h3ct-hint', 'H3 snaps each moment to a 17-frame boundary and reads 5 frames. Render source clips first.'));
+    const ready = () => {
+      remember.disabled = full || !draft.label.trim();
+      remember.title = full ? `Remove a moment to remember another (maximum ${MAX_MOMENTS})`
+        : draft.label.trim() ? 'Remember this moment of the earlier clip with what you typed'
+          : 'Type what to remember first';
+    };
+    text.addEventListener('input', () => { draft.label = text.value; ready(); });
+    text.addEventListener('keydown', (event) => { if (event.key === 'Enter') remember.click(); });
+    ready();
+
+    const capture = el('div', 'h3ct-row');
+    capture.append(text, remember);
+    root.append(field('Earlier clip', picker), player);
+    if (!url) root.append(el('p', 'h3ct-hint', `Render Clip ${clipOf(draft.source)} to watch it here; until then, type the time.`));
+    root.append(field('At', time, el('span', 'h3ct-hint', url ? 's · follows the video' : 's')), capture, el('p', 'h3ct-hint', 'H3 snaps each moment to a 17-frame boundary and reads 5 frames, so it '
+      + 'can start slightly before the time you picked.'));
+
+    root.append(el('span', 'h3ct-label', `Remembered (${memories.length} of ${MAX_MOMENTS})`));
+    if (!memories.length) root.append(el('p', 'h3ct-hint', 'Nothing yet. Play an earlier clip, stop where it shows '
+      + 'what to keep, describe it and press Remember.'));
+    for (const [index, memory] of memories.entries()) {
+      const row = el('div', 'h3ct-row h3ct-moment');
+      const label = el('input', 'h3ct-select h3ct-moment-text');
+      label.value = memory.label ?? '';
+      label.placeholder = 'What to remember';
+      label.setAttribute('aria-label', `What remembered moment ${index + 1} keeps`);
+      label.addEventListener('change', () => { memory.label = label.value; this.commit(); });
+      row.append(el('span', 'h3ct-moment-at', `Clip ${clipOf(memory.box) || '?'} · ${at(memory.frame)}`), label,
+        button('Show', 'Play the earlier clip from this moment', () => {
+          Object.assign(draft, {source: memory.box, frame: memory.frame});
+          this.renderMemory();
+          if (player.dataset.url) player.currentTime = memory.frame / model.FPS;
+        }),
+        button('Remove', 'Forget this moment', () => { box.memories.splice(index, 1); this.commit(); }));
+      root.append(row);
+    }
+    const automatic = sources.filter(item => !memories.includes(item));
+    if (automatic.length) root.append(el('p', 'h3ct-hint', `Also remembered at the cut: ${automatic.map(item =>
+      `Clip ${clipOf(item.box)} · ${item.whole ? 'Full video' : at(item.frame)} · ${item.label}`).join(' / ')}`));
+  }
+
+  // One player for picking moments, kept across redraws so pressing Remember doesn't reset it. Its playhead drives the
+  // draft moment's time.
+  createMemoryPlayer() {
+    const player = el('video', 'h3ct-moment-player');
+    Object.assign(player, {controls: true, muted: true, preload: 'metadata', playsInline: true});
+    const follow = () => {
+      const draft = this.memoryDraft;
+      if (!draft || !player.dataset.url) return;
+      draft.frame = Math.min(draft.last, Math.max(0, Math.round(player.currentTime * model.FPS)));
+      if (this.memoryTimeEl && document.activeElement !== this.memoryTimeEl) {
+        this.memoryTimeEl.value = (draft.frame / model.FPS).toFixed(2);
+      }
+    };
+    for (const event of ['timeupdate', 'seeked']) player.addEventListener(event, follow);
+    return player;
   }
 
   renderPromptReferences() {

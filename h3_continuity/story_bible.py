@@ -33,7 +33,9 @@ def entities(bible):
     seen, clips = set(), {}
     for number, item in enumerate(bible["entities"], 1):
         if not isinstance(item, dict) or not isinstance(item.get("id"), str) or not ENTITY_ID.fullmatch(item["id"]):
-            raise ValueError(f"Entity {number} needs an id like e1.")
+            given = f' ("{item["id"]}")' if isinstance(item, dict) and isinstance(item.get("id"), str) else ""
+            raise ValueError(f"Entity {number}{given} needs an id like e1. Opening the Timeline in the Studio renumbers "
+                             "its Cast ids.")
         name = item["id"]
         if name in seen:
             raise ValueError(f"Entity id {name} is used twice.")
