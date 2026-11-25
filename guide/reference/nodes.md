@@ -73,6 +73,14 @@ Picks the model the sampler uses for this run: `continuation_model` when the Tim
 | `segment` | From H3 Timeline. |
 | `continuation_model` | Optional. Unconnected, every clip uses `model`. |
 
+## H3 Continuity Protection
+
+Optional sampling protection against progressive darkening, warm/green color burn, contrast/saturation creep, shadow crush, and edge halos across both continuing chains and same-scene visual-memory cuts (`Veda Sparse Attention` and native dense attention). Feed the chosen sampling `model`, Timeline `latent` and Timeline `segment`; outputs, in order, are `model` (0), `latent` (1), `segment` (2), and explanatory `info` (3). Send the model to the guider, latent to the sampler and **returned segment to Save Segment**. `enabled` defaults on; disabling it returns the original inputs. Existing workflows keep their current behavior until this node is added.
+
+Protection resolves each clip back to its clean scene root and stabilizes generated `x0` latents plus carried `video` / `video_audio` references (leaving keyframes and still `@image*` plates unchanged) separately on H3's 1-frame and 4-frame latent phases using mean alignment, upper-clamped channel std, and 3x3 high-frequency overshoot damping. `strength` (default `0.70`, `0` disables latent stabilization) scales the correction tapering cleanly over the final quarter of sampling; `mode` (`"full"` default, or `"contrast_only"` for dark-into-bright camera pans) controls whether channel means are also pulled to the anchor. Both normal and denoised outputs restore original carried video and held audio/ending regions bit-identically (`carryErr = 0.0`). Turn off old **Context noise**; Context Windows are unsupported. Protected continuations and `cut_memory` clips bypass disk cache; fresh `new_scene` + `memory='off'` clips, appearance changes, bridges, replacements, and layers pass through cleanly. See [wiring, verified results, and limits](../continuity/long-chains.md#h3-continuity-protection).
+
+Optional `attention_balance` (default 1 = unchanged) and `attention_blocks` (default `31-33, 36-44, 47`) remain available only as an experimental native-attention path (incompatible with Veda sparse attention). See [attention balance](../continuity/long-chains.md#attention-balance).
+
 ## H3 Sigmas Tail
 
 Experimental. Raises the last few noise levels before zero (`BasicScheduler → H3 Sigmas Tail → sampler sigmas`), so a distilled 8-step model settles less fine detail in its final step. Each moved level keeps its ratio to the level above the tail, raised to the power 1 / (1 + `strength`); the first level, the levels above the tail and the final zero stay. With `segment` connected, clips that start fresh or cut keep their schedule. Defaults: `tail_steps` 3, `strength` 0.5; 0 changes nothing.

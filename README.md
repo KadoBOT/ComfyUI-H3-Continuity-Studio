@@ -4,6 +4,8 @@ H3 Continuity is a ComfyUI custom node pack for authoring and rendering sequence
 
 Visual memory can bring selected moments from earlier clips into a later shot, including after an exterior scene or a camera-angle change. H3 Story can plan and write the Timeline through an OpenAI-compatible endpoint, local or cloud.
 
+For long continuing chains and visual-memory cuts within a scene, the optional [H3 Continuity Protection](guide/continuity/long-chains.md#h3-continuity-protection) node stabilizes predicted latents (`x0`) and carried video-memory references during sampling against the clean scene root (`mean`, upper-clamped channel `std`, and 3x3 high-frequency overshoot damping, separately on H3's 1-frame and 4-frame latent phases). It works with both Veda Sparse Attention and native dense attention, requires no extra node pack or model, bypasses disk sampling cache on protected clips, and does not support Context Windows. In a verified 5-clip Veda production chain and an 11-hop scene-memory cut (`generation_64933481474b4b2abef0f94d0afaff08`, see [degradation-fix report](docs/research/2026-11-25-overtime-degradation-fix.md)), protection cut CIELAB color/brightness drift from `ΔE76 = 4.73–10.98` (Clips 2–5) down to `0.28–1.47`, rescued Clip 11 from `ΔE76 = 8.31` to `1.35` (`s065_ref1`), left fresh-scene flashbacks unchanged, and kept carried overlap error at `0.0`. For shots that pan directly from dark foregrounds into bright light sources, optional `mode="contrast_only"` prevented wall darkening on the [DP2 wall-onset fixture](docs/research/2026-11-17-wall-darkening-onset.md) (`wall_luma 75.71` vs `73.82` baseline).
+
 [Watch the contest demo (under two minutes)](https://github.com/KadoBOT/ComfyUI-H3-Continuity-Studio/releases/download/v0.1.0/H3-Continuity-demo-contest.mp4) · [Full demo](https://github.com/KadoBOT/ComfyUI-H3-Continuity-Studio/releases/download/v0.1.0/H3-Continuity-demo-full.mp4) · [Reproduce the example](docs/MEMORY-DEMO.md)
 
 ![The same room from another camera angle](docs/media/memory-comparison.png)
@@ -44,6 +46,12 @@ See [installation and Codex/Claude Code setup](guide/automation/mcp.md) for uv/v
 The full user guide, with screenshots of every feature, is at **https://kadobot.github.io/ComfyUI-H3-Continuity-Studio/**. Its source is in [`guide/`](guide/).
 
 Deeper reference notes: [Story Studio](docs/QWEN-STORY-STUDIO.md), [external Timeline](docs/EXTERNAL-TIMELINE.md), and [continuity checks](docs/CONTINUITY-CHECK.md). Generation quality and continuity vary with the model, inputs and settings; inspect the resulting joins.
+
+## Credits
+
+**H3 Continuity Protection** builds on the public keystone/capstone anchor and late-locking ideas in **[roycho87's Geiru Context Suite](https://github.com/roycho87/geiru_context_suite)**. Sampler-synchronized context noise is credited to **ethanfel / Lumifel**, whose [H3 Context Loop work](https://github.com/ethanfel/ComfyUI-MiniMaxH3-Context-Loop) Geiru also credits. Our native implementation is independent; it does not vendor Geiru's GPL-3.0 source or require its node pack.
+
+The optional **attention balance** follows Geiru's **Keystone Attention**, which is based on an idea by **ckinpdx**: biasing H3's attention by part of its sequence, published as **[ckinpdx's Carry Attention](https://github.com/ckinpdx/ComfyUI-MMH3Tools)** in ComfyUI-MMH3Tools. The default blocks are Geiru's published lighting blocks. Ours is again an independent native implementation; see the [upstream review](docs/research/2026-11-16-geiru-upstream-review.md). Geiru's Hybrid Windows changes are not included. See [third-party notices](THIRD_PARTY_NOTICES.md) for this project's other sources and attributions.
 
 ## License and third-party material
 

@@ -13,6 +13,7 @@
     "H3C_Sequence",
     "H3C_Continue",
     "H3C_ContinuationModel",
+    "H3C_ContinuityProtection",
     "H3C_SigmasTail",
     "H3C_SaveSegment",
     "H3C_Timeline",
@@ -92,6 +93,7 @@
     "long_chains": {
       "exposure": "graph",
       "skills": [
+        "h3-continuity-joins",
         "h3-continuity-timing"
       ],
       "tools": [],

@@ -44,3 +44,7 @@ When a run finds no saved result, `info` names the closest saved one and what di
 | `off` | Sample; never load or save. |
 
 Results are saved under `output/h3c_cache/<namespace>/` as safetensors with a JSON record beside each. `namespace` defaults to `first_pass`; use a different one per workflow if you want to clear them separately. Nothing is deleted automatically; delete the folder to clear the cache.
+
+## Continuity protection
+
+[H3 Continuity Protection](../continuity/long-chains.md#h3-continuity-protection) deliberately bypasses sampling disk-cache reads and writes on protected shots (continuations and `cut_memory` shots): its returned segment needs a live executed receipt to validate Save. Adding explicit protected-latent or segment keys does not enable caching. Disabled/fresh pass-through paths (`enabled` off, fresh `new_scene` with `memory='off'`, plate changes, or bridge/replacement/layer runs) still use the existing Timeline positive/latent/seed wiring and can hit the cache. Connect the protection node's returned segment to Save Segment; a stale/plain cached result cannot stand in for the protected pass.

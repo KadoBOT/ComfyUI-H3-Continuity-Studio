@@ -199,6 +199,23 @@ class GraphHasher:
             raise Uncacheable(f"node {node_id} is missing from the queued prompt")
         node = self.dynprompt.get_node(node_id)
         class_type = node.get("class_type", "")
+        inputs = node.get("inputs", {})
+        if class_type == 'H3C_ContinuityProtection':
+            passed = inputs.get('enabled', True) is False
+            segment_link = inputs.get('segment')
+            if not passed and is_link(segment_link):
+                values = self.outputs(str(segment_link[0]))
+                if values is not None and int(segment_link[1]) < len(values):
+                    segment = values[int(segment_link[1])]
+                    if isinstance(segment, (tuple, list)) and len(segment) == 1:
+                        segment = segment[0]
+                    from .protection import passthrough_reason
+                    passed = bool(passthrough_reason(segment))
+            if not passed:
+                raise Uncacheable('continuity protection requires a live sampling receipt')
+            # A disabled/fresh protection node returns model/latent unchanged; its segment is not sampled.
+            inputs = {key: value for key, value in inputs.items()
+                      if key not in ('segment', 'strength', 'mode', 'attention_balance', 'attention_blocks')}
         h = hashlib.sha256(b"class" + class_type.encode())
         if _has_fingerprint(node_class(class_type)):
             changed = node.get("is_changed")
@@ -206,8 +223,8 @@ class GraphHasher:
                 raise Uncacheable(f"{self.label(node_id)} can change from run to run, so its result can't be "
                                   "identified; connect its output to a cache key instead")
             h.update(b"is_changed" + _literal(changed).encode())
-        for name in sorted(node.get("inputs", {})):
-            value = node["inputs"][name]
+        for name in sorted(inputs):
+            value = inputs[name]
             part = (self.link(node_id, name, str(value[0]), int(value[1])) if is_link(value)
                     else "literal:" + _literal(value))
             h.update(f"\0{name}={part}".encode())
