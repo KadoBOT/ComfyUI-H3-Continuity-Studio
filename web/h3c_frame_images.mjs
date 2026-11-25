@@ -1,6 +1,6 @@
 // Marker images own editable still prompts, candidates and the acceptance transaction. Queue recovery belongs to the host.
-import {frameTargets, applyFrameGuide, endpointGuide, endpointReference} from './h3c_shot_preview.mjs?v=1dfc1612e462';
-import {parseState, serialize, newSeed} from './h3c_timeline_model.mjs?v=1dfc1612e462';
+import {frameTargets, applyFrameGuide, endpointGuide, endpointReference} from './h3c_shot_preview.mjs?v=03f370baf50a';
+import {parseState, serialize, newSeed} from './h3c_timeline_model.mjs?v=03f370baf50a';
 import {StillPromptPreparation,preparedStillPrompt} from './h3c_still_prompt_preparation.mjs?v=9ea1bfd9b6b5';
 
 import {seedValue, stringifyJSON} from './h3c_project.mjs?v=0882b8a6265a';

@@ -68,3 +68,16 @@ class CastAssignmentTest(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class EntityIdTest(unittest.TestCase):
+    def test_a_bible_with_named_ids_is_refused_when_the_timeline_is_read(self):
+        # Accepted here, it used to fail later in the reference catalog and hide every render's status.
+        from h3_continuity import timeline as rules
+        import json
+        doc = cast_timeline()
+        doc['bible']['entities'][0]['id'] = 'mara'
+        doc['boxes'][1]['schedule'] = {'entities': ['mara'], 'place': None}
+        with self.assertRaisesRegex(ValueError, r'Entity 1 \("mara"\) needs an id like e1'):
+            rules.parse(json.dumps(doc))
+        rules.parse(json.dumps(cast_timeline()))
