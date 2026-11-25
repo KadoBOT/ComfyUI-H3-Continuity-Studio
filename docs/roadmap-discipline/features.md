@@ -1,70 +1,116 @@
-# Continuity protection execution
+# MCP adapter implementation
 
-**Status:** DP0, DP1, DP3 and DP4 passing technically. DP2 active: the requested clip-2 onset experiment completed, but wall-preservation acceptance failed (balance20 worse; neutral no clear color-fidelity gain). Clip30 remains integration/jump evidence only. Draft PR #94 remains open.
-**Current Phase:** Phase 23: Continuity degradation protection
-
-Historical Phase20 watch-through blockers remain in the original parent roadmap at D:/development/rambrogi/work/ComfyUI-H3-Continuity-Studio/docs/roadmap-discipline/. They are preserved and outside this execution.
+**Status:** MCP implementation complete
+**Current Phase:** Phase 15: durable renders and stories
 
 ## Phase Ledgers
 
-- [Continuity degradation protection](phases/2026-11-15-degradation-protection.md)
+- [MCP tools and skills](phases/2026-11-08-mcp-tools-skills.md)
 
 ## Recovery State
 
 ```json
 {
   "version": 1,
-  "revision": 42,
-  "phase": "Phase 23: Continuity degradation protection",
+  "revision": 135,
+  "phase": "Phase 15: durable renders and stories",
   "active_features": [
-    "DP2"
+    "MCP2"
   ],
-  "focus_feature": "DP2",
-  "goal": "Find wall-darkening onset and test native protection only across last-bright to first-dark range",
-  "done_when": "Onset range located and documented; matched range renders preserve source/settings/memory; wall and motion compared honestly, draftPR94 updated",
-  "last_completed": "Pushed58aa972 to linked draftPR94; README/guide/report and PRbody explicitly record negative clip2 wall result; all requested onset arms/technical checks complete, resources released",
-  "in_progress": "No GPU workload or implementation edits. DP2 remains active because wall-preservation acceptance failed; requested narrow-range test is delivered, neutral default retained",
+  "focus_feature": "MCP2",
+  "goal": "Create and merge the MCP PR, publish v0.20.0 and fast-forward development and installed ComfyUI H3 Continuity checkouts while preserving local work.",
+  "done_when": "PR merged; release/tag verified at merged main; development and installed ComfyUI checkout HEADs fast-forwarded with local changes preserved.",
+  "last_completed": "Recovered clean ce4cf5a implementation and user authorization for PR/merge/release/update. origin/main now includes v0.19.6/0.19.7 fixes.",
+  "in_progress": "Merge origin/main in progress; sole CHANGELOG conflict resolved by retaining MCP release and both intervening releases. Preparing local-edit backups and fresh release gates.",
   "next": {
-    "action": "Use frozen clip2 fixture for anchor-only/noise-only ablations before proposing another recipe; do not claim a fix or recommend balance20 from these results",
-    "reason": "Current model/recipe does not improve wall-color fidelity; the next useful diagnosis must isolate the mechanism within the same user-selected range"
+    "action": "Verify merged tree, commit/push release preparation and create/link PR.",
+    "reason": "User authorized full integration and release; latest main must be retained."
   },
   "files": [
     {
-      "path": "docs/research/2026-11-17-wall-darkening-onset.md",
-      "state": "User-selected clip2-only onset experiment complete; three successful saves, negative wall-color result, similar motion, source/overlap/memory preserved; GPU host stopped/ticket released"
+      "path": "docs/roadmap-discipline/phases/2026-11-08-mcp-tools-skills.md",
+      "state": "MCP0 and MCP1 passing; review fixes and client limits recorded"
     },
     {
-      "path": "docs/research/2026-11-17-protection-integration.md",
-      "state": "Completed three-arm GPU fixture, per-output receipts/carry/memory checks, frame/flow findings and limits; owned GPU host stopped and ticket released"
+      "path": "docs/superpowers/plans/2026-11-08-mcp-tools-skills.md",
+      "state": "All eight tasks and final review/fix gate checked"
     },
     {
-      "path": "tests/python/test_protection_attention.py",
-      "state": "10 CPU checks including partial-block/later-evaluation bypass and invalid block regressions, passing"
+      "path": "docs/superpowers/specs/2026-11-08-mcp-tools-skills-design.md",
+      "state": "Approved implemented design"
+    },
+    {
+      "path": "docs/MCP.md",
+      "state": "Complete tool/action and client compatibility reference"
+    },
+    {
+      "path": "guide/automation/mcp.md",
+      "state": "Published installation and troubleshooting instructions"
     }
   ],
   "repository": {
-    "branch": "feat/continuity-protection",
-    "head": "58aa972ffcc5",
-    "dirty": [],
-    "dirty_hash": "75a11da44c802486bc6f65640aa48a730f0f684c5c07a42ba3cd1735eb3fb070"
+    "branch": "feat/mcp-adapter",
+    "head": "ce4cf5a7f46e",
+    "dirty": [
+      "CHANGELOG.md",
+      "h3_continuity/generations.py",
+      "h3_continuity/timeline.py",
+      "tests/README.md",
+      "tests/browser/saved_story_attachment.py",
+      "tests/js/continuity_keys.test.mjs",
+      "tests/js/durable_stories.test.mjs",
+      "tests/js/emit_shot_split.mjs",
+      "tests/js/history.test.mjs",
+      "tests/js/saved_story_project.test.mjs",
+      "tests/js/saved_story_recovery.test.mjs",
+      "tests/js/shot_split.test.mjs",
+      "tests/js/story_library_groups.test.mjs",
+      "tests/js/take_marks.test.mjs",
+      "tests/test_preview_targets.py",
+      "tests/test_story_checkpoints.py",
+      "web/h3c_audio_lanes.mjs",
+      "web/h3c_bridges.mjs",
+      "web/h3c_cast.mjs",
+      "web/h3c_dialogue.mjs",
+      "web/h3c_frame_images.mjs",
+      "web/h3c_generation_archive.mjs",
+      "web/h3c_history.mjs",
+      "web/h3c_mentions.mjs",
+      "web/h3c_pictures.mjs",
+      "web/h3c_project.mjs",
+      "web/h3c_reference_preparation.mjs",
+      "web/h3c_reference_replacements.mjs",
+      "web/h3c_reference_sources.mjs",
+      "web/h3c_shot_preview.mjs",
+      "web/h3c_shot_split.mjs",
+      "web/h3c_story.js",
+      "web/h3c_story_library.mjs",
+      "web/h3c_story_model.mjs",
+      "web/h3c_studio.mjs",
+      "web/h3c_takes.mjs",
+      "web/h3c_timed_text.mjs",
+      "web/h3c_timeline.js",
+      "web/h3c_timeline_editor.mjs",
+      "web/h3c_timeline_face.mjs",
+      "web/h3c_timeline_images.mjs",
+      "web/h3c_timeline_model.mjs",
+      "web/h3c_voices.mjs"
+    ],
+    "dirty_hash": "ec77df0332ee74dacb32fa1c9b933a510abb6661bb201a33c16d6d39680f9cb0"
   },
   "verification": {
-    "required": "matched baseline/protected render and reviewed source frames across a continuing chain",
-    "last_run": "3GPU onset saves; source/carry/memory validation; registered common-frame wall/flow inspection; strict docs/diff/roadmap; draftPR94 metadata",
-    "status": "failed",
-    "detail": "Technical checks pass; wall acceptance fails: baselineDeltaE2.37 neutral2.39 balance20 3.20 on30 common frames. Six total GPU tests across distinct onset/jump cases; both GPU tickets released"
+    "required": "Fresh host/adapter/docs checks; merged GitHub PR; v0.20.0 tag/release at merged main; development and ComfyUI checkout ancestry/status and local-edit preservation",
+    "last_run": "Task4 red5 missing-server failures; red1 invalid catalog regression; green20 adapter tests using SDK in-memory and real stdio transport.",
+    "status": "not_run",
+    "detail": "New release scope; implementation prior67 adapter/229JS/393Python evidence remains, merged tree gates pending."
   },
   "blockers": [],
   "reload": [
     "docs/roadmap-discipline/features.md",
-    "docs/roadmap-discipline/phases/2026-11-15-degradation-protection.md",
-    "docs/superpowers/specs/2026-11-15-degradation-protection-design.md",
-    "docs/superpowers/plans/2026-11-15-degradation-protection.md",
-    "docs/research/2026-11-15-orbit29-30.md",
-    "docs/research/2026-11-15-continuity-protection-review.md",
-    "docs/research/2026-11-16-geiru-upstream-review.md",
-    "docs/research/2026-11-17-protection-integration.md",
-    "docs/research/2026-11-17-wall-darkening-onset.md"
+    "docs/roadmap-discipline/phases/2026-11-08-mcp-tools-skills.md",
+    "docs/superpowers/specs/2026-11-08-mcp-tools-skills-design.md",
+    "docs/superpowers/plans/2026-11-08-mcp-tools-skills.md",
+    "docs/research/2026-11-08-mcp-capability-audit.md"
   ]
 }
 ```

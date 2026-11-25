@@ -2,16 +2,21 @@
 
 All notable changes to H3 Continuity Studio are recorded here. Versions follow [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [1.4.0] - 2026-11-26
 
 ### Added
 
-- **Overtime degradation protection on H3 Continuity Protection** (`strength` default `0.70`, `mode` `'full'` | `'contrast_only'`, plus optional experimental native `attention_balance` / `attention_blocks`):
+- **Overtime degradation protection on H3 Continuity Protection (#94)** (`strength` default `0.70`, `mode` `'full'` | `'contrast_only'`, plus optional experimental native `attention_balance` / `attention_blocks`):
   - Traces continuations (`same_shot` exit-tail anchor, last 12 played tokens) and `ctx=0` visual-memory cuts (`scene`, `selected`, `cast`, following explicit scene memories across `new_scene=true` flashbacks while leaving fresh `new_scene=true` + `memory='off'` scenes untouched) back to the clean scene root.
   - Applies H3 phase-aware (`t % 5 == 0` 1-frame vs `t % 5 != 0` 4-frame) per-channel mean alignment, upper-clamped channel std, and replicate-padded 3x3 high-frequency overshoot damping in `x0` sampling steps (tapering linearly from `1.0x` through `75%` progress to `0.5x` at the final step) and on `cond_video_latents` `video` / `video_audio` references (leaving keyframes and `image` refs untouched). Compatible with Veda Sparse Attention as well as native dense attention.
   - Restores exact carried video/audio and frozen ending regions in both normal and denoised sampler outputs, bypasses H3 Disk Cache for protected continuations and `cut_memory` clips while keeping cache hits on disabled/fresh/bridge/replacement/layer pass-throughs, and validates executed sampling receipts pre-save.
   - Verified on the 5-clip sequential Veda Ref2VA chain (`ΔE76 = 4.73–10.98 -> 0.28–1.47`, `carryErr = 0.0`, flow preserved), Clip 11 cut-memory rescue (`ΔE76 = 8.31 -> 1.35`, `crush = 15.7% -> 10.2%`, halos eliminated), Box 9 fresh flashback pass-through (`ΔE76 vs orig = 0.21`), and `mode='contrast_only'` on the 10Eros DP2 wall-onset fixture (`common wall_luma 75.71` vs `73.82` baseline, `flow = 0.461` vs `0.453`).
 - Explicit README, long-chain guide and third-party credits for roycho87's Geiru Context Suite, ethanfel/Lumifel's H3 Context Loop, and ckinpdx's Carry Attention (ComfyUI-MMH3Tools).
+
+### Fixed
+
+- **Keep the connected image generator in the Cast reference panel (#105).** Reads the image generator independently from the reference catalog, retries stale catalog reads instead of discarding the generator state, and distinguishes loading, read failures, and genuinely missing pixel image recipes.
+- **Renumber named Cast ids so a Timeline's renders stay visible (#106).** Converts non-`e<N>` Cast entity ids in the bible, clip schedules, and clip casts when opening a Timeline in the editor and saves the updated ids immediately, while rejecting invalid bible entity ids on load/write with an error naming the offending id.
 
 ## [1.3.1] - 2026-11-25
 
