@@ -401,7 +401,9 @@ def parse(text):
         if parsed.render_box is not None or parsed.render_bridge is not None:
             raise _error("a run renders one box, one bridge or one video")
         parsed.render_layer = target
-    if any(box.memory == "cast" for box in parsed.boxes):
+    # The bible is checked whenever there is one: the reference catalog and Cast memory read it, and a bible they
+    # can't read would otherwise be accepted here and fail later, hiding the Timeline's status and renders.
+    if parsed.bible is not None or any(box.memory == "cast" for box in parsed.boxes):
         from . import cast_memory
         cast_memory.check(parsed)
     return parsed

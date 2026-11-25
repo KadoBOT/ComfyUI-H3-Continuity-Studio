@@ -4,9 +4,9 @@ import {reconcileSceneAnchors} from './h3c_still_scene.mjs?v=0906bb5de9d7';
 // decide how a box runs. Mirrors h3_continuity/timeline.py.
 import {parseJSON, stringifyJSON, seedValue} from './h3c_project.mjs?v=0882b8a6265a';
 import {imageDescriptionPrompt, imageDescriptionSource} from './h3c_image_descriptions.mjs?v=5f858b2b6a5a';
-import {acceptedGuideFrames} from './h3c_shot_preview.mjs?v=1dfc1612e462';
+import {acceptedGuideFrames} from './h3c_shot_preview.mjs?v=03f370baf50a';
 import {AUDIO_WINDOWS_FEATURE, pruneWindows, resolveWindows, audioSourceLocked} from './h3c_audio_windows.mjs?v=cdefbd77b246';
-import {LAYER_FIELDS, SWAPS_DONT_FIT, clampSwitch, hasLayers, layerIds, switchFits} from './h3c_layers.mjs?v=1dfc1612e462';
+import {LAYER_FIELDS, SWAPS_DONT_FIT, clampSwitch, hasLayers, layerIds, switchFits} from './h3c_layers.mjs?v=03f370baf50a';
 export const FPS = 24;
 export const MAX_FRAMES = 362;
 export const GRID = 17;
@@ -300,6 +300,39 @@ export function unknownFeatures(state) {
 export function readOnlyNote(features) {
   return `This Timeline needs a newer H3 Continuity (${features.join(', ')}). `
     + 'It is open read-only so nothing in it is lost; update the node pack to edit or render it.';
+}
+
+// Cast entity ids are e1, e2, … (story_bible.ENTITY_ID), which the reference catalog and Cast memory require. A
+// Timeline written elsewhere with other ids, such as "stellar", gets the next free ones wherever ids are used: the
+// bible, each clip's schedule and each clip's cast. Its reference preparation can't hold assets yet, since the catalog
+// never read those ids. Whether anything changed.
+const ENTITY_ID = /^e[1-9]\d*$/;
+export function renumberEntities(state) {
+  const entities = Array.isArray(state.bible?.entities) ? state.bible.entities.filter(record) : [];
+  const valid = id => typeof id === 'string' && ENTITY_ID.test(id);
+  const taken = new Set(entities.map(entity => entity.id).filter(valid));
+  let next = Math.max(Number.isInteger(state.bible?.next) && state.bible.next > 0 ? state.bible.next : 1,
+    ...[...taken].map(id => Number(id.slice(1)) + 1));
+  const renamed = new Map();
+  if (entities.every(entity => valid(entity.id))) return false;
+  for (const entity of entities) {
+    if (valid(entity.id)) continue;
+    while (taken.has(`e${next}`)) next++;
+    const id = `e${next++}`;
+    taken.add(id);
+    if (typeof entity.id === 'string' && !renamed.has(entity.id)) renamed.set(entity.id, id);
+    entity.id = id;
+  }
+  state.bible.next = next;
+  const to = id => renamed.get(id) ?? id;
+  for (const box of state.boxes) {
+    if (record(box.schedule)) {
+      if (Array.isArray(box.schedule.entities)) box.schedule.entities = box.schedule.entities.map(to);
+      if (typeof box.schedule.place === 'string') box.schedule.place = to(box.schedule.place);
+    }
+    if (record(box.cast)) for (const [label, id] of Object.entries(box.cast)) box.cast[label] = to(id);
+  }
+  return true;
 }
 
 export function normalize(state, context) {
