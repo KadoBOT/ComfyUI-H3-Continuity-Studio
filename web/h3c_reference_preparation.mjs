@@ -184,7 +184,7 @@ const sheetSized=row=>(row.category==='cast'||row.category==='locations')&&row.r
 
 export class ReferencePreparationPanel {
   constructor(editor) {
-    this.editor=editor;this.host=editor.host;this.rows=[];this.asked=0;this.busy=false;this.message='';this.capability=null;this.selectedKey=null;this.filter='all';this.search='';this.mobileDetail=false;this.drafts=new Map();this.showObject=false;this.context=this.host.referenceContext?.();
+    this.editor=editor;this.host=editor.host;this.rows=[];this.asked=0;this.busy=false;this.message='';this.capability=null;this.controlsError='';this.selectedKey=null;this.filter='all';this.search='';this.mobileDetail=false;this.drafts=new Map();this.showObject=false;this.context=this.host.referenceContext?.();
     this.root=element('details','h3cr-preparation');
     this.root.append(element('summary',null,'Reference images'));
     this.body=element('div','h3cr-body');this.root.append(this.body);
@@ -241,12 +241,23 @@ export class ReferencePreparationPanel {
     const asked=++this.asked,context=this.host.referenceContext?.(),before=stringifyJSON(this.editor.state);
     if(context!==this.context){this.context=context;this.rows=[];this.drafts.clear();this.selectedKey=null;}
     this.loading=true;if(!this.rows.length)this.render();
+    // The image generator is read from the workflow's wiring, not from the Timeline text, so a Timeline edit made while it is
+    // read, or a catalog that fails, never leaves the panel saying no generator is connected.
+    const controls=(async()=>this.host.stillControls?.())().then(controls=>{
+      if(asked!==this.asked)return;this.controls=controls;this.capability=controls?.adapter==='pixels';this.controlsError='';
+    },error=>{if(asked===this.asked){this.capability=null;this.controlsError=error.message;}});
+    let stale=false;
     try {
-      const [rows,controls]=await Promise.all([this.host.referenceCatalog(),this.host.stillControls?.()]);
-      if(asked!==this.asked||context!==this.host.referenceContext?.()||before!==stringifyJSON(this.editor.state))return;
-      this.rows=independentReferences(rows);this.controls=controls;this.capability=controls?.adapter==='pixels';this.message='';for(const row of this.rows)if(this.drafts.get(row.key)===row.prompt)this.drafts.delete(row.key);
+      const rows=await this.host.referenceCatalog();
+      if(asked!==this.asked||context!==this.host.referenceContext?.())return;
+      // Rows read before a Timeline edit describe the old Timeline: read them again rather than keep the old ones.
+      if(before!==stringifyJSON(this.editor.state)){stale=true;return;}
+      this.rows=independentReferences(rows);this.message='';for(const row of this.rows)if(this.drafts.get(row.key)===row.prompt)this.drafts.delete(row.key);
     } catch(error) {if(asked===this.asked)this.message=error.message;}
-    finally{if(asked===this.asked){this.loading=false;this.render();}}
+    finally{
+      await controls;
+      if(asked===this.asked){if(stale)this.refresh();else{this.loading=false;this.render();}}
+    }
   }
   commit(edit) {
     if(this.editor.readOnly?.length)return;
@@ -339,6 +350,11 @@ export class ReferencePreparationPanel {
   }
   choose(key){this.selectedKey=key;this.mobileDetail=true;this.render();}
   setFilter(category){this.filter=category;this.mobileDetail=false;this.render();}
+  // Why Generate is off while no pixel generator has been confirmed: the generator's own error, not yet read, or none connected.
+  generatorNote() {
+    return this.controlsError?'The connected image generator could not be read: '+this.controlsError
+      :this.capability===false?'Connect a pixel image recipe to generate references.':'Reading the connected image generator…';
+  }
   render() {
     const focus=this.body.contains(document.activeElement)?document.activeElement:null,focusKey=focus?.dataset.focus;
     const selection=focus&&typeof focus.selectionStart==='number'?[focus.selectionStart,focus.selectionEnd]:null;
@@ -353,7 +369,7 @@ export class ReferencePreparationPanel {
     const scope=this.filter==='all'?'':` ${names[this.filter].toLowerCase()}`;
     const generate=action(`Generate missing${scope} (${needed.length})`,()=>this.run(()=>this.host.generateSelectedReferences(needed.map(r=>r.key))));
     generate.classList.add('h3ct-primary');generate.disabled=!!busy||readonly||this.capability!==true||!needed.length;
-    generate.title=this.capability!==true?'Connect a pixel image recipe to generate references.'
+    generate.title=this.capability!==true?this.generatorNote()
       :this.filter!=='all'&&!flags[this.filter]?`Turn on Prepare ${names[this.filter].toLowerCase()} to generate them.`
       :!Object.values(flags).some(Boolean)?'Open a category and turn on its preparation.':!needed.length?'Included references are ready.':'Generate included missing or outdated references.';
     const settings=iconButton('settings','Generator settings',()=>this.run(()=>this.host.openStillGenerator()));settings.dataset.action='generator-settings';settings.disabled=!this.host.openStillGenerator;
@@ -389,7 +405,7 @@ export class ReferencePreparationPanel {
     }
     toolbar.append(generate,settings,stop,addObject);
     const parts=[filters,toolbar];
-    if(this.capability===false)parts.push(element('p','h3cr-note','Connect a pixel image recipe to generate references. You can still upload images.'));
+    if(this.capability===false||this.controlsError)parts.push(element('p','h3cr-note',this.generatorNote()+' You can still upload images.'));
     const batch=this.host.referenceBatch?.();if(batch){const progress=element('progress');progress.max=batch.keys.length;progress.value=batch.completed;progress.setAttribute('aria-label','Reference preparation progress');parts.push(progress,element('p','h3cr-note',`Preparing ${batch.current??'references'}: ${batch.completed} of ${batch.keys.length}${batch.stop?' (stopping after this image)':''}`));}
     if(this.message){const note=element('p','h3cr-note',this.message);note.setAttribute('role','status');parts.push(note);}
     if(this.showObject)parts.push(this.objectForm());

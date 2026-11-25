@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {EditHistory, TimelineHistory, editLabel, historyShortcut, editingSnapshot, withLiveReceipts} from '../../web/h3c_history.mjs?v=7fd74e6b1728';
-import {Studio} from '../../web/h3c_studio.mjs?v=44a6bea48e14';
+import {EditHistory, TimelineHistory, editLabel, historyShortcut, editingSnapshot, withLiveReceipts} from '../../web/h3c_history.mjs?v=a3b5f0d772f7';
+import {Studio} from '../../web/h3c_studio.mjs?v=0c9133aab617';
 
 const state = (prompt = '', boxes = [{id:'a', prompt, frames:124, seed:1}]) => ({timeline:{prompt:'', boxes}, settings:{width:960}});
 
