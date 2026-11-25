@@ -31,23 +31,34 @@ wants one setting everywhere.
 
 ## Long continuing chains
 
-**H3 Continuity Protection** is an optional graph node: sampling MODEL plus native
-Timeline latent/segment in; model → guider, latent → sampler, **returned segment
-→ Save Segment**. It uses sampler-level context noise, a clean chain-front anchor
-and a late capstone, then restores real carried frames in both normal and denoised
-outputs. Save rejects an unmatched/unexecuted protected result before writes.
-Optional `attention_balance` (1 = off; experimental, can reduce motion) moves
-attention from held carried frames to the clean anchors on `attention_blocks`.
-Disable old pixel `context_noise`; do not combine with Context Windows. Protected
-continuations bypass disk sampling cache. Disabled/fresh/cut/bridge paths pass
-through; appearance changes suppress protection until the next fresh chain;
-authored ending/frame guides or a frozen following ending suppress the capstone.
-Graph toggles do not mark old takes outdated: use Regenerate or a new generation.
-No matched GPU comparison has verified the visual gain; inspect motion/camera
-resets as well as color. Selected memory from a clear earlier view remains the
-existing remedy when recent views no longer show a prop. Keep memory identical in
-baseline/protection comparisons. Public techniques: Geiru Context Suite and
-ethanfel/Lumifel; independently implemented against ComfyUI's native APIs.
+**H3 Continuity Protection** (`H3C_ContinuityProtection`) is an optional graph node:
+sampling `MODEL` plus native Timeline `latent`/`segment` in; `model` → guider,
+`latent` → sampler, **returned `segment` → Save Segment**. It exposes `enabled`
+(default on), `strength` (default `0.70`; `0` disables latent stabilization while
+still executing a protected receipt), `mode` (`full` default, or `contrast_only`),
+and optional experimental native-attention `attention_balance` (default `1` =
+unchanged) / `attention_blocks` (default `31-33, 36-44, 47`; incompatible with Veda
+sparse attention). It protects both `same_shot` continuations (anchored to the
+**clean scene root's** exit tail, `<=12` latent tokens) and `ctx=0` `cut_memory`
+shots (`scene`/`selected`/`cast`, including explicit memory across unrelated
+flashbacks, anchored to the full played clip) using phase-aware (`t%5==0` 1-frame vs
+`t%5!=0` 4-frame) channel std upper-clamping and replicate-padded 3×3 HF overshoot
+damping (plus mean matching in `full` mode), `cond_video_latents` video-ref
+stabilization (`video`/`video_audio` only; keyframes/`image` untouched), unmasked
+sampling for `cut_memory`, tapered denoiser weighting, and exact carried-frame
+restoration validated by a live `ProtectionReceipt` in Save Segment. Latent and
+video-ref stabilization works on both Veda Sparse Attention and native dense
+attention. Disable old pixel `context_noise`; do not combine with Context Windows.
+Protected shots bypass disk sampling cache. Disabled (`enabled = false`), fresh
+(`new_scene=True` + `memory='off'`), `plate_changes`, bridge, replacement, and layer
+paths pass through and retain cache hits. Choose `contrast_only` when an intentional
+dark-to-bright camera pan should preserve natural exposure brightening rather than
+locking mean exposure to a darker anchor tail. Graph toggles do not mark old takes
+outdated: use Regenerate or a new generation. Selected memory from a clear earlier
+view remains the existing remedy when recent views no longer show a prop; keep memory
+identical in baseline/protection comparisons. Public techniques: Geiru Context Suite,
+ckinpdx's Carry Attention, and ethanfel/Lumifel; independently implemented against
+ComfyUI's native APIs.
 
 Over many continuing boxes, texture builds up ("burn"); the continuity check reports it as *N% grainier* and a hitch at a join as *Holds still: 3 frames at the join.* Optional Timeline fields, measured on a six-box chain (FastH3 omniref 8-step int8):
 

@@ -258,12 +258,17 @@ class ProtectionSchedulerTest(unittest.TestCase):
             with torch.random.fork_rng():
                 torch.manual_seed(42)
                 latent, segment, front = carried()
-            if fresh:
+            if kind == 'cut_memory':
+                latent = dict(samples=latent['samples'])
                 segment.carried_video = None
                 segment.context_frames = 0
-            if kind:
+                segment.protection_source = dict(status='ready', mode='cut_memory', context_noise=False)
+            elif kind:
                 segment.timeline={kind:'b'}
                 segment.protection_source=None
+            elif fresh:
+                segment.carried_video = None
+                segment.context_frames = 0
             return ([[torch.zeros(1,3),{}]], latent, 7, segment)
 
         extras = {
@@ -281,14 +286,16 @@ class ProtectionSchedulerTest(unittest.TestCase):
                                         dict(method=protection.METHOD,source_stamp=[1,2],capstone_suppressed='guide')))):
             patch.start();self.addCleanup(patch.stop)
 
-    def graph(self, *, enabled=True, fresh=False, manifest='a', mode='use', key=None, kind=''):
+    def graph(self, *, enabled=True, fresh=False, manifest='a', mode='use', key=None, kind='',
+              strength=0.70, prot_mode='full'):
         graph=prompt(manifest=manifest,mode=mode)
         graph['tl']['class_type']='TestProtectionTimeline'
         graph['tl']['inputs']['fresh']=fresh
         graph['tl']['inputs']['kind']=kind
         graph['model']=dict(class_type='TestProtectionModel',inputs={})
         graph['protect']=dict(class_type='H3C_ContinuityProtection',inputs=dict(
-            model=['model',0],latent=['tl',1],segment=['tl',3],enabled=enabled))
+            model=['model',0],latent=['tl',1],segment=['tl',3],enabled=enabled,
+            strength=strength,mode=prot_mode))
         graph['s1']['class_type']='TestProtectedSampler'
         graph['s1']['inputs'].update(model=['protect',0],latent=['protect',1])
         if key is not None:graph['cache']['inputs']['keys.key3']=['protect',key]
@@ -305,12 +312,21 @@ class ProtectionSchedulerTest(unittest.TestCase):
                 self.assertEqual(save.call_count,0)
                 self.assertEqual(load.call_count,0)
 
+    def test_protected_cut_memory_bypasses_cache(self):
+        with mock.patch.object(disk_cache,'save',wraps=disk_cache.save) as save, \
+                mock.patch.object(disk_cache,'load',wraps=disk_cache.load) as load:
+            run(self.graph(kind='cut_memory'))
+            run(self.graph(kind='cut_memory',manifest='next'))
+        self.assertIn('TestProtectedSampler',RAN)
+        self.assertEqual(save.call_count,0)
+        self.assertEqual(load.call_count,0)
+
     def test_disabled_or_fresh_keeps_the_existing_sampling_cache(self):
         for enabled,fresh in ((False,False),(True,True)):
             with mock.patch.object(disk_cache,'save',wraps=disk_cache.save) as save, \
                     mock.patch.object(disk_cache,'load',wraps=disk_cache.load) as load:
-                run(self.graph(enabled=enabled,fresh=fresh))
-                run(self.graph(enabled=enabled,fresh=fresh,manifest='next'))
+                run(self.graph(enabled=enabled,fresh=fresh,strength=0.70,prot_mode='full'))
+                run(self.graph(enabled=enabled,fresh=fresh,manifest='next',strength=0.35,prot_mode='contrast_only'))
             self.assertNotIn('TestProtectedSampler',RAN)
             self.assertEqual(save.call_count,1)
             self.assertEqual(load.call_count,1)

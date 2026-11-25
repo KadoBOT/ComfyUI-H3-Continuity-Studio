@@ -6,6 +6,7 @@ import threading
 from dataclasses import replace
 
 import torch
+import torch.nn.functional as F
 
 from . import latents, store, timeline, timing
 
@@ -14,6 +15,10 @@ WHO = 'H3 Continuity Protection'
 RECEIPT_KEY = '_h3c_protection_receipt'
 # H3 blocks that Geiru Context Suite reports as carrying brightness; its finding, not our measurement.
 LIGHTING_BLOCKS = '31-33, 36-44, 47'
+DEFAULT_STRENGTH = 0.70
+REF_STRENGTH_MULTIPLIER = 1.5
+TAIL_ANCHOR_TOKENS = 12
+MODES = ('full', 'contrast_only')
 
 
 def parse_blocks(text):
@@ -87,29 +92,92 @@ def passthrough_reason(segment):
     record = getattr(segment, 'timeline', None) or {}
     if any(kind in record for kind in ('bridge', 'replacement', 'layer')):
         return 'Bridge, replacement or layer: no protected continuing chain.'
-    if getattr(segment, 'carried_video', False) is None:
+    if getattr(segment, 'carried_video', False) is None and info.get('mode') != 'cut_memory':
         return 'Fresh clip: no carried chain.'
     if info.get('status') == 'skip':
         return info.get('reason') or 'No protected continuing chain.'
     return None
 
 
+def _has_appearance_change(parsed, chain):
+    return any(parsed.boxes[i].plate_changes or (parsed.boxes[i].new_scene and not parsed.boxes[i].cut)
+               for i in chain)
+
+
+def _resolve_root(parsed, index, seen=None):
+    """Find the earliest clean scene root index whose visual tone/lighting owns box `index`, or None."""
+    seen = set() if seen is None else set(seen)
+    if index in seen:
+        return None
+    seen.add(index)
+    box = parsed.boxes[index]
+    chain = timeline.continuation_chain(parsed, index)
+    if len(chain) >= 2:
+        if _has_appearance_change(parsed, chain):
+            return None
+        root = _resolve_root(parsed, chain[0], seen)
+        return chain[0] if root is None else root
+    if not box.cut or box.memory == 'off':
+        return None
+    if not box.new_scene:
+        indices = timeline.track_indices(parsed, index)
+        pos = indices.index(index)
+        start_pos = max(p for p, i in enumerate(indices[:pos + 1])
+                        if p == 0 or (parsed.boxes[i].cut and parsed.boxes[i].new_scene)
+                        or parsed.boxes[i].plate_changes)
+        start = indices[start_pos]
+        if start == index:
+            return None
+        if parsed.boxes[start].plate_changes:
+            return start
+        root = _resolve_root(parsed, start, seen)
+        return start if root is None else root
+    # box.cut and box.new_scene and box.memory != 'off': follow explicit visual memory, skipping implicit previous.
+    sources = []
+    if box.memory == 'selected':
+        by_id = {b.id: i for i, b in enumerate(parsed.boxes)}
+        for item in box.memories:
+            src = by_id.get(item.get('box'))
+            if src is not None and src != index:
+                sources.append(src)
+    elif box.memory == 'cast':
+        prev = timeline.previous_index(parsed, index, False)
+        for src, _, _ in timeline.memory_sources(parsed, index):
+            if src != prev:
+                sources.append(src)
+    if not sources:
+        return None
+    target = sources[0]
+    if parsed.boxes[target].plate_changes:
+        return target
+    root = _resolve_root(parsed, target, seen)
+    return target if root is None else root
+
+
 def source_info(parsed, index, entries, is_done, guides, ending):
     """Defer optional source failures: ordinary Timeline graphs need no protection anchor."""
     chain = timeline.continuation_chain(parsed, index)
-    if len(chain) < 2:
-        return dict(status='skip', reason='Fresh clip or track gap: no carried chain.')
-    if any(parsed.boxes[i].plate_changes or (parsed.boxes[i].new_scene and not parsed.boxes[i].cut)
-           for i in chain):
+    if _has_appearance_change(parsed, chain):
         return dict(status='skip', reason='Appearance change: protection resumes after the next fresh clip.')
-    source = entries.get(chain[0] + 1)
-    if (not source or store.box_of(source) != parsed.boxes[chain[0]].id
-            or not is_done(chain[0], source)):
+    is_cut = len(chain) < 2
+    root = _resolve_root(parsed, index)
+    if root is None:
+        return dict(status='skip', reason='Fresh clip or track gap: no carried chain.')
+    source = entries.get(root + 1)
+    if (not source or store.box_of(source) != parsed.boxes[root].id
+            or not is_done(root, source)):
         return dict(status='error', reason='The chain source needs rendering before protection can run.')
-    reason = ('A following clip holds the ending.' if ending else
-              'An authored frame guide owns the target pose.' if guides or parsed.boxes[index].last else '')
-    return dict(status='ready', source=copy.deepcopy(source), context_noise=parsed.context_noise,
-                capstone_suppressed=reason)
+    mode = 'cut_memory' if is_cut else 'continuation'
+    if is_cut:
+        reason = 'Cut memory clip: anchor statistical protection active.'
+    elif ending:
+        reason = 'A following clip holds the ending.'
+    elif guides or parsed.boxes[index].last:
+        reason = 'An authored frame guide owns the target pose.'
+    else:
+        reason = ''
+    return dict(status='ready', mode=mode, same_shot=(not is_cut and root == chain[0]),
+                source=copy.deepcopy(source), context_noise=parsed.context_noise, capstone_suppressed=reason)
 
 
 def _identity(entry):
@@ -149,7 +217,8 @@ def load_anchors(segment):
     if any(tuple(v.shape) != shape or not v.is_floating_point() for v in (front, back) if v is not None):
         raise ValueError(f'{WHO}: source does not contain a compatible H3 video anchor.')
     from .disk_cache import content_digest
-    descriptor = dict(method=METHOD, source_box=store.box_of(source), source_index=source['index'],
+    descriptor = dict(method=METHOD, mode=(segment.protection_source or {}).get('mode', 'continuation'),
+                      source_box=store.box_of(source), source_index=source['index'],
                       source_stem=source['stem'], source_created=source.get('created'),
                       source_layout=(source.get('timeline') or {}).get('layout'), source_stamp=stamp,
                       source_digest=content_digest((front, back)).hex(), context_frames=segment.context_frames,
@@ -158,17 +227,50 @@ def load_anchors(segment):
     return front, back, descriptor
 
 
-def prepare_latent(latent, segment, front):
+def load_anchor_clip(segment, descriptor=None):
+    """Load the clean anchor clip's target video latent tokens and absolute starting token index.
+
+    For direct same-shot continuations, use the clean anchor's exit tail (`TAIL_ANCHOR_TOKENS`) so
+    opening-frame composition sweeps (such as camera orbits from dark furniture onto sunlit walls)
+    do not skew downstream shots; cuts and post-cut continuations use the full played anchor.
+    """
+    source, _ = _current_source(segment, descriptor)
+    folder = segment.sequence.folder
+    src_ctx = source.get('context_frames', 0)
+    anc_start = timing.tokens_for_frames(src_ctx) if src_ctx else 0
+    delivered = src_ctx + store.played_frames(source)
+    total_tok = store.video_tokens(folder, source)
+    end_tok = max(anc_start + 1, min(total_tok, timing.tokens_for_frames(timeline.generated_frames(delivered, True))))
+    if (segment.protection_source or {}).get('same_shot'):
+        tail_tokens = min(end_tok - anc_start, TAIL_ANCHOR_TOKENS)
+        anc_start = end_tok - tail_tokens
+    anc_video = store.load_video_window(folder, source, anc_start, end_tok - anc_start)
+    if anc_video.ndim != 5 or anc_video.shape[:2] != (1, 24) or tuple(anc_video.shape[3:]) != segment.latent_size:
+        raise ValueError(f'{WHO}: source does not contain a compatible H3 video anchor.')
+    return anc_video, anc_start
+
+
+def prepare_latent(latent, segment, front=None):
     if (segment.protection_source or {}).get('context_noise'):
         raise ValueError(f'{WHO}: turn off the old Context noise control before using sampler-level protection.')
     video, audio = latents.split_h3_latent(latent, WHO)
-    count = timing.tokens_for_frames(segment.context_frames)
     if (timing.frames_for_tokens(video.shape[2]) != segment.frames or tuple(video.shape[3:]) != segment.latent_size
             or audio.shape[:3] != (video.shape[0], 32, 2)
             or audio.shape[-1] != timing.ticks_for_frames(segment.frames)):
         raise ValueError(f'{WHO}: latent geometry does not match the native segment.')
-    if tuple(front.shape) != (1, 24, 1, *video.shape[3:]) or count >= video.shape[2]:
-        raise ValueError(f'{WHO}: anchor or carried length does not match this latent.')
+    if front is not None and tuple(front.shape) != (1, 24, 1, *video.shape[3:]):
+        raise ValueError(f'{WHO}: anchor shape does not match this latent.')
+
+    from comfy.nested_tensor import NestedTensor
+    if segment.carried_video is None:
+        if (segment.protection_source or {}).get('mode') != 'cut_memory':
+            raise ValueError(f'{WHO}: carried video does not match the native segment.')
+        prepared = dict(latent, samples=NestedTensor((video.clone(), audio.clone())))
+        return prepared, None
+
+    count = timing.tokens_for_frames(segment.context_frames)
+    if count >= video.shape[2]:
+        raise ValueError(f'{WHO}: carried length does not match this latent.')
 
     def same(actual, expected, label):
         try:
@@ -192,24 +294,94 @@ def prepare_latent(latent, segment, front):
     if not getattr(masks, 'is_nested', False) or len(masks.tensors) != 2:
         raise ValueError(f'{WHO}: expected the native Timeline AV noise mask.')
     vm, am = masks.tensors
-    try:
-        vm = torch.broadcast_to(vm, video.shape)
-    except RuntimeError:
-        raise ValueError(f'{WHO}: incompatible video mask shape.') from None
-    expected = torch.ones_like(vm)
-    expected[:, :, :count] = 0
-    if segment.ending_video is not None:
-        expected[:, :, -segment.ending_video.shape[2]:] = 0
-    if not torch.equal(vm, expected):
-        raise ValueError(f'{WHO}: an incompatible mask already edits the carried or free video.')
+    end_start = video.shape[2] - (segment.ending_video.shape[2] if segment.ending_video is not None else 0)
+    if (tuple(vm.shape[2:]) != tuple(video.shape[2:]) or vm.shape[0] != video.shape[0] or vm.shape[1] not in (1, 24)
+            or not bool((vm[:, :, :count] == 0).all()) or not bool((vm[:, :, count:end_start] == 1).all())
+            or (end_start < video.shape[2] and not bool((vm[:, :, end_start:] == 0).all()))):
+        raise ValueError(f'{WHO}: expected the native Timeline video noise mask.')
     originals = video[:, :, :count].clone()
-    video = video.clone()
-    video[:, :, :1] = front.to(video)
-    vm = vm.clone()
-    vm[:, :, 1:count] = torch.linspace(1, 0, count - 1, device=vm.device, dtype=vm.dtype).view(1,1,-1,1,1)
-    from comfy.nested_tensor import NestedTensor
-    prepared = dict(latent, samples=NestedTensor((video, audio)), noise_mask=NestedTensor((vm, am)))
+    prepared = dict(latent, samples=NestedTensor((video.clone(), audio.clone())),
+                    noise_mask=NestedTensor((vm.clone(), am.clone())))
     return prepared, originals
+
+
+def _split_hf(z):
+    """3x3 replicate-padded spatial high-pass decomposition for [B, C, T, H, W] float32 tensors."""
+    b, c, t, h, w = z.shape
+    flat = z.permute(0, 2, 1, 3, 4).reshape(b * t, c, h, w)
+    low = F.avg_pool2d(F.pad(flat, (1, 1, 1, 1), mode='replicate'), kernel_size=3, stride=1, padding=0)
+    low = low.reshape(b, t, c, h, w).permute(0, 2, 1, 3, 4)
+    return low, z - low
+
+
+def _tensor_stats(z):
+    mean = z.mean(dim=(2, 3, 4), keepdim=True)
+    std = z.std(dim=(2, 3, 4), unbiased=False, keepdim=True).clamp_min(1e-5)
+    _, high = _split_hf(z)
+    hf_rms = high.pow(2).mean(dim=(2, 3, 4), keepdim=True).sqrt().clamp_min(1e-5)
+    return mean, std, hf_rms
+
+
+def compute_phase_stats(video, abs_offset=0):
+    """Compute separate phase-0 (t%5==0, 1-frame) and phase-1 (t%5!=0, 4-frame) channel stats."""
+    z = video.float()
+    t = z.shape[2]
+    p0 = [k for k in range(t) if (abs_offset + k) % 5 == 0]
+    p1 = [k for k in range(t) if (abs_offset + k) % 5 != 0]
+    all_stats = _tensor_stats(z)
+    return {
+        0: _tensor_stats(z[:, :, p0]) if p0 else all_stats,
+        1: _tensor_stats(z[:, :, p1]) if p1 else all_stats,
+        'all': all_stats,
+    }
+
+
+def _stats_on_device(stats, device, cache):
+    key = str(device)
+    if key not in cache:
+        cache[key] = {
+            p: tuple(t.to(device=device, dtype=torch.float32) for t in vals)
+            for p, vals in stats.items()
+        }
+    return cache[key]
+
+
+def _stabilize_video(video, stats, *, abs_offset=0, strength=1.0, match_mean=True):
+    """Phase-aware per-channel upper-clamped std, optional mean alignment, and 3x3 HF overshoot damping."""
+    orig_dtype = video.dtype
+    z = video.float()
+    t = z.shape[2]
+    p0 = [k for k in range(t) if (abs_offset + k) % 5 == 0]
+    p1 = [k for k in range(t) if (abs_offset + k) % 5 != 0]
+    out = z.clone()
+
+    for phase, idx in ((0, p0), (1, p1)):
+        if not idx:
+            continue
+        anc_mean, anc_std, anc_hf = stats[phase]
+        cur = z[:, :, idx]
+        cur_mean = cur.mean(dim=(2, 3, 4), keepdim=True)
+        cur_std = cur.std(dim=(2, 3, 4), unbiased=False, keepdim=True).clamp_min(1e-5)
+        target_std = torch.minimum(cur_std, anc_std)
+        target_mean = anc_mean if match_mean else cur_mean
+        aligned = (cur - cur_mean) * (target_std / cur_std) + target_mean
+        low, high = _split_hf(aligned)
+        cur_hf = high.pow(2).mean(dim=(2, 3, 4), keepdim=True).sqrt().clamp_min(1e-5)
+        hf_scale = torch.clamp(anc_hf / cur_hf, max=1.0)
+        aligned = low + high * hf_scale
+        out[:, :, idx] = cur + float(strength) * (aligned - cur)
+
+    return out.to(dtype=orig_dtype)
+
+
+def _schedule_weight(strength, u):
+    """Hold full stabilization through u=0.75 progress, tapering smoothly to 0.5*strength at the final step."""
+    if strength <= 0:
+        return 0.0
+    if u <= 0.75:
+        return float(strength)
+    frac = min(1.0, max(0.0, (u - 0.75) / 0.25))
+    return float(strength) * (1.0 - 0.5 * frac)
 
 
 class ProtectionReceipt:
@@ -245,7 +417,8 @@ def _restored(value, shapes, segment, originals, core, *, internal=False):
                 tensor = tensor * core.audio_scale()
         return tensor.to(target)
 
-    video[:, :, :originals.shape[2]] = converted(originals, video)
+    if originals is not None:
+        video[:, :, :originals.shape[2]] = converted(originals, video)
     if segment.ending_video is not None:
         video[:, :, -segment.ending_video.shape[2]:] = converted(segment.ending_video, video)
     if segment.carried_audio is not None:
@@ -265,7 +438,8 @@ def _sample_digest(value, shapes):
     return content_digest(NestedTensor(_streams(value, shapes)))
 
 
-def patch_model(model, prepared, segment, originals, capstone, descriptor, balance=1.0, blocks=frozenset()):
+def patch_model(model, prepared, segment, originals, capstone, descriptor, balance=1.0, blocks=frozenset(),
+                *, anchor_video=None, anchor_offset=0, strength=DEFAULT_STRENGTH, mode='full'):
     import comfy.model_base
     import comfy.patcher_extension as pe
     import comfy.utils
@@ -279,26 +453,52 @@ def patch_model(model, prepared, segment, originals, capstone, descriptor, balan
         raise ValueError(f'{WHO}: Context Windows are not supported; use a non-windowed continuing clip.')
     if model.model_options.get('h3c_protection'):
         raise ValueError(f'{WHO}: this model is already protected; connect only one protection node.')
+    if mode not in MODES:
+        raise ValueError(f'{WHO}: unsupported protection mode {mode!r}; expected one of {MODES}.')
+    strength = float(strength)
+    if not math.isfinite(strength) or not 0.0 <= strength <= 1.0:
+        raise ValueError(f'{WHO}: strength must be between 0.0 and 1.0.')
+    match_mean = (mode == 'full')
+
     m = model.clone()
     m.model_options['h3c_protection'] = True
     receipt = ProtectionReceipt()
     previous = m.model_options.get('model_function_wrapper')
-    video_mask = prepared['noise_mask'].tensors[0]
-    held = [s for s in range(1, originals.shape[2]) if float(video_mask[0, 0, s].max()) < .5]
+
+    masks = prepared.get('noise_mask')
+    if masks is not None:
+        video_mask = masks.tensors[0]
+        held = ([s for s in range(1, originals.shape[2]) if float(video_mask[0, 0, s].max()) < .5]
+                if originals is not None else [])
+    else:
+        held = []
+
     balancing = balance != 1 and bool(blocks) and bool(held)
     if balancing:
         invalid = blocks - set(range(len(core.diffusion_model.blocks)))
         if invalid:
             raise ValueError(f'{WHO}: attention blocks {sorted(invalid)} do not exist in this model.')
-        options = m.model_options.setdefault('transformer_options', {})
-        options['optimized_attention_override'] = attention_override(
-            options.get('optimized_attention_override'), receipt, prepared['samples'].tensors[0].shape[2],
+        t_opts = m.model_options.setdefault('transformer_options', {})
+        t_opts['optimized_attention_override'] = attention_override(
+            t_opts.get('optimized_attention_override'), receipt, prepared['samples'].tensors[0].shape[2],
             held, float(balance), blocks)
+
     expected_samples, expected_shapes = comfy.utils.pack_latents(prepared['samples'].tensors)
     expected_input = _sample_digest(expected_samples, expected_shapes)
-    expected_mask = content_digest(comfy.utils.pack_latents([
-        comfy.sampler_helpers.prepare_mask(mask, shape, torch.device('cpu'))
-        for mask, shape in zip(prepared['noise_mask'].tensors, expected_shapes)])[0].float())
+    if masks is not None:
+        expected_mask = content_digest(comfy.utils.pack_latents([
+            comfy.sampler_helpers.prepare_mask(mask, shape, torch.device('cpu'))
+            for mask, shape in zip(masks.tensors, expected_shapes)])[0].float())
+    else:
+        expected_mask = None
+
+    anc_tensor = anchor_video if anchor_video is not None else capstone
+    anc_stats = None
+    if anc_tensor is not None:
+        anc_in = core.latent_format.process_in(anc_tensor.float())
+        anc_stats = compute_phase_stats(anc_in, abs_offset=anchor_offset)
+    dev_stats_cache = {}
+    ref_cache = {}
 
     def call_model(apply_model, args):
         receipt.balanced_blocks.clear()
@@ -311,8 +511,8 @@ def patch_model(model, prepared, segment, originals, capstone, descriptor, balan
 
     def evaluate(apply_model, args):
         c = args['c']
-        options = c.get('transformer_options') or {}
-        if options.get('context_window') is not None:
+        c_options = c.get('transformer_options') or {}
+        if c_options.get('context_window') is not None:
             raise ValueError(f'{WHO}: Context Windows are not supported.')
         if receipt.schedule is None:
             raise ValueError(f'{WHO}: sample this model through the protected sampler path.')
@@ -321,27 +521,63 @@ def patch_model(model, prepared, segment, originals, capstone, descriptor, balan
         if not bool(torch.isfinite(values).all()) or not bool((values == values[0]).all()) or not 0 <= sigma <= receipt.schedule[0]:
             raise ValueError(f'{WHO}: ambiguous model timestep for the sampling schedule.')
         receipt.calls += 1
-        if capstone is None or sigma > receipt.schedule[receipt.start]:
-            return call_model(apply_model, args)
+
+        sched = receipt.schedule
+        n_steps = max(1, len(sched) - 1)
+        step_idx = min(range(n_steps), key=lambda k: abs(sched[k] - sigma))
+        u = step_idx / max(1, n_steps - 1) if n_steps > 1 else 0.0
+
         shapes = c.get('latent_shapes')
-        if shapes is None or len(shapes) != 2:
-            raise ValueError(f'{WHO}: missing native packed AV shapes for the capstone.')
-        video, audio = comfy.utils.unpack_latents(args['input'], shapes)
-        anchor = core.latent_format.process_in(capstone).to(video).expand(video.shape[0], -1, -1, -1, -1)
-        enlarged, new_shapes = comfy.utils.pack_latents((torch.cat((video, anchor), dim=2), audio))
-        mask = c.get('denoise_mask')
-        if mask is None or mask.shape[2] != video.shape[2]:
-            raise ValueError(f'{WHO}: missing native video mask for the capstone.')
-        conditions = dict(c, latent_shapes=new_shapes,
-                          denoise_mask=torch.cat((mask, torch.zeros_like(mask[:, :, :1])), dim=2),
-                          transformer_options=dict(options))
-        # Native H3 rebuilds its packed layout on a changed temporal signature.
-        if 'minimax_payload' in conditions:
-            conditions['minimax_payload'] = {k:v for k,v in conditions['minimax_payload'].items() if k != 'layout'}
-        call = dict(args, input=enlarged, c=conditions)
-        result = call_model(apply_model, call)
-        streams = comfy.utils.unpack_latents(result, new_shapes)
-        return comfy.utils.pack_latents((streams[0][:, :, :video.shape[2]], streams[1]))[0]
+        conditions = dict(c, transformer_options=dict(c_options))
+
+        if anc_stats is not None and strength > 0 and 'minimax_payload' in conditions:
+            payload = conditions['minimax_payload']
+            refs = payload.get('refs') or ()
+            kfs = payload.get('keyframes') or ()
+            cond_lats = payload.get('cond_video_latents')
+            kf_count = sum(1 for kf in kfs if kf.get('latent') is not None)
+            ref_entries = [r for r in refs if 'latent' in r]
+            if cond_lats and len(cond_lats) == kf_count + len(ref_entries):
+                video_indices = [kf_count + i for i, r in enumerate(ref_entries)
+                                 if r.get('kind') in ('video', 'video_audio')]
+                if video_indices:
+                    cache_key = tuple((idx, id(cond_lats[idx]), tuple(cond_lats[idx].shape)) for idx in video_indices)
+                    if cache_key not in ref_cache:
+                        new_cond_lats = list(cond_lats)
+                        eff_ref_w = min(1.0, strength * REF_STRENGTH_MULTIPLIER)
+                        for idx in video_indices:
+                            ref_t = new_cond_lats[idx]
+                            if isinstance(ref_t, torch.Tensor) and ref_t.ndim == 5 and ref_t.shape[1] == 24:
+                                dev_st = _stats_on_device(anc_stats, ref_t.device, dev_stats_cache)
+                                new_cond_lats[idx] = _stabilize_video(
+                                    ref_t, dev_st, abs_offset=0, strength=eff_ref_w, match_mean=match_mean,
+                                )
+                        ref_cache[cache_key] = new_cond_lats
+                    new_payload = dict(payload)
+                    new_payload['cond_video_latents'] = ref_cache[cache_key]
+                    conditions['minimax_payload'] = new_payload
+
+        packed = call_model(apply_model, dict(args, c=conditions))
+
+        step_w = _schedule_weight(strength, u)
+        if anc_stats is not None and step_w > 0:
+            if shapes is None or len(shapes) != 2:
+                raise ValueError(f'{WHO}: missing native packed AV shapes for stabilization.')
+            video_x0, audio_x0 = comfy.utils.unpack_latents(packed, shapes)
+            ctx_tok = originals.shape[2] if originals is not None else 0
+            end_tok = segment.ending_video.shape[2] if segment.ending_video is not None else 0
+            gen_end = video_x0.shape[2] - end_tok
+            if ctx_tok < gen_end:
+                dev_st = _stats_on_device(anc_stats, video_x0.device, dev_stats_cache)
+                gen = _stabilize_video(
+                    video_x0[:, :, ctx_tok:gen_end], dev_st, abs_offset=ctx_tok,
+                    strength=step_w, match_mean=match_mean,
+                )
+                parts = ([video_x0[:, :, :ctx_tok]] if ctx_tok > 0 else []) + [gen] + (
+                    [video_x0[:, :, gen_end:]] if end_tok > 0 else [])
+                video_out = parts[0] if len(parts) == 1 else torch.cat(parts, dim=2)
+                packed = comfy.utils.pack_latents((video_out, audio_x0))[0]
+        return packed
 
     def sample(executor, noise, latent_image, sampler, sigmas, denoise_mask=None, callback=None,
                disable_pbar=False, seed=None, latent_shapes=None):
@@ -350,22 +586,25 @@ def patch_model(model, prepared, segment, originals, capstone, descriptor, balan
         receipt.complete, receipt.accepted, receipt.descriptor = False, set(), None
         receipt.calls = receipt.balanced = 0
         receipt.schedule = None
+        ref_cache.clear()
         try:
             if getattr(executor.class_obj, 'model_options', {}).get('context_handler') is not None:
                 raise ValueError(f'{WHO}: Context Windows are not supported.')
             schedule = sigmas.detach().double().cpu().flatten().tolist()
             if (len(schedule) < 2 or schedule[-1] != 0 or not all(math.isfinite(s) for s in schedule)
-                    or not all(a > b >= 0 for a,b in zip(schedule, schedule[1:]))):
+                    or not all(a > b >= 0 for a, b in zip(schedule, schedule[1:]))):
                 raise ValueError(f'{WHO}: needs a finite descending sigma schedule ending at zero.')
             if latent_shapes is None or len(latent_shapes) != 2:
                 raise ValueError(f'{WHO}: needs native packed AV sampling.')
             if _sample_digest(latent_image, latent_shapes) != expected_input:
                 raise ValueError(f'{WHO}: sampler did not receive the prepared input latent.')
-            if denoise_mask is None or content_digest(denoise_mask) != expected_mask:
+            if expected_mask is None:
+                if denoise_mask is not None:
+                    raise ValueError(f'{WHO}: unexpected noise mask on cut-memory clip.')
+            elif denoise_mask is None or content_digest(denoise_mask) != expected_mask:
                 raise ValueError(f'{WHO}: sampler did not receive the prepared noise mask.')
             _current_source(segment, descriptor)
             receipt.schedule = schedule
-            receipt.start = min(len(schedule)-2, math.ceil(.75 * (len(schedule)-1)))
             last_x0 = None
 
             def restored_callback(step, x0, x, total):
@@ -386,14 +625,15 @@ def patch_model(model, prepared, segment, originals, capstone, descriptor, balan
             receipt.accepted = {_sample_digest(result, latent_shapes)}
             if last_x0 is not None:
                 receipt.accepted.add(last_x0)
-            receipt.descriptor = dict(descriptor, late_start_step=receipt.start if capstone is not None else None,
-                                      sampling_steps=len(schedule)-1,
+            receipt.descriptor = dict(descriptor, strength=strength, protection_mode=mode,
+                                      sampling_steps=len(schedule) - 1,
                                       attention_balance=float(balance) if balancing else None,
                                       attention_blocks=sorted(blocks) if balancing else None)
             receipt.complete = True
             return result
         finally:
             receipt.schedule = None
+            ref_cache.clear()
             receipt.lock.release()
 
     m.set_model_unet_function_wrapper(evaluate)
@@ -422,29 +662,32 @@ class H3C_ContinuityProtection(io.ComfyNode):
     @classmethod
     def define_schema(cls):
         return io.Schema(node_id='H3C_ContinuityProtection', display_name=WHO, category=CATEGORY,
-                         description='Opt-in context noise, clean scene anchors and a late capstone for native '
-                                     'continuations. Connect model to the guider, latent to the sampler and the '
-                                     'returned segment to Save Segment. Turn off old Context noise. Protected '
-                                     'sampling bypasses disk cache. No Context Windows. Regenerate affected clips '
-                                     'or start a new generation; graph changes do not mark old takes outdated. '
-                                     'attention_balance above 1 is experimental and can reduce motion.',
+                         description='Sampler-level protection against darkening, color burn, saturation creep and '
+                                     'edge halos across continuations and visual-memory cuts. Connect model to the '
+                                     'guider, latent to the sampler and the returned segment to Save Segment. Turn off '
+                                     'old Context noise. Protected sampling bypasses disk cache. No Context Windows.',
                          inputs=[io.Model.Input('model'), io.Latent.Input('latent'), SegmentType.Input('segment'),
                                  io.Boolean.Input('enabled', default=True),
+                                 io.Float.Input('strength', default=DEFAULT_STRENGTH, min=0.0, max=1.0, step=0.05,
+                                                optional=True,
+                                                tooltip='Stabilization strength toward the clean scene anchor across '
+                                                        'sampling steps (default 0.70; 0 disables latent stabilization).'),
+                                 io.Combo.Input('mode', options=list(MODES), default='full', optional=True,
+                                                tooltip="'full' (default) prevents darkening, color cast, contrast creep "
+                                                        "and edge halos across multi-hop chains and visual-memory cuts. "
+                                                        "'contrast_only' caps contrast/halo overshoot without pulling mean "
+                                                        'exposure, useful when a continuation pans from dark into bright lighting.'),
                                  io.Float.Input('attention_balance', default=1.0, min=0.0, max=1000.0, step=0.1,
                                                 optional=True,
-                                                tooltip='Experimental. 1 = unchanged. Above 1, the clean chain '
-                                                        'anchors take that many times more of the attention they '
-                                                        'share with the held carried frames; prompt, references, '
-                                                        'audio and new frames keep their exact share. Geiru uses 20. '
-                                                        'Can reduce motion.'),
+                                                tooltip='Experimental (native attention only). 1 = unchanged.'),
                                  io.String.Input('attention_blocks', default=LIGHTING_BLOCKS, optional=True,
-                                                 tooltip='Transformer blocks (0-49) the balance applies to. The '
-                                                         "default is Geiru's lighting blocks.")],
+                                                 tooltip='Transformer blocks (0-49) attention_balance applies to.')],
                          outputs=[io.Model.Output(display_name='model'), io.Latent.Output(display_name='latent'),
                                   SegmentType.Output(display_name='segment'), io.String.Output(display_name='info')])
 
     @classmethod
-    def execute(cls, model, latent, segment, enabled=True, attention_balance=1.0, attention_blocks=LIGHTING_BLOCKS):
+    def execute(cls, model, latent, segment, enabled=True, strength=DEFAULT_STRENGTH, mode='full',
+                attention_balance=1.0, attention_blocks=LIGHTING_BLOCKS):
         reason = 'Disabled.' if not enabled else passthrough_reason(segment)
         if reason:
             return io.NodeOutput(model, latent, segment, f'{WHO}: passed through. {reason}')
@@ -452,13 +695,22 @@ class H3C_ContinuityProtection(io.ComfyNode):
         owned = replace(segment, timeline=copy.deepcopy(segment.timeline),
                         protection_source=copy.deepcopy(segment.protection_source))
         front, capstone, descriptor = load_anchors(owned)
+        if 'source' in (owned.protection_source or {}):
+            anchor_video, anchor_offset = load_anchor_clip(owned, descriptor)
+        else:
+            anchor_video, anchor_offset = front, 0
         prepared, originals = prepare_latent(latent, owned, front)
-        model, owned.protection_receipt = patch_model(model, prepared, owned, originals, capstone, descriptor,
-                                                      attention_balance, blocks)
+        model, owned.protection_receipt = patch_model(
+            model, prepared, owned, originals, capstone, descriptor,
+            attention_balance, blocks,
+            anchor_video=anchor_video, anchor_offset=anchor_offset,
+            strength=strength, mode=mode)
         prepared[RECEIPT_KEY] = owned.protection_receipt
-        message = f'{WHO}: prepared; sampler-level noise and clean chain anchor. Disk sampling cache bypassed.'
+        mode_note = 'cut memory' if descriptor.get('mode') == 'cut_memory' else 'continuation'
+        source_label = descriptor.get('source_index', descriptor.get('source_box', 'anchor'))
+        message = (f'{WHO}: prepared ({mode_note}, anchor box {source_label}, '
+                   f'mode {mode}, strength {float(strength):.2f}); sampler-level stabilization active. '
+                   f'Disk sampling cache bypassed.')
         if hasattr(model.model_options.get('transformer_options', {}).get('optimized_attention_override'), 'h3c_balance'):
             message += f' Attention balance {attention_balance:g} on {len(blocks)} blocks.'
-        if descriptor.get('capstone_suppressed'):
-            message += f" Capstone off: {descriptor['capstone_suppressed']}"
         return io.NodeOutput(model, prepared, owned, message)

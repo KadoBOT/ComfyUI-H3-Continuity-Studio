@@ -24,7 +24,7 @@ def carried(context=39, *, feather=0, dtype=torch.float32, batch=1, ending=False
 
 
 class ProtectionLatentTest(unittest.TestCase):
-    def test_front_anchor_and_linear_mask_preserve_free_video_and_audio(self):
+    def test_preserves_carried_video_mask_free_video_and_audio(self):
         for context in (22, 39, 90, 141):
             with self.subTest(context=context):
                 latent, plan, front = carried(context, feather=4)
@@ -33,16 +33,29 @@ class ProtectionLatentTest(unittest.TestCase):
                 video, audio = prepared['samples'].tensors
                 mask, sound_mask = prepared['noise_mask'].tensors
                 count = timing.tokens_for_frames(context)
-                self.assertTrue(torch.equal(video[:,:,:1], front))
                 self.assertTrue(torch.equal(originals, latent['samples'].tensors[0][:,:,:count]))
-                self.assertTrue(torch.equal(video[:,:,1:], latent['samples'].tensors[0][:,:,1:]))
-                self.assertEqual(mask[:,:,:1].sum().item(), 0)
-                self.assertTrue(torch.equal(mask[0,0,1:count,0,0], torch.linspace(1,0,count-1)))
+                self.assertTrue(torch.equal(video, latent['samples'].tensors[0]))
+                self.assertEqual(mask[:,:,:count].sum().item(), 0)
                 self.assertTrue(bool((mask[:,:,count:] == 1).all()))
                 self.assertTrue(torch.equal(audio, latent['samples'].tensors[1]))
                 self.assertTrue(torch.equal(sound_mask, latent['noise_mask'].tensors[1]))
                 for expected, actual in zip(old, [t for k in ('samples','noise_mask') for t in latent[k].tensors]):
                     self.assertTrue(torch.equal(expected, actual))
+
+    def test_cut_memory_prepares_without_carried_video_or_mask(self):
+        tokens = timing.tokens_for_frames(90)
+        video = torch.randn(1, 24, tokens, 4, 4)
+        audio = torch.randn(1, 32, 2, timing.ticks_for_frames(90))
+        latent = dict(samples=NestedTensor((video, audio)))
+        plan = nodes.SegmentPlan(None, 0, 0, 90, (4, 4), None, None,
+                                 protection_source=dict(status='ready', mode='cut_memory', context_noise=False))
+        prepared, originals = protection.prepare_latent(latent, plan)
+        self.assertIsNone(originals)
+        self.assertTrue(torch.equal(prepared['samples'].tensors[0], video))
+        self.assertNotIn('noise_mask', prepared)
+        plan.protection_source['mode'] = 'continuation'
+        with self.assertRaisesRegex(ValueError, 'carried'):
+            protection.prepare_latent(latent, plan)
 
     def test_rejects_old_pixel_noise_and_incompatible_masks(self):
         latent, plan, front = carried()
@@ -67,7 +80,7 @@ class ProtectionLatentTest(unittest.TestCase):
             video = prepared['samples'].tensors[0]
             self.assertEqual(video.dtype, dtype)
             self.assertEqual(originals.shape[0], 2)
-            self.assertTrue(torch.equal(video[:,:,0], front[:,:,0].expand(2,-1,-1,-1)))
+            self.assertTrue(torch.equal(video[:,:,:originals.shape[2]], originals))
             self.assertTrue(torch.equal(prepared['noise_mask'].tensors[0][:,:,-7:], vm[:,:,-7:].expand(2,24,-1,-1,-1)))
 
     def test_wrong_anchor_shape_and_wrong_context_fail(self):

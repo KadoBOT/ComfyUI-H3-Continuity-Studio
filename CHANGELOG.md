@@ -2,6 +2,17 @@
 
 All notable changes to H3 Continuity Studio are recorded here. Versions follow [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- **Overtime degradation protection on H3 Continuity Protection** (`strength` default `0.70`, `mode` `'full'` | `'contrast_only'`, plus optional experimental native `attention_balance` / `attention_blocks`):
+  - Traces continuations (`same_shot` exit-tail anchor, last 12 played tokens) and `ctx=0` visual-memory cuts (`scene`, `selected`, `cast`, following explicit scene memories across `new_scene=true` flashbacks while leaving fresh `new_scene=true` + `memory='off'` scenes untouched) back to the clean scene root.
+  - Applies H3 phase-aware (`t % 5 == 0` 1-frame vs `t % 5 != 0` 4-frame) per-channel mean alignment, upper-clamped channel std, and replicate-padded 3x3 high-frequency overshoot damping in `x0` sampling steps (tapering linearly from `1.0x` through `75%` progress to `0.5x` at the final step) and on `cond_video_latents` `video` / `video_audio` references (leaving keyframes and `image` refs untouched). Compatible with Veda Sparse Attention as well as native dense attention.
+  - Restores exact carried video/audio and frozen ending regions in both normal and denoised sampler outputs, bypasses H3 Disk Cache for protected continuations and `cut_memory` clips while keeping cache hits on disabled/fresh/bridge/replacement/layer pass-throughs, and validates executed sampling receipts pre-save.
+  - Verified on the 5-clip sequential Veda Ref2VA chain (`ΔE76 = 4.73–10.98 -> 0.28–1.47`, `carryErr = 0.0`, flow preserved), Clip 11 cut-memory rescue (`ΔE76 = 8.31 -> 1.35`, `crush = 15.7% -> 10.2%`, halos eliminated), Box 9 fresh flashback pass-through (`ΔE76 vs orig = 0.21`), and `mode='contrast_only'` on the 10Eros DP2 wall-onset fixture (`common wall_luma 75.71` vs `73.82` baseline, `flow = 0.461` vs `0.453`).
+- Explicit README, long-chain guide and third-party credits for roycho87's Geiru Context Suite, ethanfel/Lumifel's H3 Context Loop, and ckinpdx's Carry Attention (ComfyUI-MMH3Tools).
+
 ## [1.3.1] - 2026-11-25
 
 ### Changed
@@ -46,18 +57,6 @@ All notable changes to H3 Continuity Studio are recorded here. Versions follow [
 ### Fixed
 
 - **MCP renders no longer stay in `needs_reconciliation` after ComfyUI finishes them.** ComfyUI rewrites whole numbers in the prompt it keeps (an integer given for a FLOAT input comes back as `24.0`), so the graph in its history never hashed to the one the receipt recorded and `h3_job_status` and `h3_resume_job` refused to call the finished prompt ours. The prompt id and `h3c_agent` provenance are still required, and the history graph is now compared with the retained submission with whole-number floats treated as the same integer; a changed value still holds the job. Receipts already stuck on this recover on the next status call.
-
-### Added
-
-- Experimental `attention_balance` and `attention_blocks` on **H3 Continuity Protection** (default 1 = unchanged): on the chosen blocks, the clean chain anchors take more of the attention they share with the held carried frames, while every other share stays exact. It follows Geiru's Keystone Attention, itself based on ckinpdx's Carry Attention idea in ComfyUI-MMH3Tools; both are credited in the README, guide and notices. It can reduce motion.
-
-- Explicit README, long-chain guide and third-party credits for roycho87's Geiru Context Suite and ethanfel/Lumifel's sampler-level context noise; source-backed review of Geiru's 2026-11-15 Keystone Attention and Hybrid Windows update, with applicability and unverified-result limits.
-
-- Opt-in **H3 Continuity Protection** node: sampler-level context noise, clean native chain anchors and late capstones, with original carried frames restored in normal and denoised sampler outputs. Save Segment verifies executed output before writing. Protected continuations bypass sampling disk cache; disabled/fresh clips keep cache behavior. No extra models or packages; Context Windows and the old pixel-noise mode cannot be combined with it. Matched GPU checks on 10Eros beta7 validated execution, but the first wall-darkening onset test showed no clear color-fidelity gain at neutral balance and worse wall color at balance 20. The separate clip-30 camera reset also remains.
-
-### Fixed
-
-- Experimental attention balance now requires every selected block on every model evaluation; a partially bypassed attention patch cannot produce a successful balanced receipt. Invalid block indices fail before sampling. Veda sparse-attention and SDPA backend limits are documented with the integration results.
 
 ## [1.2.0] - 2026-11-15
 

@@ -215,7 +215,7 @@ class GraphHasher:
                 raise Uncacheable('continuity protection requires a live sampling receipt')
             # A disabled/fresh protection node returns model/latent unchanged; its segment is not sampled.
             inputs = {key: value for key, value in inputs.items()
-                      if key not in ('segment', 'attention_balance', 'attention_blocks')}
+                      if key not in ('segment', 'strength', 'mode', 'attention_balance', 'attention_blocks')}
         h = hashlib.sha256(b"class" + class_type.encode())
         if _has_fingerprint(node_class(class_type)):
             changed = node.get("is_changed")

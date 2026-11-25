@@ -130,6 +130,62 @@ class ProtectionSourceTest(unittest.TestCase):
         self.assertFalse(self.info()['context_noise'])
         self.assertTrue(self.info(parsed(context_noise=True))['context_noise'])
 
+    def test_cut_memory_traces_clean_scene_root_and_skips_new_scene_flashbacks(self):
+        # a (kitchen, fresh) -> b (cont) -> c (cut, same scene) -> d (cont of c) -> e (new_scene flashback, mem off)
+        # -> f (new_scene + selected -> c) -> g (cut, same scene as f)
+        boxes = [
+            dict(id='a', frames=90, prompt='Kitchen', seed=1),
+            dict(id='b', frames=85, prompt='Continue', seed=2),
+            dict(id='c', frames=90, prompt='Cut kitchen', seed=3, cut=True, memory='scene'),
+            dict(id='d', frames=85, prompt='Continue cut', seed=4),
+            dict(id='e', frames=90, prompt='Hospital flashback', seed=5, cut=True, new_scene=True, memory='off'),
+            dict(id='f', frames=90, prompt='Back to kitchen', seed=6, cut=True, new_scene=True,
+                 memory='selected', memories=[dict(box='c', frame=20)]),
+            dict(id='g', frames=90, prompt='Low angle kitchen', seed=7, cut=True, memory='scene'),
+        ]
+        doc = parsed(boxes)
+        entries = {i + 1: entry(i + 1, bx['id']) for i, bx in enumerate(boxes)}
+        self.assertEqual(self.info(doc, 0, entries)['status'], 'skip')
+        inf_b = self.info(doc, 1, entries)
+        self.assertEqual((inf_b['mode'], inf_b['same_shot'], inf_b['source']['timeline']['box']), ('continuation', True, 'a'))
+        inf_c = self.info(doc, 2, entries)
+        self.assertEqual((inf_c['mode'], inf_c['same_shot'], inf_c['source']['timeline']['box']), ('cut_memory', False, 'a'))
+        inf_d = self.info(doc, 3, entries)
+        self.assertEqual((inf_d['mode'], inf_d['same_shot'], inf_d['source']['timeline']['box']), ('continuation', False, 'a'))
+        self.assertEqual(self.info(doc, 4, entries)['status'], 'skip')
+        inf_f = self.info(doc, 5, entries)
+        self.assertEqual((inf_f['mode'], inf_f['source']['timeline']['box']), ('cut_memory', 'a'))
+        inf_g = self.info(doc, 6, entries)
+        self.assertEqual((inf_g['mode'], inf_g['source']['timeline']['box']), ('cut_memory', 'a'))
+
+        doc_cast = parsed([
+            dict(id='a', frames=90, prompt='Kitchen', seed=1),
+            dict(id='e', frames=90, prompt='Hospital', seed=2, cut=True, new_scene=True, memory='off'),
+            dict(id='h', frames=90, prompt='Back', seed=3, cut=True, new_scene=True, memory='cast'),
+        ])
+        entries_cast = {1: entry(1, 'a'), 2: entry(2, 'e'), 3: entry(3, 'h')}
+        with mock.patch.object(protection.timeline, 'memory_sources', return_value=[(1, 0, 'prev'), (0, 20, 'cast')]):
+            inf_h = self.info(doc_cast, 2, entries_cast)
+        self.assertEqual((inf_h['mode'], inf_h['source']['timeline']['box']), ('cut_memory', 'a'))
+
+    def test_load_anchor_clip_uses_exit_tail_only_for_same_shot_continuations(self):
+        doc = parsed([
+            dict(id='a', frames=90, prompt='Kitchen', seed=1),
+            dict(id='b', frames=85, prompt='Cont', seed=2),
+            dict(id='c', frames=90, prompt='Cut', seed=3, cut=True, memory='scene'),
+            dict(id='d', frames=85, prompt='Post-cut cont', seed=4),
+        ])
+        entries = {1: entry(1, 'a'), 2: entry(2, 'b'), 3: entry(3, 'c'), 4: entry(4, 'd')}
+        inf_b = self.info(doc, 1, entries)
+        anc_b, off_b = protection.load_anchor_clip(self.segment(inf_b))
+        self.assertEqual(off_b, 27 - protection.TAIL_ANCHOR_TOKENS)
+        self.assertTrue(torch.equal(anc_b, self.video[:, :, off_b:]))
+        for idx in (2, 3):
+            seg = self.segment(self.info(doc, idx, entries))
+            anc, off = protection.load_anchor_clip(seg)
+            self.assertEqual(off, 0)
+            self.assertTrue(torch.equal(anc, self.video))
+
 
 if __name__ == '__main__':
     unittest.main()
