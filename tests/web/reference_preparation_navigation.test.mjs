@@ -135,3 +135,24 @@ test('typing one dimension of a sheet fills the other at 16:9, and an object kee
  const prop=await open();prop.host.referenceCatalog=async()=>[{...row('c','Pry bar','props'),role:'prop'}];await prop.refresh();
  assert.equal(findAll(prop.body,n=>n.tagName==='INPUT'&&n.getAttribute('aria-label')==='Pry bar width')[0].placeholder,'width (native)');
 });
+
+const generateButton=panel=>findAll(panel.body,n=>n.tagName==='BUTTON'&&n.textContent.startsWith('Generate missing'))[0];
+test('a Timeline edit made while the generator is read keeps the connected generator and rereads the rows',async()=>{
+ const panel=await open();panel.capability=null;let reads=0;
+ panel.host.referenceCatalog=async()=>{if(++reads===1)panel.editor.state.boxes[0].frames=96;return structuredClone(rows);};
+ await panel.refresh();await new Promise(setImmediate);
+ assert.equal(panel.capability,true);assert.equal(reads,2);assert.equal(generateButton(panel).disabled,false);
+});
+test('a catalog failure does not hide the connected generator, and a generator error is shown as itself',async()=>{
+ const panel=await open();panel.capability=null;panel.host.referenceCatalog=async()=>{throw new Error('Catalog offline');};
+ await panel.refresh();assert.equal(panel.capability,true);assert.ok(panel.body.textContent.includes('Catalog offline'));
+ assert.ok(!panel.body.textContent.includes('Connect a pixel image recipe'));
+ panel.host.referenceCatalog=async()=>structuredClone(rows);panel.host.stillControls=async()=>{throw new Error('Still recipe: image output is missing or muted');};
+ await panel.refresh();assert.equal(panel.capability,null);
+ assert.ok(panel.body.textContent.includes('The connected image generator could not be read: Still recipe: image output is missing or muted'));
+ assert.ok(!panel.body.textContent.includes('Connect a pixel image recipe'));
+});
+test('only a workflow without a pixel generator asks for one',async()=>{
+ const panel=await open();panel.host.stillControls=async()=>null;await panel.refresh();
+ assert.equal(panel.capability,false);assert.ok(panel.body.textContent.includes('Connect a pixel image recipe'));
+});
