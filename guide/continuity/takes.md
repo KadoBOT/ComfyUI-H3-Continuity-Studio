@@ -52,7 +52,7 @@ The number beside **Generate clip N** sets how many takes to render, from **1 to
 
 When the next clip already has a compatible continuation, **Generate clip** preserves the ending overlap. The thumbnail shows the last frame, so it can look much the same after a new take.
 
-Select **Rebuild continuity** to generate a new ending. Studio lists the clips that will need a new render. After the selected clip saves, Studio keeps the previous versions in **Takes**. Use **Render remaining** to rebuild the dependent clips from the new take.
+To generate a new ending, hold **Ctrl** (Mac: **Cmd**) and select **Generate clip**. Studio lists the clips that will need a new render. After the selected clip saves, Studio keeps the previous versions in **Takes**. Use **Render remaining** to rebuild the dependent clips from the new take.
 
 ## Delete takes
 

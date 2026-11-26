@@ -160,7 +160,7 @@ export class CheckPanel {
     if (this.note?.text === STALE && !editor.stale) this.note = null;
     this.retakeButton.hidden = !retake;
     this.retakeButton.disabled = editor.boxRenderButton.disabled;
-    this.retakeButton.title = editor.boxRenderButton.title;
+    this.retakeButton.title = editor.generateTitle ?? '';
     const note = this.note?.box === box.id ? this.note.text : '';
     setText(this.noteEl, note);
     this.noteEl.hidden = !note;

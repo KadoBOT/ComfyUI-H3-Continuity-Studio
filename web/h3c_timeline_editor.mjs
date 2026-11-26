@@ -19,7 +19,7 @@ import { ReferenceReplacements } from './h3c_reference_replacements.mjs?v=31ebeb
 import { fillPicturePicker, mentionedReferences, referenceChip } from './h3c_reference_pictures.mjs?v=8198307be3fa';
 import { CastPage } from './h3c_cast.mjs?v=e0fbe24e6526';
 import { PicturesPanel, highestSlot } from './h3c_pictures.mjs?v=b13ece205589';
-import { CheckPanel } from './h3c_check.mjs?v=0ba848400498';
+import { CheckPanel } from './h3c_check.mjs?v=44383c7e3632';
 import { BridgePanel, bridgeLine } from './h3c_bridges.mjs?v=e7c9e657382f';
 import { DialoguePanel } from './h3c_dialogue.mjs?v=edce77aa63e7';
 import { ChainSettings } from './h3c_chain_settings.mjs?v=9f2d4061a6d6';
@@ -332,7 +332,7 @@ function button(label, title, onClick, className = '') {
   node.title = title;
   node.addEventListener('click', (event) => {
     event.preventDefault();
-    onClick();
+    onClick(event);
   });
   return node;
 }
@@ -496,16 +496,15 @@ export class TimelineEditor {
     this.countInput.addEventListener('input', () => {
       setIconLabel(this.boxRenderButton,this.generateLabel());
     });
-    this.boxRenderButton = button('Generate clip', '', async () => {
-      const outcome = await this.queueBox(1);
+    // Ctrl or ⌘ with Generate gives the clip a new ending, even when the next clip continues the one it has.
+    this.boxRenderButton = button('Generate clip', '', async (event) => {
+      const outcome = await this.queueBox(1, {rebuild: !!(event.ctrlKey || event.metaKey)});
       if (outcome.queued === outcome.requested) this.countInput.value = '1';
       else if (outcome.queued > 0 && outcome.retryable) this.countInput.value = String(outcome.remaining);
       this.renderPanelInfo();
     }, 'h3ct-primary');
-    this.rebuildButton = button('Rebuild continuity', 'Regenerate this clip with a new ending and rebuild dependent clips',
-      () => this.queueBox(1, {rebuild:true}));
     const render = el('span', 'h3ctk-render');
-    render.append(this.rebuildButton, this.boxRenderButton);
+    render.append(this.boxRenderButton);
     this.clipActions = el('div', 'h3ct-clip-actions');
     const actions = el('div', 'h3ct-row');
     actions.append(this.leftButton, this.rightButton, this.duplicateButton, this.deleteButton);
@@ -1251,7 +1250,8 @@ export class TimelineEditor {
       && (this.pickedLayer()?.id ?? null) === layer;
     this.queueBatch = true;
     try {
-      const approval = await this.host.preflight?.(index + 1, count, rebuild);
+      // A clip's other videos have no continuation to replace.
+      const approval = await this.host.preflight?.(index + 1, count, rebuild && !layer);
       if (approval?.cancelled) return outcome;
       for (let run = 0; run < count; run += 1) {
         if (!same()) {
@@ -2789,8 +2789,14 @@ export class TimelineEditor {
     this.dialogueField.hidden = !this.state.dialogue?.cues?.length;
     this.dialogueSelect.value = this.video().dialogue === 'manual' ? 'manual' : 'cues';
     setIconLabel(this.boxRenderButton,this.generateLabel());
-    this.boxRenderButton.title = layer ? `Render only video ${label} of this clip, keeping the clip’s other videos`
+    // The continuity check's Retake shows this too, without the Generate button's modifier hint.
+    this.generateTitle = layer ? `Render only video ${label} of this clip, keeping the clip’s other videos`
       : 'Render only this clip using its seed mode, keeping its saved prompt and neighboring videos';
+    const following = layer ? null : tracks.followingIndex(this.state, this.selected);
+    const keptEnding = following != null && !model.isFresh(this.state, following)
+      && hasTake(this.statusOf(this.state.boxes[following]));
+    this.boxRenderButton.title = keptEnding ? `${this.generateTitle}. Clip ${following + 1} continues from this clip, so `
+      + 'the ending stays. Ctrl+click (⌘+click on Mac) to make a new ending.' : this.generateTitle;
     setText(this.layerShotsNote, layer ? `Shot images for video ${label} come in a later version; its First and Last `
       + 'frames are in Settings.' : '');
     setText(this.layerTakesNote, layer ? `Takes of video ${label} aren’t listed yet: each Generate keeps the one before `
@@ -2799,10 +2805,6 @@ export class TimelineEditor {
     this.clipShotsEl.hidden = this.clipTakesEl.hidden = !!layer;
     this.boxRenderButton.disabled = this.host.hasVideo?.()===false || this.queuing || blocking.length > 0
       || !this.seedInput.validity.valid || this.readOnly.length > 0;
-    const following = tracks.followingIndex(this.state, this.selected);
-    this.rebuildButton.hidden = !!layer || following == null || model.isFresh(this.state, following)
-      || !hasTake(this.statusOf(this.state.boxes[following]));
-    this.rebuildButton.disabled = this.boxRenderButton.disabled;
     const tags = info.tags.map((item) => `${item.tag} = ${item.name}`).join(', ');
     const guides = info.guides.map((item) => ` · ${item.name} guides the ${item.frame} frame`).join('');
     const problems = info.problems.length ? ` · ${info.problems.join(' ')}` : '';
