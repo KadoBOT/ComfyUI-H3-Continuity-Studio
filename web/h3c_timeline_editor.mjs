@@ -6,7 +6,7 @@ import * as tracks from './h3c_tracks.mjs';
 // Plain DOM without ComfyUI imports; the host object connects it to the node.
 import { MentionCard, MentionLayer } from './h3c_mentions.mjs?v=b6060b24bccd';
 import { promptSections, promptShots, writePromptSections } from './h3c_prompt_sections.mjs?v=1f35473e5668';
-import {PromptFormPanel} from './h3c_prompt_form.mjs?v=92d4177f9413';
+import {PromptFormPanel} from './h3c_prompt_form.mjs?v=d3a4783a6d34';
 import * as model from './h3c_timeline_model.mjs?v=03f370baf50a';
 import * as videoLayers from './h3c_layers.mjs?v=03f370baf50a';
 import {audioSourceLocked} from './h3c_audio_windows.mjs?v=cdefbd77b246';

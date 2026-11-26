@@ -92,6 +92,7 @@ def run(page, width, height):
     page.wait_for_function('window.ready===true')
     page.evaluate("studio.setInspectorVisible(true); if(innerWidth<900)studio.setMobilePage('clip')")
     switch = page.locator('.h3pf > legend [role=switch]')
+    tab = lambda name: page.locator('.h3pf').get_by_role('tab', name=name, exact=True)
 
     def advanced(on):
         if (switch.get_attribute('aria-checked') == 'true') != on:
@@ -144,9 +145,15 @@ def run(page, width, height):
     camera = page.get_by_label('Shot 2 Camera movement', exact=True)
     camera.press_sequentially('A slow spiral around her left shoulder', delay=1)
     assert page.evaluate("doc().boxes[0].prompt.includes('Camera movement: A slow spiral around her left shoulder')")
-    page.get_by_label('Shot 2 add detail', exact=True).select_option('lighting')
-    page.get_by_label('Shot 2 Lighting', exact=True).fill('Warm side light')
+    tab('Camera').click()
+    assert page.get_by_label('Shot 1 Shot size', exact=True).is_visible() and page.get_by_label('Shot 2 Depth of field', exact=True).is_visible()
+    page.locator('.h3pf').screenshot(path=str(OUT / f'prompt-forms-camera-{width}.png'))
+    tab('Lighting').click()
+    page.get_by_label('Shot 2 Lighting', exact=True).press_sequentially('Warm side light', delay=1)
+    assert page.get_by_label('Shot 2 Lighting', exact=True).input_value() == 'Warm side light'
+    page.locator('.h3pf').screenshot(path=str(OUT / f'prompt-forms-lighting-{width}.png'))
     advanced_prompt = page.evaluate('doc().boxes[0].prompt')
+    assert advanced_prompt.endswith('Camera movement: A slow spiral around her left shoulder\nLighting: Warm side light\n\noverall_soundscape: Rain on the window.'), advanced_prompt
     page.evaluate('reload()')
     assert switch.get_attribute('aria-checked') == 'true'
     page.once('dialog', lambda dialog: dialog.accept())
@@ -156,7 +163,9 @@ def run(page, width, height):
     assert page.get_by_label('Shot 2 Camera movement', exact=True).is_visible()
     advanced(True)
     assert page.evaluate('doc().boxes[0].prompt') == advanced_prompt
+    tab('Lighting').click()
     assert page.get_by_label('Shot 2 Lighting', exact=True).input_value() == 'Warm side light'
+    tab('Shots').click()
     page.get_by_role('button', name='Use typed dialogue', exact=True).click()
     shot_two = page.locator('section[aria-label="Shot 2"]')
     shot_two.get_by_role('button', name='Add dialogue', exact=True).click()
@@ -207,7 +216,9 @@ def run(page, width, height):
     assert page.get_by_label('Shot 1 Lighting', exact=True).count() == 0
     assert '1 hidden' in switch.inner_text()
     advanced(True)
+    tab('Lighting').click()
     assert page.get_by_label('Shot 1 Lighting', exact=True).input_value() == 'Low amber light'
+    assert page.get_by_label('Shot 1 Atmosphere', exact=True).is_disabled()
     assert page.evaluate('stored()') == readonly
     page.evaluate("editor.applyPrompt(editor.video().prompt,'BAD',{structural:true});editor.cast.addToClip(editor.box().id,'e1')")
     assert page.evaluate('stored()') == readonly

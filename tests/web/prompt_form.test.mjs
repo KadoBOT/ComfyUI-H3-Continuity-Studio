@@ -2,6 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {formHarness} from './prompt_form_fixture.mjs';
 import {findAll,buttonNamed} from './fake_dom.mjs';
+import {SHOT_FIELDS} from '../../web/h3c_prompt_fields.mjs';
 test('opening and redrawing an empty form does not invent prompt content or history',()=>{
   const h=formHarness({prompt:''});h.panel.render();
   assert.equal(h.stored().boxes[0].prompt,'');assert.equal(h.history.entries.length,1);
@@ -60,13 +61,51 @@ test('a project or history reload explicitly discards an incompatible structural
 });
 const advancedSwitch=h=>findAll(h.panel.root,n=>n.getAttribute?.('role')==='switch'&&/^Advanced/.test(n.textContent))[0];
 const formField=(h,label)=>findAll(h.panel.root,n=>n.getAttribute?.('aria-label')===label)[0];
+const tabNames=h=>findAll(h.panel.root,n=>n.getAttribute?.('role')==='tab').map(n=>n.textContent);
+const openTab=(h,name)=>findAll(h.panel.root,n=>n.getAttribute?.('role')==='tab'&&n.textContent===name)[0].click();
+test('Advanced adds a tab per detail category, each listing every shot with all of its fields ready to fill',()=>{
+  const prompt='integrated_multimodal_description:\n[Shot 1] A room.\nComposition: Wide shot\n[Shot 2] At 00:03.000, the camera cuts to a doorway.';
+  const h=formHarness({prompt}),field=label=>formField(h,label);
+  assert.deepEqual(tabNames(h),['Subjects & references','Summary','Reference retention','Shots','Soundscape','Background music']);
+  advancedSwitch(h).click();
+  assert.deepEqual(tabNames(h),['Subjects & references','Summary','Reference retention','Shots','Action','Camera','Effects','Lighting','Acting','Continuity','Soundscape','Background music']);
+  assert.equal(h.stored().boxes[0].prompt,prompt);
+  openTab(h,'Camera');
+  for(const shot of [1,2])for(const name of ['Shot size','Camera position','Camera direction','Camera subject','Focus','Depth of field'])
+    assert.equal(field(`Shot ${shot} ${name}`).value,'',`Shot ${shot} ${name}`);
+  assert.equal(field('Shot 1 Lighting'),undefined);
+  h.input('Shot 2 Focus','Rack to the doorway');
+  assert.equal(h.stored().boxes[0].prompt,prompt+'\nFocus: Rack to the doorway');
+  assert.equal(field('Shot 2 Focus').value,'Rack to the doorway');
+  h.input('Shot 2 Focus','Rack to the doorway handle');
+  assert.equal(h.stored().boxes[0].prompt,prompt+'\nFocus: Rack to the doorway handle');
+  openTab(h,'Effects');
+  assert.ok(field('Shot 1 Effect 1'));assert.equal(field('Shot 1 Effect 2'),undefined);
+  findAll(h.panel.root,n=>n.tagName==='BUTTON'&&n.textContent==='Add Shot 1 effect')[0].click();
+  assert.ok(field('Shot 1 Effect 2 trigger'));
+  openTab(h,'Shots');
+  assert.equal(field('Shot 2 Focus'),undefined);
+  assert.equal(field('Shot 1 add detail').options.some(o=>o.value==='lighting'),false);
+  assert.ok(field('Shot 1 Composition'));
+});
+test('every advanced shot detail has a category tab',()=>{
+  const h=formHarness({prompt:'integrated_multimodal_description:\n[Shot 1] A room.'});
+  advancedSwitch(h).click();
+  const shown=new Set();
+  for(const name of ['Action','Camera','Effects','Lighting','Acting','Continuity']) {
+    openTab(h,name);
+    for(const node of findAll(h.panel.root,n=>/^Shot 1 /.test(n.getAttribute?.('aria-label')??'')))shown.add(node.getAttribute('aria-label').slice(7).replace(/ 1\b/,' N'));
+  }
+  assert.deepEqual(SHOT_FIELDS.filter(f=>f.advanced).map(f=>f.prefix).filter(p=>!shown.has(p)),[]);
+});
 test('Advanced is on while the clip has advanced details; off removes them after confirming until it is on again',()=>{
   const prompt='integrated_multimodal_description:\n[Shot 1] A room.\nComposition: Wide shot\nLighting: Warm window light\nGaze: Down at the floor';
   const h=formHarness({prompt}),advanced=()=>advancedSwitch(h),field=label=>formField(h,label);
   const legend=advanced().parentNode.parentNode;
   assert.equal(legend.tagName,'LEGEND');assert.equal(h.panel.root.childNodes.find(n=>n.tagName==='LEGEND'),legend);
   assert.equal(advanced().getAttribute('aria-checked'),'true');
-  assert.ok(field('Shot 1 Lighting'));assert.ok(field('Shot 1 Gaze'));
+  openTab(h,'Lighting');assert.equal(field('Shot 1 Lighting').value,'Warm window light');
+  openTab(h,'Acting');assert.equal(field('Shot 1 Gaze').value,'Down at the floor');
   const asked=[];globalThis.confirm=message=>{asked.push(message);return false;};
   advanced().click();
   assert.equal(advanced().getAttribute('aria-checked'),'true');assert.equal(h.stored().boxes[0].prompt,prompt);
@@ -75,10 +114,12 @@ test('Advanced is on while the clip has advanced details; off removes them after
   advanced().click();
   assert.equal(advanced().getAttribute('aria-checked'),'false');
   assert.equal(h.stored().boxes[0].prompt,'integrated_multimodal_description:\n[Shot 1] A room.\nComposition: Wide shot');
-  assert.equal(field('Shot 1 Lighting'),undefined);assert.ok(field('Shot 1 Composition'));
+  assert.deepEqual(tabNames(h).filter(n=>['Lighting','Acting'].includes(n)),[]);
+  assert.equal(field('Shot 1 Gaze'),undefined);assert.ok(field('Shot 1 Composition'));
   assert.equal(field('Shot 1 add detail').options.some(o=>o.value==='atmosphere'),false);
   advanced().click();
-  assert.equal(h.stored().boxes[0].prompt,prompt);assert.ok(field('Shot 1 Lighting'));
+  assert.equal(h.stored().boxes[0].prompt,prompt);
+  openTab(h,'Lighting');assert.equal(field('Shot 1 Lighting').value,'Warm window light');
   assert.equal(h.history.entries.length,3);
   delete globalThis.confirm;
 });
@@ -93,17 +134,20 @@ test('Advanced brings removed details back into their shot after other edits, an
   assert.equal(advancedSwitch(basic).getAttribute('aria-checked'),'false');
   advancedSwitch(basic).click();
   assert.equal(advancedSwitch(basic).getAttribute('aria-checked'),'true');
-  assert.equal(formField(basic,'Shot 1 add detail').options.some(o=>o.value==='atmosphere'),true);
+  openTab(basic,'Lighting');assert.equal(formField(basic,'Shot 1 Atmosphere').value,'');
   advancedSwitch(basic).click();
+  assert.equal(findAll(basic.panel.root,n=>n.getAttribute?.('role')==='tab'&&n.getAttribute('aria-selected')==='true')[0].textContent,'Shots');
   assert.equal(advancedSwitch(basic).getAttribute('aria-checked'),'false');
   assert.equal(basic.stored().boxes[0].prompt,'integrated_multimodal_description:\n[Shot 1] A room.');assert.equal(basic.history.entries.length,1);
 });
 test('on a read-only Timeline Advanced only shows or hides details and never changes the prompt',()=>{
   const prompt='integrated_multimodal_description:\n[Shot 1] A room.\nLighting: Warm window light';
   const h=formHarness({prompt});Object.defineProperty(h.editor,'readOnly',{value:['scene-map-1']});h.panel.render();
-  assert.equal(advancedSwitch(h).getAttribute('aria-checked'),'true');assert.ok(formField(h,'Shot 1 Lighting'));
+  assert.equal(advancedSwitch(h).getAttribute('aria-checked'),'true');
+  openTab(h,'Lighting');assert.equal(formField(h,'Shot 1 Lighting').value,'Warm window light');
   advancedSwitch(h).click();
   assert.equal(advancedSwitch(h).getAttribute('aria-checked'),'false');assert.equal(formField(h,'Shot 1 Lighting'),undefined);
+  assert.ok(!tabNames(h).includes('Lighting'));
   assert.match(advancedSwitch(h).textContent,/1 hidden/);assert.equal(h.stored().boxes[0].prompt,prompt);
 });
 test('retention relationship is a choice of H3 markers with a Custom option that keeps imported markers',()=>{

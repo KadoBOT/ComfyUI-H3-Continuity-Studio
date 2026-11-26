@@ -1,13 +1,23 @@
-import {readPromptFields,writePromptField,SECTION_TITLES,RETENTION_VISUAL,RETENTION_AUDIO,SUMMARY_TASKS,SHOT_FIELDS} from './h3c_prompt_fields.mjs?v=5cd5e5206375';
+import {readPromptFields,writePromptField,SECTION_TITLES,RETENTION_VISUAL,RETENTION_AUDIO,SUMMARY_TASKS,SHOT_FIELDS} from './h3c_prompt_fields.mjs?v=657aee571ea0';
 import {promptSections,promptShots,replacePromptRanges} from './h3c_prompt_sections.mjs?v=1f35473e5668';
 import {SwitchSection} from './h3c_switch_section.mjs?v=c253500f4908';
 import {MentionLayer} from './h3c_mentions.mjs?v=b6060b24bccd';
-import {shotTiming,editPromptShot} from './h3c_prompt_shots.mjs?v=8eee9a47107c';
-import {decorateIcon} from './h3c_icons.mjs?v=62c964e1ecbe';
+import {shotTiming,editPromptShot} from './h3c_prompt_shots.mjs?v=80ea0b10b8c3';
+import {decorateIcon} from './h3c_icons.mjs?v=cded590ffdc9';
 const el=(tag,cls,text)=>{const node=document.createElement(tag);if(cls)node.className=cls;if(text!==undefined)node.textContent=text;return node;};
 const button=(text,action)=>{const node=el('button','h3ct-button',text);node.type='button';node.addEventListener('click',action);return node;};
 const SECTION_ICONS={subject_definitions:'cast',summary:'story',retention_analysis:'refs',integrated_multimodal_description:'shots',
   detailed_description:'shots',overall_soundscape:'sound',non_diegetic_music:'audio'};
+// Advanced shot details, one tab each after Shots; every advanced SHOT_FIELDS key belongs to exactly one.
+const DETAIL_TABS=[
+  {key:'detail_action',title:'Action',icon:'motion',fields:['initial_state','trigger','contact','reaction','physical_response']},
+  {key:'detail_camera',title:'Camera',icon:'camera',fields:['shot_size','camera_position','camera_direction','camera_subject','focus','depth_of_field']},
+  {key:'detail_effects',title:'Effects',icon:'effects',fields:['effect_trigger','effect','effect_motion','effect_response']},
+  {key:'detail_lighting',title:'Lighting',icon:'light',fields:['lighting','light_direction','colour_contrast','reflections','atmosphere','materials']},
+  {key:'detail_acting',title:'Acting',icon:'face',fields:['gaze','expression','breathing','posture','hands']},
+  {key:'detail_continuity',title:'Continuity',icon:'link',fields:['continuity','recovery','end_state']},
+];
+const titleOf=name=>SECTION_TITLES[name]??DETAIL_TABS.find(t=>t.key===name)?.title??'Existing text';
 let ids=0;
 const style=()=>{
   if(document.getElementById('h3pf-style'))return;
@@ -27,6 +37,7 @@ export class PromptFormPanel {
     style();this.editor=editor;this.root=el('fieldset','h3pf');this.drafts=new Map();this.newRows=[];this.marks=[];
     this.section=null;this.controls=new Map();this.serial=++ids;this.message='';this.sectionStash=new Map();
     this.advanced=false;this.newDetails=new Map();this.advancedPins=new Map();this.advancedKept=new Map();this.customRelationships=new Set();
+    this.effectSlots=new Map();
   }
   // As the Studio's Story Advanced: on while the clip has advanced details or after the user turns it on; off removes
   // them from the prompt, kept until it comes back on. A read-only Timeline only shows or hides them.
@@ -93,7 +104,7 @@ export class PromptFormPanel {
     input.addEventListener('focus',()=>{this.editor.activePromptEl=input;});
     wrap.append();parent.append(wrap);this.controls.set(label,input);return input;
   }
-  edit(section,index,key,kind,patch) {
+  edit(section,index,key,kind,patch,newShot=null) {
     const source=this.editor.video().prompt;
     if(source!==this.source||this.drafts.get(key)?.source&&this.drafts.get(key).source!==source){this.draftMessage('The prompt changed. Discard this draft before editing.');return;}
     const parsed=readPromptFields(source,{tags:this.tags()});
@@ -103,7 +114,7 @@ export class PromptFormPanel {
     try {
       if(kind==='dialogue'&&this.editor.video().dialogue!=='manual')throw new Error('Switch to Typed in the prompt before editing manual dialogue.');
       if(value===null&&kind==='definition'&&this.editor.box()?.cast?.[entry.value.target])throw new Error('Unlink this subject from Cast before deleting its definition.');
-      const shot=entry?.shot??this.newRows.find(r=>r.key===key)?.shot??this.newDetails.get(key)?.shot;
+      const shot=entry?.shot??this.newRows.find(r=>r.key===key)?.shot??this.newDetails.get(key)?.shot??newShot;
       const next=writePromptField(source,{expectedSource:source,section,kind,shot,entry,value},{tags:this.tags()});
       if(index==null&&kind==='dialogue'&&value&&!value.text?.trim()) {
         const pending=this.newRows.find(r=>r.key===key);if(pending)pending.value=value;
@@ -189,12 +200,10 @@ export class PromptFormPanel {
     const pending=[...this.newDetails.entries()].filter(([id,item])=>id.startsWith(this.editor.video().id+':')&&item.shot===shot
       &&!existing.some(e=>e.value.key===item.value.key&&e.value.index===item.value.index));
     const show=(value,entry,index,key)=>{
-      const field=SHOT_FIELDS.find(f=>f.key===value.key);if(!field||field.advanced&&!this.advanced)return;
-      const label=`Shot ${shot} ${field.prefix.replace(' N',' '+value.index)}${field.repeatable&&value.index?' '+value.index:''}`;
-      this.field(parent,label,value.text,text=>{
-        if(field.advanced)this.advancedPins.set(this.editor.video().id,true);
-        this.edit(this.section,index,key,'cue',{...value,text});
-      },{area:!field.suggestions.length,suggestions:field.suggestions.length?field.suggestions:null});
+      const field=SHOT_FIELDS.find(f=>f.key===value.key);if(!field||field.advanced)return;
+      const label=`Shot ${shot} ${field.prefix}${field.repeatable&&value.index?' '+value.index:''}`;
+      this.field(parent,label,value.text,text=>this.edit(this.section,index,key,'cue',{...value,text}),
+        {area:!field.suggestions.length,suggestions:field.suggestions.length?field.suggestions:null});
     };
     for(const entry of existing)show(entry.value,entry,entries.indexOf(entry),this.section+':'+entries.indexOf(entry));
     for(const [id,item] of pending)show(item.value,null,null,id);
@@ -206,15 +215,35 @@ export class PromptFormPanel {
       this.newRows.push({section:this.section,kind:'dialogue',shot,key:'dialogue:new:'+ ++ids,
         value:{speakers:[],identity:'',language:'',text:'',index:null}});this.render();
     }));
-    const options=SHOT_FIELDS.filter(f=>f.key!=='dialogue'&&(this.advanced||!f.advanced)&&(f.repeatable||f.prefix.includes(' N')||!existing.some(e=>e.value.key===f.key)));
+    const options=SHOT_FIELDS.filter(f=>f.key!=='dialogue'&&!f.advanced&&(f.repeatable||!existing.some(e=>e.value.key===f.key)));
     this.field(parent,`Shot ${shot} add detail`,'',key=>{
       if(!key)return;
       const field=SHOT_FIELDS.find(f=>f.key===key);
-      let index=null;
-      if(field.repeatable)index=existing.some(e=>e.value.key===key)?Math.max(1,...existing.filter(e=>e.value.key===key).map(e=>e.value.index??1))+1:null;
-      if(field.prefix.includes(' N')){index=Math.max(1,...existing.filter(e=>e.value.key.startsWith('effect')).map(e=>e.value.index??1));if(existing.some(e=>e.value.key===key&&e.value.index===index))index++;}
+      const index=field.repeatable&&existing.some(e=>e.value.key===key)?Math.max(1,...existing.filter(e=>e.value.key===key).map(e=>e.value.index??1))+1:null;
       const id=`${this.editor.video().id}:${shot}:${key}:${index??0}`;this.newDetails.set(id,{shot,value:{key,index,text:''}});this.render();
-    },{options:options.map(f=>[f.key,f.prefix.replace(' N','')])});
+    },{options:options.map(f=>[f.key,f.prefix])});
+  }
+  // An Advanced category tab: every shot with each of the category's fields, filled or empty; an empty field adds no text.
+  detailTab(parent,tab,section,entries) {
+    const editor=this.editor,id=editor.video().id;
+    const shots=shotTiming(editor.state,editor.selected,editor.host.context(),editor.pickedLayer?.()?.id??null).shots;
+    if(!shots.length){parent.append(el('p','h3ct-hint','Add a shot on the Shots tab first.'));return;}
+    const fields=tab.fields.map(key=>SHOT_FIELDS.find(f=>f.key===key)),numbered=fields.some(f=>f.prefix.includes(' N'));
+    for(const {number:shot} of shots) {
+      const row=el('section','h3pf-row');row.setAttribute('aria-label',`${tab.title} in Shot ${shot}`);row.append(el('strong',null,`Shot ${shot}`));parent.append(row);
+      const cues=entries.filter(e=>e.shot===shot&&e.kind==='cue'),texts=entries.filter(e=>e.shot===shot&&e.kind==='existing').map(e=>e.value.text);
+      const slot=`${id}:${shot}`,count=numbered?Math.max(1,this.effectSlots.get(slot)??0,...cues.filter(e=>tab.fields.includes(e.value.key)).map(e=>e.value.index??1)):1;
+      for(let index=1;index<=count;index++)for(const field of fields) {
+        const n=field.prefix.includes(' N')?index:null,prefix=field.prefix.replace(' N',' '+n);
+        if(texts.some(text=>text.startsWith(prefix+':'))){row.append(el('p','h3ct-hint',`${prefix} is written more than once in Shot ${shot}; edit it as Existing text on the Shots tab.`));continue;}
+        const entry=cues.find(e=>e.value.key===field.key&&(e.value.index??null)===n),at=entry?entries.indexOf(entry):null;
+        const key=entry?section+':'+at:`${id}:${shot}:${field.key}:${n??0}`,value=entry?.value??{key:field.key,index:n,text:''};
+        this.field(row,`Shot ${shot} ${prefix}`,this.drafts.get(key)?.value?.text??value.text,text=>{
+          this.advancedPins.set(id,true);this.edit(section,at,key,'cue',{...value,text},shot);
+        },{area:!field.suggestions.length,suggestions:field.suggestions.length?field.suggestions:null});
+      }
+      if(numbered)row.append(button(`Add Shot ${shot} effect`,()=>{this.effectSlots.set(slot,count+1);this.render();}));
+    }
   }
   dialogueRow(parent,shot,entry,index,key,ordinal) {
     const value=this.drafts.get(key)?.value??entry.value,title=`Shot ${shot} dialogue ${value.index??ordinal}`;
@@ -298,15 +327,18 @@ export class PromptFormPanel {
     const pin=this.advancedPins.get(video.id);
     this.advanced=this.editor.readOnly?.length&&pin!==undefined?pin:cues.length>0||pin===true;
     const visual=parsed.sections.some(s=>s.key==='detailed_description')?'detailed_description':'integrated_multimodal_description';
-    const keys=['subject_definitions','summary','retention_analysis',visual,'overall_soundscape','non_diegetic_music'];
+    const shotEntries=parsed.sections.filter(s=>s.key===visual).flatMap(s=>s.entries);
+    const keys=['subject_definitions','summary','retention_analysis',visual,...this.advanced?DETAIL_TABS.map(t=>t.key):[],'overall_soundscape','non_diegetic_music'];
     if(parsed.sections.some(s=>s.key==='existing'||s.key==='alignment'))keys.push('existing');
     this.section??=parsed.sections[0]?.key??visual;if(this.section==='alignment')this.section='existing';
     if(!keys.includes(this.section))this.section=visual;
     const tabs=el('div','h3pf-tabs h3ct-section-tabs');tabs.setAttribute('role','tablist');tabs.setAttribute('aria-label','Prompt sections');
     for(const name of keys) {
       const tab=button('',()=>{if(!this.canLeave())return;this.section=name;this.render();});
-      decorateIcon(tab,SECTION_ICONS[name]??'text',SECTION_TITLES[name]??'Existing text',{text:true});
-      tab.classList.toggle('empty',!parsed.sections.filter(s=>s.key===name).some(s=>s.entries.some(e=>e.range.before.trim())));
+      const detail=DETAIL_TABS.find(t=>t.key===name);
+      decorateIcon(tab,detail?.icon??SECTION_ICONS[name]??'text',titleOf(name),{text:true});
+      tab.classList.toggle('empty',detail?!shotEntries.some(e=>e.kind==='cue'&&detail.fields.includes(e.value.key)&&e.value.text.trim())
+        :!parsed.sections.filter(s=>s.key===name).some(s=>s.entries.some(e=>e.range.before.trim())));
       tab.setAttribute('role','tab');tab.setAttribute('aria-selected',String(name===this.section));tab.tabIndex=name===this.section?0:-1;
       tab.addEventListener('keydown',event=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;event.preventDefault();
         const at=keys.indexOf(this.section),next=event.key==='Home'?0:event.key==='End'?keys.length-1:(at+(event.key==='ArrowRight'?1:-1)+keys.length)%keys.length;
@@ -319,7 +351,12 @@ export class PromptFormPanel {
     legend.append(advanced.root,tabs);this.root.append(legend);
     this.note=el('p','h3pf-error',this.message);this.note.setAttribute('role','status');this.root.append(this.note);
     this.discardButton=button('Discard draft',()=>this.discardDrafts());this.discardButton.hidden=!this.hasDrafts();this.root.append(this.discardButton);
-    let body=el('div');body.setAttribute('role','tabpanel');body.setAttribute('aria-label',SECTION_TITLES[this.section]??'Existing text');this.root.append(body);
+    let body=el('div');body.setAttribute('role','tabpanel');body.setAttribute('aria-label',titleOf(this.section));this.root.append(body);
+    const detail=DETAIL_TABS.find(t=>t.key===this.section);
+    if(detail) {
+      this.detailTab(body,detail,visual,shotEntries);
+      const restored=this.controls.get(key);if(restored){restored.focus?.();if(selection)restored.setSelectionRange?.(...selection);}return;
+    }
     if(['summary','overall_soundscape','non_diegetic_music'].includes(this.section)) {
       const selected=promptSections(this.source)?.find(s=>s.key===this.section);
       const stashKey=video.id+':'+this.section;
