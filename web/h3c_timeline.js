@@ -14,7 +14,7 @@ import { WATCH_EVENTS, idleWatch, progressText, watchEvent } from './h3c_render_
 import { DEFAULT_AHEAD, QueueFeed, feedNote, queueAhead } from './h3c_queue_feed.mjs?v=9392f926e4e3';
 import { studio } from './h3c_studio.mjs?v=ca394a06a8f0';
 import { FACE_HEIGHT, TimelineFace } from './h3c_timeline_face.mjs?v=9e7e2265c00b';
-import { TimelineEditor } from './h3c_timeline_editor.mjs?v=2e6f0ad423ee';
+import { TimelineEditor } from './h3c_timeline_editor.mjs?v=d69f5604914c';
 import { referenceFile, referenceSource, referencePools, referenceType, effectiveRefmods, parseState, serialize, unknownFeatures, readOnlyNote } from './h3c_timeline_model.mjs?v=03f370baf50a';
 import {referenceImageFile} from './h3c_reference_sources.mjs?v=3f1e2241a14f';
 import { pictureRefs } from './h3c_pictures.mjs?v=b13ece205589';
@@ -25,7 +25,7 @@ import {stillPromptSource,sameStillPromptSource} from './h3c_still_prompt_prepar
 import { TakesClient } from './h3c_takes.mjs?v=b881254039e2';
 import {ProjectSession, forkProject, parseJSON, projectErrorMessage, stringifyJSON} from './h3c_project.mjs?v=0882b8a6265a';
 import {TimelineHistory, dropReceipts, withLiveReceipts} from './h3c_history.mjs?v=a3b5f0d772f7';
-import {confirmRegeneration} from './h3c_regeneration.mjs?v=44ff3a1a199c';
+import {confirmRegeneration} from './h3c_regeneration.mjs?v=cec86257bd2a';
 import {startGeneration,useGeneration} from './h3c_generations.mjs?v=2ed8014b9ec0';
 
 const NODE_TYPE = 'H3C_Timeline';
@@ -230,7 +230,7 @@ export class TimelineHost {
       audioInfo: (file) => this.audioInfo(file),
       confirmAudioUnlock: () => this.confirmAudioUnlock(),
       queue: (count, box, bridge, receipt) => this.queue(count, box, bridge, receipt),
-      preflight: (box, count) => this.prepareRegeneration(box, count),
+      preflight: (box, count, rebuild) => this.prepareRegeneration(box, count, rebuild),
       refresh: () => this.refresh(),
       takes: (action, body) => this.takesClient.send(action, body),
       viewUrl,
@@ -1076,7 +1076,7 @@ export class TimelineHost {
     return app.extensionManager?.dialog?.confirm?.(options) ?? window.confirm(`${options.title}\n\n${options.message}`);
   }
 
-  async prepareRegeneration(box, count) {
+  async prepareRegeneration(box, count, rebuild) {
     if(this.project) await this.project.save();
     else await this.saved.flush();
     const id=this.editor.state.boxes[box-1]?.id;
@@ -1090,7 +1090,7 @@ export class TimelineHost {
         body.timeline_node=captureTimelineId(snapshot,this.node.id,{root:this.node.graph===(app.rootGraph??app.graph)});
       }
     }
-    return confirmRegeneration({body,box:id,count,snapshot:()=>JSON.stringify([this.requestBody(),this.project?.project?.revision]),
+    return confirmRegeneration({body,box:id,count,rebuild,snapshot:()=>JSON.stringify([this.requestBody(),this.project?.project?.revision]),
       request:(url,body)=>this.stillRequest(url,body),
       confirm:options=>app.extensionManager?.dialog?.confirm?.(options)??window.confirm(`${options.title}\n\n${options.message}`)});
   }

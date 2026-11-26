@@ -61,7 +61,7 @@ def _reason(folder, parsed, known, index, following):
     return ""
 
 
-def _fingerprint(folder, parsed, known, manifest, index):
+def _fingerprint(folder, parsed, known, manifest, index, *, rebuild=False):
     timeline = asdict(parsed)
     timeline["render_box"] = timeline["render_bridge"] = None
     timeline.pop("render_layer")
@@ -84,11 +84,13 @@ def _fingerprint(folder, parsed, known, manifest, index):
                 except FileNotFoundError:
                     stamps.append([file, None])
     value = [os.path.normcase(os.path.abspath(folder)), timeline, known, records, stamps]
+    if rebuild:
+        value.append({"rebuild": True})
     return hashlib.sha256(json.dumps(value, sort_keys=True).encode()).hexdigest()
 
 
-def inspect(folder, parsed, known, box_id):
-    """Describe incompatible overlap and every dependent saved clip, without changing disk."""
+def inspect(folder, parsed, known, box_id, *, rebuild=False):
+    """Check saved overlap and describe dependent clips when a rebuild is requested or required."""
     index = next((i for i, box in enumerate(parsed.boxes) if box.id == box_id), None)
     if index is None:
         raise ValueError("H3 Timeline: the requested clip is no longer in the Timeline")
@@ -106,6 +108,8 @@ def inspect(folder, parsed, known, box_id):
         return {**result, "deferred": True}
     known = _settings(known)
     reason = _reason(folder, parsed, known, index, following)
+    if rebuild and not reason:
+        reason = f"Clip {index + 1} will generate a new ending. Clip {after + 1} will need a new render to continue it."
     result.update(needs_rebuild=bool(reason), reason=reason)
     if not reason:
         return result
@@ -114,8 +118,9 @@ def inspect(folder, parsed, known, box_id):
         if later==index: continue
         box = parsed.boxes[later]
         dependencies = {parsed.boxes[source].id for source, _, _ in rules.memory_sources(parsed, later)}
-        if not rules.is_fresh(parsed, later):
-            dependencies.add(parsed.boxes[rules.previous_index(parsed,later)].id)
+        previous = rules.previous_index(parsed, later)
+        if previous is not None and not rules.is_fresh(parsed, later):
+            dependencies.add(parsed.boxes[previous].id)
         dependencies.update(item["box"] for item in (entries.get(box.id, {}).get("timeline") or {}).get("memories", []))
         if dependencies & changed:
             changed.add(box.id)
@@ -129,13 +134,17 @@ def inspect(folder, parsed, known, box_id):
         for key in ("bridges", "replacements"):
             if any(entry["box"] == box.id for entry in manifest.get(key, [])):
                 result[key].append(dict(id=box.id, number=later + 1))
-    result["receipt"] = dict(box=box_id, fingerprint=_fingerprint(folder, parsed, known, manifest, index))
+    result["receipt"] = dict(box=box_id, fingerprint=_fingerprint(folder, parsed, known, manifest, index, rebuild=rebuild))
+    if rebuild:
+        result["receipt"]["rebuild"] = True
     return result
 
 
 def validate(folder, parsed, known, box_id, receipt):
-    result = inspect(folder, parsed, known, box_id)
-    if not isinstance(receipt, dict) or not result["needs_rebuild"] or result["receipt"] != {
+    if not isinstance(receipt, dict):
+        raise ValueError(CHANGED)
+    result = inspect(folder, parsed, known, box_id, rebuild=receipt.get("rebuild") is True)
+    if not result["needs_rebuild"] or result["receipt"] != {
             key: value for key, value in receipt.items() if key != "editor"}:
         raise ValueError(CHANGED)
     if receipt.get("editor"):
@@ -177,7 +186,7 @@ def request(body):
                         known[key], _ = timeline_prepare.scalar(inputs[key], graph, "settings." + key)
                     except ValueError:
                         pass
-            result = inspect(folder, parsed, known, body.get("box"))
+            result = inspect(folder, parsed, known, body.get("box"), rebuild=body.get("rebuild") is True)
             if result["receipt"] is not None and body.get("editor"):
                 editor = {key: body["editor"][key] for key in ("graph", "node")}
                 editor["fingerprint"] = _editor_fingerprint(editor, body["box"])

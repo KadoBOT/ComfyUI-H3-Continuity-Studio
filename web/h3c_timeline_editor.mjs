@@ -502,8 +502,10 @@ export class TimelineEditor {
       else if (outcome.queued > 0 && outcome.retryable) this.countInput.value = String(outcome.remaining);
       this.renderPanelInfo();
     }, 'h3ct-primary');
+    this.rebuildButton = button('Rebuild continuity', 'Regenerate this clip with a new ending and rebuild dependent clips',
+      () => this.queueBox(1, {rebuild:true}));
     const render = el('span', 'h3ctk-render');
-    render.append(this.boxRenderButton);
+    render.append(this.rebuildButton, this.boxRenderButton);
     this.clipActions = el('div', 'h3ct-clip-actions');
     const actions = el('div', 'h3ct-row');
     actions.append(this.leftButton, this.rightButton, this.duplicateButton, this.deleteButton);
@@ -1240,7 +1242,7 @@ export class TimelineEditor {
   }
 
   // Queues takes using the selected clip's seed mode; stop if its identity or position changes.
-  async queueBox(count = 1) {
+  async queueBox(count = 1, {rebuild = false} = {}) {
     const outcome = {requested:count, queued:0, remaining:count, retryable:false};
     if(this.promptDraftsReady?.()===false)return outcome;
     if (!this.box() || this.readOnly.length || this.queuing || this.queueBatch || this.seedInput?.validity?.valid === false) return outcome;
@@ -1249,7 +1251,7 @@ export class TimelineEditor {
       && (this.pickedLayer()?.id ?? null) === layer;
     this.queueBatch = true;
     try {
-      const approval = await this.host.preflight?.(index + 1, count);
+      const approval = await this.host.preflight?.(index + 1, count, rebuild);
       if (approval?.cancelled) return outcome;
       for (let run = 0; run < count; run += 1) {
         if (!same()) {
@@ -2797,6 +2799,10 @@ export class TimelineEditor {
     this.clipShotsEl.hidden = this.clipTakesEl.hidden = !!layer;
     this.boxRenderButton.disabled = this.host.hasVideo?.()===false || this.queuing || blocking.length > 0
       || !this.seedInput.validity.valid || this.readOnly.length > 0;
+    const following = tracks.followingIndex(this.state, this.selected);
+    this.rebuildButton.hidden = !!layer || following == null || model.isFresh(this.state, following)
+      || !hasTake(this.statusOf(this.state.boxes[following]));
+    this.rebuildButton.disabled = this.boxRenderButton.disabled;
     const tags = info.tags.map((item) => `${item.tag} = ${item.name}`).join(', ');
     const guides = info.guides.map((item) => ` · ${item.name} guides the ${item.frame} frame`).join('');
     const problems = info.problems.length ? ` · ${info.problems.join(' ')}` : '';

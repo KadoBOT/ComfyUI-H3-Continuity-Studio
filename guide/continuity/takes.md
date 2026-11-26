@@ -48,6 +48,12 @@ Using a take can put other renders out of date, so **Use** lists them first and 
 
 The number beside **Generate clip N** sets how many takes to render, from **1 to 10**. With 3 the button reads *Generate clip 2 · 3 takes* and queues three runs of that clip, one after another, each with a new seed. The last is in use when they finish, the others are listed under Takes, and the number goes back to 1. **Retake** on [the continuity check](check.md) renders one take.
 
+## Generate a new ending
+
+When the next clip already has a compatible continuation, **Generate clip** preserves the ending overlap. The thumbnail shows the last frame, so it can look much the same after a new take.
+
+Select **Rebuild continuity** to generate a new ending. Studio lists the clips that will need a new render. After the selected clip saves, Studio keeps the previous versions in **Takes**. Use **Render remaining** to rebuild the dependent clips from the new take.
+
 ## Delete takes
 
 Each delete counts first and asks, for example "Delete 12 takes (1.4 GB)? This can't be undone."

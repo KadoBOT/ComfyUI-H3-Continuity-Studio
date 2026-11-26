@@ -19,6 +19,18 @@ test('compatible regeneration queues without a dialog or receipt',async()=>{
   assert.equal(s.calls.length,0);
 });
 
+test('rebuild requests a new ending and forwards the confirmed receipt',async()=>{
+  const s=setup({rebuild:true});
+  const request=s.options.request;
+  s.options.request=async(url,body)=>{
+    assert.equal(body.rebuild,true);
+    const check=await request(url,body);
+    check.receipt.rebuild=true;
+    return check;
+  };
+  assert.equal((await confirmRegeneration(s.options)).receipt.rebuild,true);
+});
+
 test('cancel returns without authorizing a render',async()=>{
   const s=setup({confirm:async()=>false});
   assert.deepEqual(await confirmRegeneration(s.options),{cancelled:true,receipt:null});

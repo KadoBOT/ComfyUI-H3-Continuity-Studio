@@ -1,10 +1,11 @@
 // Read-only preflight. The returned consent belongs only to the queued replacement, never the saved Timeline.
-export async function confirmRegeneration({body,box,count=1,request,confirm,snapshot}) {
+export async function confirmRegeneration({body,box,count=1,rebuild=false,request,confirm,snapshot}) {
   const before=snapshot();
-  const check=await request('/h3c/timeline/regeneration',{...body,box});
+  const check=await request('/h3c/timeline/regeneration',{...body,box,...(rebuild ? {rebuild} : {})});
   const unchanged=()=>{if(snapshot()!==before) throw new Error('The Timeline changed; generate this clip again to review its affected clips.');};
   unchanged();
   if(!check?.ok) throw new Error(check?.error??'Could not check saved continuity. Try again.');
+  if(rebuild && check.deferred) throw new Error('Resolve the Timeline render settings before rebuilding continuity.');
   if(!check.needs_rebuild) return {cancelled:false,receipt:null};
   if(count!==1) throw new Error('Rebuild continuity with one take first. Select 1 take, then generate this clip again.');
   const numbers=check.affected.map(item=>item.number);
