@@ -76,6 +76,13 @@ class RegenerationTest(unittest.TestCase):
         self.assertEqual(manifest["segments"][0]["stem"], replacement["stem"])
         self.assertEqual([take["index"] for take in manifest["takes"]], [1, 2, 3, 5, 6])
 
+    def test_explicit_rebuild_accepts_settings_resolved_only_at_execution(self):
+        parsed = rules.parse(json.dumps(self.line))
+        unknown = dict.fromkeys(KNOWN)
+        result = regeneration.inspect(self.folder, parsed, unknown, "a", rebuild=True)
+        self.assertTrue(result["needs_rebuild"])
+        self.assertEqual(regeneration.validate(self.folder, parsed, KNOWN, "a", result["receipt"]), result)
+
     def test_linked_settings_do_not_block_no_join_or_deferred_compatible_checks(self):
         parsed = rules.parse(json.dumps(self.line))
         unknown = {key: None for key in KNOWN}

@@ -103,13 +103,16 @@ def inspect(folder, parsed, known, box_id, *, rebuild=False):
                   affected=[], bridges=[], replacements=[], receipt=None)
     if following is None or rules.is_fresh(parsed,after):
         return result
-    if any(known.get(key) is None for key in ("width", "height", "context_frames", "carry_audio", "ref_image_size")):
+    if rebuild:
+        # An explicit rebuild never consumes the saved ending overlap.
+        known = {}
+        reason = f"Clip {index + 1} will generate a new ending. Clip {after + 1} will need a new render to continue it."
+    elif any(known.get(key) is None for key in ("width", "height", "context_frames", "carry_audio", "ref_image_size")):
         # Producers without static scalar outputs resolve at execution; the renderer still checks the actual join.
         return {**result, "deferred": True}
-    known = _settings(known)
-    reason = _reason(folder, parsed, known, index, following)
-    if rebuild and not reason:
-        reason = f"Clip {index + 1} will generate a new ending. Clip {after + 1} will need a new render to continue it."
+    else:
+        known = _settings(known)
+        reason = _reason(folder, parsed, known, index, following)
     result.update(needs_rebuild=bool(reason), reason=reason)
     if not reason:
         return result

@@ -25,7 +25,7 @@ import {stillPromptSource,sameStillPromptSource} from './h3c_still_prompt_prepar
 import { TakesClient } from './h3c_takes.mjs?v=b881254039e2';
 import {ProjectSession, forkProject, parseJSON, projectErrorMessage, stringifyJSON} from './h3c_project.mjs?v=0882b8a6265a';
 import {TimelineHistory, dropReceipts, withLiveReceipts} from './h3c_history.mjs?v=a3b5f0d772f7';
-import {confirmRegeneration} from './h3c_regeneration.mjs?v=cec86257bd2a';
+import {confirmRegeneration} from './h3c_regeneration.mjs?v=943010b9fd43';
 import {startGeneration,useGeneration} from './h3c_generations.mjs?v=2ed8014b9ec0';
 
 const NODE_TYPE = 'H3C_Timeline';

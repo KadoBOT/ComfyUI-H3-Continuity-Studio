@@ -5,7 +5,6 @@ export async function confirmRegeneration({body,box,count=1,rebuild=false,reques
   const unchanged=()=>{if(snapshot()!==before) throw new Error('The Timeline changed; generate this clip again to review its affected clips.');};
   unchanged();
   if(!check?.ok) throw new Error(check?.error??'Could not check saved continuity. Try again.');
-  if(rebuild && check.deferred) throw new Error('Resolve the Timeline render settings before rebuilding continuity.');
   if(!check.needs_rebuild) return {cancelled:false,receipt:null};
   if(count!==1) throw new Error('Rebuild continuity with one take first. Select 1 take, then generate this clip again.');
   const numbers=check.affected.map(item=>item.number);
