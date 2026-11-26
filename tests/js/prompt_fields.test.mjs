@@ -88,3 +88,13 @@ test('dialogue language delimiters and mutually exclusive ending flags are valid
   assert.throws(()=>writePromptField(source,edit),/language/i);
   assert.throws(()=>writePromptField(source,{...edit,value:{...edit.value,language:'English',toNext:true,cutoff:true}}),/continue|cut off/i);
 });
+test('typing a detail one character at a time leaves no stray spaces in the prompt',()=>{
+  let source='integrated_multimodal_description:\n[Shot 1] A room.\nLighting: \n\noverall_soundscape: Rain.';
+  let typed='';
+  for(const char of 'Warm side light') {
+    typed+=char;
+    const entry=readPromptFields(source).sections[0].entries.find(e=>e.kind==='cue'&&e.value.key==='lighting')??null;
+    source=writePromptField(source,{expectedSource:source,section:'integrated_multimodal_description',kind:'cue',shot:1,entry,value:{key:'lighting',index:null,text:typed}});
+  }
+  assert.equal(source,'integrated_multimodal_description:\n[Shot 1] A room.\nLighting: Warm side light\n\noverall_soundscape: Rain.');
+});

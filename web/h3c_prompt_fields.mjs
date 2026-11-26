@@ -197,7 +197,9 @@ export function writePromptField(source,edit,{tags=[]}={}) {
     if(!field||field.prefix.includes(' N')&&(!Number.isInteger(value.index)||value.index<1))throw new Error('Choose a valid detail and positive item number.');
     const prefix=field.prefix.replace(' N',' '+value.index)+(field.repeatable&&value.index?' '+value.index:'');
     const text=prefix+': '+cueText(value.text);
-    if(entry)return replacePromptRanges(source,[{...entry.range,text}]);
+    // A cue's range ends before trailing spaces, so a space typed at the end of the field would otherwise stay behind.
+    const tail=entry?/^[ \t]*/.exec(source.slice(entry.range.end))[0]:'';
+    if(entry)return replacePromptRanges(source,[{start:entry.range.start,end:entry.range.end+tail.length,before:entry.range.before+tail,text}]);
     const entries=readPromptFields(source,{tags}).sections.find(s=>s.key===section)?.entries.filter(e=>e.shot===edit.shot)??[];
     if(!entries.length)throw new Error('Add a shot before adding details.');
     const cues=entries.filter(e=>e.kind==='cue'||e.kind==='dialogue'),singleton=cues.find(e=>e.value.key===value.key&&e.value.index===null);

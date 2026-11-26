@@ -2,6 +2,13 @@
 
 All notable changes to H3 Continuity Studio are recorded here. Versions follow [Semantic Versioning](https://semver.org/).
 
+## [1.4.1] - 2026-11-26
+
+### Fixed
+
+- **The prompt form's Advanced switch shows its fields again (#107).** Turning Advanced on only added choices to each shot's **add detail** list, so nothing visible changed. It now adds the tabs Action, Camera, Effects, Lighting, Acting and Continuity after Shots, each listing every shot with all of that category's fields ready to fill; empty fields add no prompt text. Shots keeps the basic details.
+- Typing a space at the end of a shot detail field no longer leaves stray spaces in the prompt.
+
 ## [1.4.0] - 2026-11-26
 
 ### Added
