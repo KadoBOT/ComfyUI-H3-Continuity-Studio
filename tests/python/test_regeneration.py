@@ -58,6 +58,31 @@ class RegenerationTest(unittest.TestCase):
         self.assertFalse(result["needs_rebuild"])
         self.assertIsNone(result["receipt"])
 
+    def test_rebuilding_a_compatible_join_archives_the_dependent_takes(self):
+        parsed = rules.parse(json.dumps(self.line))
+        result = regeneration.inspect(self.folder, parsed, KNOWN, "a", rebuild=True)
+        self.assertTrue(result["needs_rebuild"])
+        self.assertEqual([item["id"] for item in result["affected"]], ["b", "c", "memory", "tail"])
+        self.assertEqual(regeneration.validate(self.folder, parsed, KNOWN, "a", result["receipt"]), result)
+        with self.assertRaisesRegex(ValueError, "changed.*confirm"):
+            regeneration.validate(self.folder, parsed, KNOWN, "a",
+                                  {key: value for key, value in result["receipt"].items() if key != "rebuild"})
+        now = datetime.datetime(2026, 11, 6, 12)
+        replacement = {**self.manifest["segments"][0], "stem": "seg_0001-2", "created": now.isoformat()}
+        self.write(replacement)
+        manifest = regeneration.commit(self.folder, replacement,
+                                       dict(timeline=self.line, settings=KNOWN, box="a", receipt=result["receipt"]), now)
+        self.assertEqual([store.box_of(entry) for entry in manifest["segments"]], ["a", "independent"])
+        self.assertEqual(manifest["segments"][0]["stem"], replacement["stem"])
+        self.assertEqual([take["index"] for take in manifest["takes"]], [1, 2, 3, 5, 6])
+
+    def test_explicit_rebuild_accepts_settings_resolved_only_at_execution(self):
+        parsed = rules.parse(json.dumps(self.line))
+        unknown = dict.fromkeys(KNOWN)
+        result = regeneration.inspect(self.folder, parsed, unknown, "a", rebuild=True)
+        self.assertTrue(result["needs_rebuild"])
+        self.assertEqual(regeneration.validate(self.folder, parsed, KNOWN, "a", result["receipt"]), result)
+
     def test_linked_settings_do_not_block_no_join_or_deferred_compatible_checks(self):
         parsed = rules.parse(json.dumps(self.line))
         unknown = {key: None for key in KNOWN}

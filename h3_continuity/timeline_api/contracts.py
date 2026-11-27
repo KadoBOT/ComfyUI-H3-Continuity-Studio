@@ -224,7 +224,8 @@ def _schemas():
     selection = {"oneOf": [
         _object({"kind": {"const": "all"}}, ("kind",)),
         _object({"kind": {"const": "boxes"}, "ids": _array(ID, minItems=1, uniqueItems=True), "rerender": BOOL,
-                 "rebuild_continuity": _object({"box": ID, "fingerprint": SHA}, ("box", "fingerprint"))}, ("kind", "ids"))]}
+                 "rebuild_continuity": _object({"box": ID, "fingerprint": SHA, "rebuild": {"const": True}},
+                                               ("box", "fingerprint"))}, ("kind", "ids"))]}
     version = {"api_version": {"type": "integer", "const": 1}}
     responses = {
         "asset": _object({**version, "id": ID, "sha256": SHA, "kind": TEXT, "kinds": _array(TEXT), "size": FRAME,

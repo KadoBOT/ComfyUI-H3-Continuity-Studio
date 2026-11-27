@@ -205,7 +205,8 @@ class Planner:
             from .. import regeneration
             check = regeneration.request({"name": project["sequence"],
                                           "timeline": canonical(prepared["timeline"]).decode("utf-8"),
-                                          "settings": prepared["settings"], "box": receipt["box"]})
+                                          "settings": prepared["settings"], "box": receipt["box"],
+                                          "rebuild": receipt.get("rebuild", False)})
             if not check.get("ok") or check.get("receipt") != receipt:
                 raise APIError("regeneration_changed", regeneration.CHANGED, status=409)
         known_boxes = {unit["box_id"] for unit in units if unit["kind"] == "box"}
