@@ -23,8 +23,8 @@ test('a Timeline without the keys shows the defaults and saves none of them', ()
   const panel = new ChainSettings(target);
   panel.render();
   assert.equal(panel.noiseInput.checked, false);
-  assert.equal(panel.guideInput.value, 'auto');
-  assert.deepEqual(panel.guideInput.options.map((opt) => opt.value), ['auto', 'on', 'off']);
+  assert.equal(panel.guideInput.value, 'on');
+  assert.deepEqual(panel.guideInput.options.map((opt) => opt.value), ['on', 'auto', 'off']);
   assert.equal(panel.featherInput.value, '0');
   assert.deepEqual(slices(panel), []);
   assert.match(panel.slicesEl.textContent, /Connect a video/);
@@ -40,9 +40,9 @@ test('saved values are drawn', () => {
   assert.equal(panel.featherInput.value, '6');
   assert.deepEqual(slices(panel).map((input) => input.checked), [true]);
 
-  const alwaysOn = new ChainSettings(editor({continuation_guide: true}));
-  alwaysOn.render();
-  assert.equal(alwaysOn.guideInput.value, 'on');
+  const autoMode = new ChainSettings(editor({continuation_guide: 'auto'}));
+  autoMode.render();
+  assert.equal(autoMode.guideInput.value, 'auto');
 });
 
 test('context noise and the last-frame guide write their key only when not the default', () => {
@@ -56,12 +56,12 @@ test('context noise and the last-frame guide write their key only when not the d
   assert.equal(target.commits, 2);
   assert.equal(target.saved().context_noise, true);
   assert.equal(target.saved().continuation_guide, false);
-  panel.guideInput.value = 'on';
+  panel.guideInput.value = 'auto';
   panel.guideInput.fire('change');
-  assert.equal(target.saved().continuation_guide, true);
+  assert.equal(target.saved().continuation_guide, 'auto');
   panel.noiseInput.checked = false;
   panel.noiseInput.fire('change');
-  panel.guideInput.value = 'auto';
+  panel.guideInput.value = 'on';
   panel.guideInput.fire('change');
   assert.equal('context_noise' in target.saved(), false);
   assert.equal('continuation_guide' in target.saved(), false);

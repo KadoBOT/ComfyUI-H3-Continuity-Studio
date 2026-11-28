@@ -16,7 +16,7 @@ import av
 
 from PIL import Image
 
-from . import box_checks, check_frames, llm, media, store, story_bible, story_context, story_inputs, story_keys
+from . import box_checks, check_frames, llm, media, seam_checks, store, story_bible, story_context, story_inputs, story_keys
 from . import story_vram
 from . import studio_pictures, reference_replacements
 from . import h3_prompt_ir as prompt_ir, h3_prompt_schema as prompt_schema
@@ -476,12 +476,18 @@ def _continuity_metrics(ctx, index, entry, frames):
             before_fps=fps_b,
             after_fps=fps_a,
         )
+        v_join = seam_checks.video_join(before_tail, after_head, fps=fps_a)
         metrics["seam_freeze"] = freeze
         metrics["speed_ratio"] = speed
+        if v_join.get("contrast_drop_ratio") is not None:
+            metrics["contrast_drop_ratio"] = round(float(v_join["contrast_drop_ratio"]), 3)
         if freeze["frozen"]:
             warnings.append(f"1-step native-FPS freeze at join from box {prev_index + 1}")
         if speed["flagged"]:
             warnings.append(f"motion speed changed {speed['ratio']:.2f}x at join from box {prev_index + 1}")
+        if v_join.get("seam_flash"):
+            pct = round((1.0 - float(v_join["contrast_drop_ratio"])) * 100)
+            warnings.append(f"contrast flash (-{pct}% std) at join from box {prev_index + 1}")
     return metrics
 
 

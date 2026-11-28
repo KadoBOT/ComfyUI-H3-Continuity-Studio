@@ -6,7 +6,7 @@ import {
   lintContinuationPair,
   lintScreenFx,
   setCut,
-} from '../../web/h3c_timeline_model.mjs?v=0c70ed8f7fed';
+} from '../../web/h3c_timeline_model.mjs?v=c3173f40aa48';
 
 test('lintScreenFx flags unsolicited overlays and honors negations, diegetic crackle and shared context', () => {
   const hits = lintScreenFx('A corridor shot on 35mm with subtle film grain and vignette.');

@@ -159,4 +159,8 @@ class H3C_StillImageSource(io.ComfyNode):
     def execute(cls,source,width=None,height=None):
         source=json.loads(source)
         if width is not None and height is not None: source['size']={'width':width,'height':height}
-        return io.NodeOutput(stills.load_pixel_source(source))
+        pixels=stills.load_pixel_source(source)
+        if source.get('reference_megapixels'):
+            from .scene_map import REFERENCE_ATTRIBUTE
+            setattr(pixels,REFERENCE_ATTRIBUTE,float(source['reference_megapixels']))
+        return io.NodeOutput(pixels)

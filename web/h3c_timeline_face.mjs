@@ -1,5 +1,5 @@
 // The Timeline face and native advanced widgets share the Studio editor's saved state.
-import {joinKind} from './h3c_timeline_model.mjs?v=0c70ed8f7fed';
+import {joinKind} from './h3c_timeline_model.mjs?v=c3173f40aa48';
 import {setText} from './h3c_dom.mjs?v=584a9bf55653';
 export const FACE_HEIGHT = 120;
 const STYLE_ID = 'h3ct-face-style';
@@ -82,7 +82,7 @@ export class TimelineFace {
     add('toggle','h3c_clip_exact','Exact clip length',false, value => edit('exactInput',value));
     this.joins = {continue:'Continue',transition:'Transition',cut:'Cut',new_scene:'New scene'};
     add('combo','h3c_clip_join','Clip join','Continue', value => edit('joinSelect',Object.keys(this.joins).find(key => this.joins[key] === value)), {values:Object.values(this.joins)});
-    this.memories = {off:'Off',scene:'Same scene',selected:'Selected moments',cast:'Cast'};
+    this.memories = {off:'Off',scene:'Same scene',scene_tail:'Scene tail (latest)',selected:'Selected moments',cast:'Cast'};
     add('combo','h3c_clip_memory','Clip visual memory','Off', value => {
       editor.box().memory = Object.keys(this.memories).find(key => this.memories[key] === value); editor.commit();
     }, {values:Object.values(this.memories)});

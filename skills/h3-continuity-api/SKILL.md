@@ -11,7 +11,7 @@ Run `h3c-mcp` (from `mcp_adapter`) over stdio (or one-off `python -m h3c_mcp --c
 
 1. **Load & inspect:** `h3_list_projects` -> `h3_get_project` returns `document_json` + `revision`. Preserve exact uint64 seeds and opaque metadata. Non-empty `unsupported_features` opens read-only: fork a clean copy via `h3_library` `duplicate` rather than editing in place.
 2. **Author & set `requires` flags:** Include the matching `"requires"` feature flag(s) in `timeline` whenever using modern features:
-   - `"dialogue-cues-1"` (`timeline.dialogue`), `"box-audio-windows-1"` (`audio_clips[].box_windows`), `"video-layers-1"` (`boxes[].layers` + `switch`), `"timeline-tracks-1"` (`tracks`, `boxes[].track`/`start`, `overlap_switches`, `text_lanes`).
+   - `"dialogue-cues-1"` (`timeline.dialogue`), `"box-audio-windows-1"` (`audio_clips[].box_windows`), `"video-layers-1"` (`boxes[].layers` + `switch`), `"timeline-tracks-1"` (`tracks`, `boxes[].track`/`start`, `overlap_switches`, `text_lanes`), `"scene-map-1"` (`boxes[].scene_map` when `on: true`).
 3. **Save cleanly:** Call `h3_save_project` with `expected_revision`. Reread on `409` revision/busy/ownership conflicts; never auto-merge (browser autosave and Undo are separate). Register/capture graphs via Studio or `h3_register_workflow` `{ui, api}` (graph edits require deliberate recapture; never invent editor-to-API conversions; manage `H3C_ContinuityProtection` in the captured graph per `h3_inspect` `nodes` + `h3-continuity-joins`).
 4. **Mandatory pre-render gate (`h3_inspect` + `h3_plan_video`):** Before queueing any GPU render, run `h3_inspect` (`prompt_fields`, `status`) and `h3_plan_video` (read-only) and verify:
    - Resolved `mode` (`t2va`/`flf2va`/`ref2va`), `tags`, `delivered_range`, and exact `guides`.

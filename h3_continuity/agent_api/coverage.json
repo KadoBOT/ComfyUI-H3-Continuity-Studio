@@ -29,7 +29,8 @@
     "H3C_ContextWindows",
     "H3C_JoinChain",
     "H3C_PH3StillSize",
-    "H3C_DiskCache"
+    "H3C_DiskCache",
+    "H3C_SceneMap"
   ],
   "features": {
     "host": {
@@ -180,6 +181,17 @@
         "h3_stills"
       ],
       "source": "docs/research/2026-11-08-mcp-capability-audit.md"
+    },
+    "scene_maps": {
+      "exposure": "data",
+      "skills": [
+        "h3-continuity-references"
+      ],
+      "tools": [
+        "h3_save_project",
+        "h3_stills"
+      ],
+      "source": "guide/build/scene-maps.md"
     },
     "ph3_lora_sizes": {
       "exposure": "graph",

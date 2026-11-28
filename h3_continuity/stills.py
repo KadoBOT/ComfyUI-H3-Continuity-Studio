@@ -16,7 +16,7 @@ import torch
 from PIL import Image, ImageOps, UnidentifiedImageError
 
 from . import timeline as rules
-from . import image_recipe, still_scene
+from . import image_recipe, scene_map, still_scene
 from .image_recipe import _link, _scalar, _ancestry
 from . import nodes as continuity, store, takes, visual_memory, media, reference_replacements, refmods, timeline_prepare, story_bible, image_descriptions
 
@@ -681,15 +681,22 @@ def _recipe_references(body, reference_text):
     refs=[]
     for number,loc in enumerate(ports,1):
         slot=f'still{number}'
-        if '@'+slot not in requested:
-            continue
         if loc['node'] not in graph:
-            raise ValueError('Still recipe reference IMAGE port is missing')
+            if '@'+slot in requested:
+                raise ValueError('Still recipe reference IMAGE port is missing')
+            continue
         link=graph[loc['node']]['inputs'].get(loc['input'])
+        producer=graph.get(link[0]) if _link(link) else None
+        is_map=bool(producer and producer.get('class_type')==scene_map.NODE_CLASS and link[1]==0)
+        if not is_map and '@'+slot not in requested:
+            continue
         if link is None:
             continue
         ref={'slot':slot,'kind':'image','roles':['additional identity: '+slot],'source_port':copy.deepcopy(loc)}
         _pixel_link(ref,link,graph)
+        if is_map:
+            ref.update(roles=['blocking map: '+slot],title='Blocking map',
+                       scene_map=scene_map.prompt_line('@'+slot,producer.get('inputs',{})))
         refs.append(ref)
     connected={ref['slot'] for ref in refs}
     for slot in requested:
@@ -744,5 +751,21 @@ def _prepare_pixels(body, parsed, index, frame, name, reference_text=None, entit
     for ref in refs:
         if ref.get('slot') in identity and 'identity' not in ref['roles']:
             ref['roles'].append('identity')
-    refs += _recipe_references(body, selection['prompt'])
+    recipe = _recipe_references(body, selection['prompt'])
+    refs += recipe
+    from . import scene_maps
+    layout = scene_maps.still_layout(parsed, index, body.get('target'))
+    if layout is not None:
+        slot = f'still{1 + max((int(ref["slot"][5:]) for ref in recipe), default=0)}'
+        refs.append({'slot': slot, 'kind': 'image', 'roles': ['blocking map: ' + slot], 'title': 'Scene map',
+                     'reference_megapixels': 1.0, 'scene_map': scene_maps.still_line('@' + slot, layout),
+                     **pin_image(import_image(scene_maps.still_picture(parsed, index, layout)))})
+    # A blocking map the clip does not mention is introduced, as approved assets are; a mention leaves it to the clip.
+    lines = []
+    for ref in refs:
+        line = ref.pop('scene_map', None)
+        if line and not re.search(r'@' + ref['slot'] + r'\b', body['prompt'], flags=re.I):
+            lines.append(line)
+    if lines:
+        body = dict(body, prompt=body['prompt'].rstrip() + '\n\n' + '\n'.join(lines))
     return image_recipe.prepare(body['recipe'], body['workflow'], dict(body, frame=frame), refs)

@@ -138,3 +138,34 @@ test('Play join computes seam region inside Studio and dispatches h3c-play-regio
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(editor.host.asked.at(-1), true);
 });
+
+test('Visual memory inspector surfaces box@frame sources, continuation posture warning, and Use Scene tail', () => {
+  const model = {
+    doc: {
+      version: 1,
+      boxes: [
+        {id: 'b001', frames: 107, cut: true, new_scene: true, memory: 'off', prompt: 'Sitting on floor.'},
+        {id: 'b002', frames: 119, cut: false, memory: 'off', prompt: 'Standing up.'},
+        {id: 'b003', frames: 141, cut: true, new_scene: false, memory: 'scene', prompt: 'Singing <d>[English] Hi</d> standing.'},
+      ],
+    },
+  };
+  const editor = makeEditor(model.doc);
+  editor.select(2);
+  const sourcesHint = findAll(editor.memoryEl, (node) => node.classList?.contains?.('h3ct-memory-sources'))[0];
+  assert.ok(sourcesHint);
+  assert.match(sourcesHint.textContent, /b001@0/);
+  assert.match(sourcesHint.textContent, /b002@114/);
+
+  const warnBox = findAll(editor.memoryEl, (node) => node.classList?.contains?.('h3ct-memory-posture-warning'))[0];
+  assert.ok(warnBox);
+  const switchBtn = findAll(warnBox, (node) => node.tagName === 'BUTTON')[0];
+  assert.equal(switchBtn.textContent, 'Use Scene tail');
+  switchBtn.click();
+
+  assert.equal(editor.state.boxes[2].memory, 'scene_tail');
+  assert.equal(JSON.parse(editor.host.read()).boxes[2].memory, 'scene_tail');
+  const tailSources = findAll(editor.memoryEl, (node) => node.classList?.contains?.('h3ct-memory-sources'))[0];
+  assert.doesNotMatch(tailSources.textContent, /b001@0/);
+  assert.match(tailSources.textContent, /b002@114/);
+});

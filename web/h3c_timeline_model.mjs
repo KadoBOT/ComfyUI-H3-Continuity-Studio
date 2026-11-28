@@ -1,12 +1,13 @@
 import * as tracks from './h3c_tracks.mjs';
+import {FEATURE as SCENE_MAP_FEATURE, normalizeSceneMap} from './h3c_scene_maps.mjs?v=bcaf35949d73';
 import {reconcileSceneAnchors} from './h3c_still_scene.mjs?v=0906bb5de9d7';
 // H3 Timeline editor model: the timeline JSON, lengths on the H3 frame grid, edits, and the rules that
 // decide how a box runs. Mirrors h3_continuity/timeline.py.
 import {parseJSON, stringifyJSON, seedValue} from './h3c_project.mjs?v=0882b8a6265a';
 import {imageDescriptionPrompt, imageDescriptionSource} from './h3c_image_descriptions.mjs?v=5f858b2b6a5a';
-import {acceptedGuideFrames} from './h3c_shot_preview.mjs?v=0c70ed8f7fed';
+import {acceptedGuideFrames} from './h3c_shot_preview.mjs?v=c3173f40aa48';
 import {AUDIO_WINDOWS_FEATURE, pruneWindows, resolveWindows, audioSourceLocked} from './h3c_audio_windows.mjs?v=cdefbd77b246';
-import {LAYER_FIELDS, SWAPS_DONT_FIT, clampSwitch, hasLayers, layerIds, switchFits} from './h3c_layers.mjs?v=0c70ed8f7fed';
+import {LAYER_FIELDS, SWAPS_DONT_FIT, clampSwitch, hasLayers, layerIds, switchFits} from './h3c_layers.mjs?v=c3173f40aa48';
 export const FPS = 24;
 export const MAX_FRAMES = 362;
 export const GRID = 17;
@@ -174,7 +175,7 @@ export function parseState(text) {
       ? { reference_descriptions: structuredClone(data.reference_descriptions) } : {}),
     ...(record(data.reference_replacements) ? {reference_replacements:structuredClone(data.reference_replacements)} : {}),
     ...(data.context_noise === true ? {context_noise: true} : {}),
-    ...(typeof data.continuation_guide === 'boolean' ? {continuation_guide: data.continuation_guide} : {}),
+    ...(data.continuation_guide === false || data.continuation_guide === 'auto' ? {continuation_guide: data.continuation_guide} : {}),
     ...(Number.isInteger(data.audio_feather) && data.audio_feather > 0 ? {audio_feather: data.audio_feather} : {}),
     ...(Array.isArray(data.video_slices) && data.video_slices.length ? {video_slices: [...data.video_slices]} : {}),
     ...(Array.isArray(data.disabled_refs) ? { disabled_refs: [...data.disabled_refs] } : {}),
@@ -216,6 +217,7 @@ export function parseState(text) {
       ...(record(box.join) ? { join: structuredClone(box.join) } : {}),
       ...(record(box.source) ? { source: structuredClone(box.source) } : {}),
       ...(box.dialogue === 'manual' ? { dialogue: 'manual' } : {}),
+      ...(record(box.scene_map) ? { scene_map: normalizeSceneMap(box.scene_map) } : {}),
       ...parseLayers(box),
     })),
   };
@@ -238,7 +240,7 @@ export function serialize(state) {
     ...(state.reference_descriptions ? { reference_descriptions: state.reference_descriptions } : {}),
     ...(Object.keys(state.reference_replacements ?? {}).length ? {reference_replacements:state.reference_replacements} : {}),
     ...(state.context_noise === true ? {context_noise: true} : {}),
-    ...(typeof state.continuation_guide === 'boolean' ? {continuation_guide: state.continuation_guide} : {}),
+    ...(state.continuation_guide === false || state.continuation_guide === 'auto' ? {continuation_guide: state.continuation_guide} : {}),
     ...(state.audio_feather > 0 ? {audio_feather: state.audio_feather} : {}),
     ...(state.video_slices?.length ? {video_slices: state.video_slices} : {}),
     ...(state.disabled_refs ? { disabled_refs: state.disabled_refs } : {}),
@@ -270,6 +272,7 @@ export function serialize(state) {
       ...(box.join ? { join: box.join } : {}),
       ...(box.source ? { source: box.source } : {}),
       ...(box.dialogue === 'manual' ? { dialogue: 'manual' } : {}),
+      ...(box.scene_map ? { scene_map: box.scene_map } : {}),
       ...(box.layers?.length ? { layers: box.layers, switch: box.switch } : {}),
     })),
   });
@@ -277,7 +280,8 @@ export function serialize(state) {
 
 export const LAYERS_FEATURE = 'video-layers-1';
 // Reader features this editor writes into "requires" when the file depends on them, as timeline.REQUIRES lists them.
-export const OWN_FEATURES = ['dialogue-cues-1', 'replacement-bridges-1', AUDIO_WINDOWS_FEATURE, LAYERS_FEATURE, tracks.FEATURE];
+export const OWN_FEATURES = ['dialogue-cues-1', 'replacement-bridges-1', AUDIO_WINDOWS_FEATURE, LAYERS_FEATURE, tracks.FEATURE,
+  SCENE_MAP_FEATURE];
 
 // What the Timeline needs a reader to understand: this editor's features in use, and any newer one it was given.
 export function requiredFeatures(state) {
@@ -288,6 +292,7 @@ export function requiredFeatures(state) {
     || (state.audio_clips ?? []).some((clip) => clip.locked === true)) own.push('dialogue-cues-1');
   if (keptBridges(state).some(isReplacement)) own.push('replacement-bridges-1');
   if (hasLayers(state)) own.push(LAYERS_FEATURE);
+  if (state.boxes.some(box => box.scene_map?.on)) own.push(SCENE_MAP_FEATURE);
   return [...new Set([...(state.requires ?? []).filter((item) => !OWN_FEATURES.includes(item)), ...own])].sort();
 }
 
@@ -699,6 +704,7 @@ export function memorySources(state, index) {
   const box = state.boxes[index];
   if (!box || !box.memory || box.memory === 'off') return [];
   const sources = box.memory === 'scene' ? sceneSources(state, index)
+    : box.memory === 'scene_tail' ? sceneTailSources(state, index)
     : box.memory === 'cast' ? castSources(state, index) : box.memories ?? [];
   const beforeIndex=tracks.previousIndex(state,index,false);
   if (beforeIndex===null || !box.cut) return sources;
@@ -721,6 +727,31 @@ function sceneSources(state, index) {
   return [{box: state.boxes[start].id, frame: 0, label: 'scene establishing view'}, box.cut
     ? {box: previous.id, frame: Math.max(0, previous.frames - 5), label: 'the moment before this cut'}
     : {box: previous.id, frame: Math.max(0, Math.floor((previous.frames - 5) / 2)), label: 'earlier view of the current scene'}];
+}
+
+function sceneTailSources(state, index) {
+  const box = state.boxes[index];
+  const indices = tracks.trackIndices(state, index), prior = indices.slice(0, indices.indexOf(index) + 1);
+  let start = prior[0];
+  for (const i of prior) if ((state.boxes[i].cut && state.boxes[i].new_scene) || state.boxes[i].plate_changes?.length) start = i;
+  if (start === index) return [];
+  const previous = state.boxes[prior.at(-2)];
+  const label = box.cut ? 'the moment before this cut' : 'latest state of the current scene';
+  return [{box: previous.id, frame: Math.max(0, previous.frames - 5), label}];
+}
+
+export function sceneHasPriorContinuation(state, index) {
+  const indices = tracks.trackIndices(state, index), pos = indices.indexOf(index);
+  if (pos <= 1) return false;
+  let startPos = 0;
+  for (let p = 0; p <= pos; p++) {
+    const item = state.boxes[indices[p]];
+    if ((item.cut && item.new_scene) || item.plate_changes?.length) startPos = p;
+  }
+  for (let p = startPos + 1; p < pos; p++) {
+    if (!state.boxes[indices[p]].cut) return true;
+  }
+  return false;
 }
 
 // The entity's look at box `index`: 0 for its description, or k for looks[k-1], as story_bible.look_at.

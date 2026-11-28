@@ -477,7 +477,7 @@ def box_problem(parsed, index, entry, folder, entries, known, context, is_done, 
     return None
 
 
-def resolve_continuation_guide(mode, folder, previous):
+def resolve_continuation_guide(mode, folder, previous, *, box_mode=None):
     """Decide whether to pin the first generated frame of a continuation to `previous`'s last frame.
     Returns (use_guide: bool, note: str | None)."""
     from . import media as segment_media
@@ -486,6 +486,8 @@ def resolve_continuation_guide(mode, folder, previous):
         return False, None
     if mode is True:
         return True, None
+    if box_mode == "t2va":
+        return True, "Continuation guide: auto-enabled for t2va continuation (preserves visual anchor)."
     exit_motion = previous.get("exit_motion") if isinstance(previous, dict) else None
     if exit_motion is None:
         exit_motion = segment_media.read_tail_exit_motion(folder, previous)
@@ -878,7 +880,9 @@ class H3C_Timeline(io.ComfyNode):
         memories = visual_memory.records(parsed, next_index, folder, by_index, is_done, width, height)
         memory_args = {}
         if video is not None:
-            use_guide, guide_note = resolve_continuation_guide(parsed.continuation_guide, folder, previous)
+            use_guide, guide_note = resolve_continuation_guide(
+                parsed.continuation_guide, folder, previous, box_mode=box.slots.mode
+            )
             if guide_note:
                 box.notes.append(guide_note)
             if use_guide:

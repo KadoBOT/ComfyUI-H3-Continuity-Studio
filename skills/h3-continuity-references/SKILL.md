@@ -14,7 +14,7 @@ description: Use when writing H3 Timeline clip prompts or wiring visual, video o
 | Continues (or has `first`/frame-0 guide), NO raw video, and **`flf_refmods: true`** | `flf2va` | Keeps `flf2va` endpoint trajectory while converting pics to cached RefMods + passing raw/RefMod audio. |
 | None of the above | `t2va` | Text + audio generation only. |
 
-- Continuing boxes ignore `first` (`continuation_guide: "auto"` places predecessor's last frame on calm exits; explicit frame-0 guide overrides). Timed **Shot guides** (`previews[]` inside a box) insert guidance frames without planning trajectory toward them; avoid packing many into short boxes. Inspect resolved mode, `tags`, and `effective_prompt` via `h3_plan_video` / `h3_inspect` instead of guessing.
+- Continuing boxes ignore `first` (`continuation_guide: true` default places predecessor's last frame at frame 0; explicit frame-0 guide overrides). Timed **Shot guides** (`previews[]` inside a box) insert guidance frames without planning trajectory toward them; avoid packing many into short boxes. Inspect resolved mode, `tags`, and `effective_prompt` via `h3_plan_video` / `h3_inspect` instead of guessing.
 
 ## Prompt structure & per-box `<Subject N>` rules
 
@@ -49,3 +49,4 @@ description: Use when writing H3 Timeline clip prompts or wiring visual, video o
 - **MCP `h3_stills`:** `prepare` builds prompts/graphs; `generate` submits one owned candidate (`h3_job_status`); save/accept explicitly under the current revision.
 - **RefMods (`refmods[]`):** Encoded H3 conditioning via ComfyUI-MiniMaxH3Mod; forces `ref2va` unless `flf_refmods: true` (needs H3 image VAE for cached conversion + audio VAE for raw audio; no raw `@video`).
 - **Plates (`plates[]` + `plate_changes[]`):** Swaps a slot image starting at local `{frame, slot, revision}` (`""` restores original); starts a new scene for scene memory. Preserve `plate_edits`.
+- **Scene maps (`box.scene_map`, `requires: ["scene-map-1"]`, `H3C_SceneMap` node):** Top-down opening/end camera and Cast-linked marker plans that inject blocking prose and optional 1 MP map references into fresh video/still prompts (continuing clips borrow from predecessor's end).

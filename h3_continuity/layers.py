@@ -93,8 +93,8 @@ def _layer(item, n, number, used):
     elif isinstance(seed, bool) or not isinstance(seed, int) or not 0 <= seed <= rules.MAX_SEED:
         raise _error(f"{what} seed must be a whole number from 0 to {rules.MAX_SEED}")
     memory = item.get("memory", "off")
-    if memory not in ("off", "scene", "selected"):
-        raise _error(f"{what} memory must be off, scene or selected")
+    if memory not in ("off", "scene", "scene_tail", "selected"):
+        raise _error(f"{what} memory must be off, scene, scene_tail or selected")
     memories = item.get("memories", [])
     if not isinstance(memories, list) or len(memories) > 3:
         raise _error(f"{what} can remember at most 3 earlier moments")

@@ -11,7 +11,7 @@ Choose each box's join and visual memory for what that shot needs. A long film m
 
 | Join | Box / Timeline fields | What H3 gets |
 | --- | --- | --- |
-| Continue | `cut: false, new_scene: false` | Last `context_frames` frozen video latents + 40 Hz tick-aligned `carry_audio`. `continuation_guide: "auto"` (default) adds previous last image at frame 0 on calm exits (`< 1.5` luma diff) and omits it on moving exits to avoid freezes. `<name>_overlap.mp4` crossfades seams and keeps interpolated midpoints. |
+| Continue | `cut: false, new_scene: false` | Last `context_frames` frozen video latents + 40 Hz tick-aligned `carry_audio`. `continuation_guide: true` (default) adds previous last image at frame 0 to prevent opening-frame contrast flash; `"auto"` skips moving `ref2va` exits (`>= 3.5`); `false` disables it. `<name>_overlap.mp4` crossfades seams and keeps interpolated midpoints. |
 | Cut | `cut: true, new_scene: false` | Starts fresh (no carried context) in the same scene; keeps scene/cast visual memory. |
 | New scene | `cut: true, new_scene: true` | Starts a fresh scene root for scene memory; prompt defines the new place, time, or look. |
 | Transition | `join: {"kind": "transition", "note": "…"}` on continuing box (with `bible`) | Writer guidance for an in-scene motivated transition (`transitions` / `native-transitions` guides); rendering still follows `cut`/`new_scene`. |
@@ -34,7 +34,7 @@ Choose each box's join and visual memory for what that shot needs. A long film m
 - **`H3C_ContinuityProtection` node (opt-in graph guidance):** Connect sampling `MODEL` + native Timeline `latent`/`segment` -> `H3C_ContinuityProtection` -> `model` to guider, `latent` to sampler, **returned `segment` to `H3C_SaveSegment`**.
   - Defaults: `enabled: true`, `strength: 0.70`, `mode: "full"` (clamps latent std + replicate-padded 3×3 HF overshoot + mean matching against the clean scene root's exit tail on continuations, and full clip on `ctx=0` `cut_memory` shots; stabilizes `cond_video_latents` video refs too). Switch to `"contrast_only"` for intentional dark-to-bright pans so exposure isn't locked dark. Optional `attention_balance`/`attention_blocks` work on native dense attention only (not Veda sparse attention).
   - Rules: Disable old pixel `context_noise`; incompatible with `H3C_ContextWindows`. Protected shots bypass `H3C_DiskCache` while fresh/disabled/bridge/`plate_changes`/layer paths pass through with cache intact. Graph edits do not mark takes outdated — Regenerate explicitly.
-- **Timeline chain settings & 2-pass wiring:** `"continuation_guide": "auto"|true|false` (`false` removes calm-exit holds on moving shots), `"context_noise": true` (pixel stabilization alternative when NOT using `H3C_ContinuityProtection`, optionally paired with `H3C_SigmasTail`), `"audio_feather": N` (lets last `N` carried audio ticks regenerate), `H3C_ContinuationModel`. On 2-pass / frame-interpolated workflows, always wire the 24 fps first-pass decode to `H3C_SaveSegment.guide_frames` so later clips don't inherit interpolated frames or fail `missing_guide_frames`. Watch `seam_warnings` for `mixed_protection` or `stale_continuation`.
+- **Timeline chain settings & 2-pass wiring:** `"continuation_guide": true|"auto"|false` (default `true`; `false` removes holds but can trigger an opening-frame contrast flash on unanchored `t2va` joins), `"context_noise": true` (pixel stabilization alternative when NOT using `H3C_ContinuityProtection`, optionally paired with `H3C_SigmasTail`), `"audio_feather": N` (lets last `N` carried audio ticks regenerate), `H3C_ContinuationModel`. On 2-pass / frame-interpolated workflows, always wire the 24 fps first-pass decode to `H3C_SaveSegment.guide_frames` so later clips don't inherit interpolated frames or fail `missing_guide_frames`. Watch `seam_warnings` for `mixed_protection` or `stale_continuation`.
 
 ## Visual memory
 
@@ -43,7 +43,8 @@ Each remembered moment is a 5-frame native video latent (`<Video N>`) snapped to
 | `memory` | What H3 sees | Best used when |
 | --- | --- | --- |
 | `cast` | Scheduled entities' current looks + place (up to 3 slots via Story `bible`; see `h3-continuity-story`) | **Default choice whenever a `bible` exists** (no manual frame guessing) |
-| `scene` | Scene root frame 0 + mid-view of previous clip (Studio/Story default without `bible`) | In-scene shots without a `bible` |
+| `scene` | Scene root frame 0 + mid/end view of previous clip (Studio/Story default without `bible`) | In-scene shots where blocking/pose stays close to scene start |
+| `scene_tail` | Only 5 frames near the end of the previous clip in the current scene (skips scene-start frame 0) | **In-scene cuts after posture/blocking changed across earlier continuations** |
 | `selected` | Up to 3 explicit `memories: [{box, frame, label}]` across any earlier box/scene | Callbacks to a specific prop/place in an earlier box |
 | `off` | Nothing (default in raw JSON when omitted!) | Intentionally unrelated new scenes, or continuations needing no earlier recall |
 

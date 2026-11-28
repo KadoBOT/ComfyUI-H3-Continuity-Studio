@@ -110,6 +110,11 @@ All notable changes to H3 Continuity Studio are recorded here. Versions follow [
 - **Cast assignment and structured prompt forms.** Add from Cast creates the next Subject from the bible as one undo step. Sections offers optional reference, retention, shot, camera and dialogue fields, playback-second shot starts, and an Advanced switch for extra creative details (hidden while off, readable on read-only Timelines). Custom wording and existing prompt text remain authoritative, with draft and accepted-guide guards.
 - **MCP story duplicates and prompt checks.** `h3_library` `duplicate` copies a saved story and its renders into a new editable story, with an optional title and corrected Timeline. A story whose Timeline needs features this Studio cannot read can be copied without them. `h3_get_project` lists those `unsupported_features`, and native `h3_list_projects` rows show story titles. `h3_inspect` `prompt_fields` reads a prompt as the Sections form does and counts text the form cannot edit as fields. `h3c-mcp --call TOOL --arguments JSON` runs one tool without an MCP client.
 
+### Added
+
+- **Scene maps per clip.** A clip's **Scene map** switch adds a top-down plan with the camera and characters, edited on its own page with **Opening** and **End** tabs. Fresh T2VA and Ref2VA clips get the map in words on their first shot; Ref2VA clips can also send the map picture as a storyboard reference. Pixel still recipes get the map as a 1 MP reference, with the end layout for Last stills. A continuing clip starts where the previous clip's map ended and keeps its own copy if the link breaks. Markers can be linked to Cast entries. Projects with a map switched on require `scene-map-1`; older versions open them read-only.
+- **H3 Scene Map node.** Draws a map from a picture for still generators in a graph, with a line of text that describes it.
+
 ## [1.0.1] - 2026-11-15
 
 ### Changed

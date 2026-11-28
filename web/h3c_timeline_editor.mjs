@@ -1,30 +1,31 @@
 import {decorateIcon,icon,setIconLabel} from './h3c_icons.mjs';
 import {TrackEditor} from './h3c_track_editor.mjs';
 import {Pins, SwitchSection} from './h3c_switch_section.mjs?v=c253500f4908';
+import {SceneMapSection} from './h3c_scene_map_panel.mjs?v=e453e48952a9';
 import * as tracks from './h3c_tracks.mjs';
 // The H3 Timeline editor: a track of boxes, the selected box and the shared prompt.
 // Plain DOM without ComfyUI imports; the host object connects it to the node.
-import { MentionCard, MentionLayer } from './h3c_mentions.mjs?v=10797c1f1bd1';
+import { MentionCard, MentionLayer } from './h3c_mentions.mjs?v=13890add569e';
 import { promptSections, promptShots, writePromptSections } from './h3c_prompt_sections.mjs?v=1f35473e5668';
-import {PromptFormPanel} from './h3c_prompt_form.mjs?v=fe1eecb39e53';
-import * as model from './h3c_timeline_model.mjs?v=0c70ed8f7fed';
-import * as videoLayers from './h3c_layers.mjs?v=0c70ed8f7fed';
+import {PromptFormPanel} from './h3c_prompt_form.mjs?v=3c5e0c3047b0';
+import * as model from './h3c_timeline_model.mjs?v=c3173f40aa48';
+import * as videoLayers from './h3c_layers.mjs?v=c3173f40aa48';
 import {audioSourceLocked} from './h3c_audio_windows.mjs?v=cdefbd77b246';
-import { AudioLanes } from './h3c_audio_lanes.mjs?v=8467aa30de66';
-import { shotFrames, frameTargets, syncTargets, acceptedGuideFrames, endpointGuide, endpointReference, adoptEndpointGuides } from './h3c_shot_preview.mjs?v=0c70ed8f7fed';
-import {FrameImages, targetLabel, imageDrop} from './h3c_frame_images.mjs?v=5b7657df7cdf';
-import { splitBox, splitTiming } from './h3c_shot_split.mjs?v=e1f20098b08d';
+import { AudioLanes } from './h3c_audio_lanes.mjs?v=c49c9f195214';
+import { shotFrames, frameTargets, syncTargets, acceptedGuideFrames, endpointGuide, endpointReference, adoptEndpointGuides } from './h3c_shot_preview.mjs?v=c3173f40aa48';
+import {FrameImages, targetLabel, imageDrop} from './h3c_frame_images.mjs?v=1115e58e4d94';
+import { splitBox, splitTiming } from './h3c_shot_split.mjs?v=341a961f2ac0';
 import { fillReferenceSwitches } from './h3c_reference_switches.mjs?v=e94b5b02e02b';
-import { ReferenceReplacements } from './h3c_reference_replacements.mjs?v=0f15b996ea89';
+import { ReferenceReplacements } from './h3c_reference_replacements.mjs?v=fdcc3345767d';
 import { fillPicturePicker, mentionedReferences, referenceChip } from './h3c_reference_pictures.mjs?v=8198307be3fa';
-import { CastPage } from './h3c_cast.mjs?v=c886efda0923';
-import { PicturesPanel, highestSlot } from './h3c_pictures.mjs?v=d00c8cc737a1';
+import { CastPage } from './h3c_cast.mjs?v=e0c6f120dddb';
+import { PicturesPanel, highestSlot } from './h3c_pictures.mjs?v=4bc96eaef55b';
 import { CheckPanel, hasCheckIssue } from './h3c_check.mjs?v=e094466f59ac';
-import { BridgePanel, bridgeLine } from './h3c_bridges.mjs?v=2589f0a51016';
-import { DialoguePanel } from './h3c_dialogue.mjs?v=d4285596835d';
-import { ChainSettings } from './h3c_chain_settings.mjs?v=abda9883f8cc';
+import { BridgePanel, bridgeLine } from './h3c_bridges.mjs?v=a3231135aeed';
+import { DialoguePanel } from './h3c_dialogue.mjs?v=016c5f38be96';
+import { ChainSettings } from './h3c_chain_settings.mjs?v=9f84724b4d02';
 import { exportedVideo, videoSeconds } from './h3c_partial_video.mjs?v=201bf0f48645';
-import { MAX_TAKES, TakesPanel, followNote, renderLabel } from './h3c_takes.mjs?v=b599b8ef89a3';
+import { MAX_TAKES, TakesPanel, followNote, renderLabel } from './h3c_takes.mjs?v=e5deb344208e';
 import { drawsSame, replaceChanged, setText, showImages } from './h3c_dom.mjs?v=584a9bf55653';
 
 const STYLE_ID = 'h3ct-style';
@@ -799,7 +800,8 @@ export class TimelineEditor {
       this.commit();
     }, el('p', 'h3ct-hint', 'Experimental. Needs FLF2VA video model weights.'));
     this.refmodSection.titleEl.title = this.refmodFramesField.title;
-    this.tabPanels.box.append(this.refmodSection.root, this.memoryDetails.root);
+    this.sceneMap = new SceneMapSection(this);
+    this.tabPanels.box.append(this.refmodSection.root, this.memoryDetails.root, this.sceneMap.root);
     this.castChipsEl = el('div', 'h3cc-chips');
     this.castChipsEl.setAttribute('aria-label', 'Characters, places and props in this clip');
     const cast = el('section');
@@ -2118,7 +2120,8 @@ export class TimelineEditor {
     this.seedSettings.set(!randomSeed, {disabled: locked, state: randomSeed ? 'Random each render' : String(video.seed ?? 'auto')});
     const memory = video.memory ?? 'off';
     this.memoryDetails.set(memory !== 'off', {disabled: locked,
-      state: {off: 'Off', scene: 'Same scene', selected: 'Selected moments', cast: 'Cast'}[memory] ?? memory});
+      state: {off: 'Off', scene: 'Same scene', scene_tail: 'Scene tail (latest)', selected: 'Selected moments', cast: 'Cast'}[memory] ?? memory});
+    this.sceneMap.render();
     this.renderBridgeSwitch();
     this.renderFeedback();
     this.leftButton.disabled = this.selected === 0;
@@ -2226,7 +2229,7 @@ export class TimelineEditor {
     if (!box) return;
     const mode = el('select', 'h3ct-select');
     if (!box.memory || box.memory === 'off') return;
-    const modes = [['scene', 'Same scene'], ['selected', 'Selected moments']];
+    const modes = [['scene', 'Same scene'], ['scene_tail', 'Scene tail (latest)'], ['selected', 'Selected moments']];
     if (this.state.bible || box.memory === 'cast') modes.push(['cast', 'Cast']);
     for (const [value, title] of modes) mode.append(option(value, title));
     mode.value = box.memory;
@@ -2235,16 +2238,29 @@ export class TimelineEditor {
     root.append(field('Mode', mode), el('p', 'h3ct-hint', box.memory === 'selected'
       ? 'Up to three moments you pick from earlier clips. At a cut the clip also sees the previous shot, or only its '
         + 'last moment when someone speaks, so lips don’t copy.'
+      : box.memory === 'scene_tail'
+      ? 'Remembers only the latest moment of the preceding clip in this scene (instead of frame 0 at scene start), avoiding outdated posture/blocking from earlier continuations. At a non-speaking cut it still supplies the previous shot.'
       : box.memory === 'cast'
       ? "Cuts also receive the full preceding video for layout and movement, even when character pictures are supplied. When someone speaks on either side of the cut, they remember the moment before it instead, because H3 would copy the earlier lip movement. Cast adds earlier character and place views. A new scene follows its new setting prompt; a clip without a schedule uses Same scene."
       : 'Cuts receive the full preceding video for layout, object appearance and movement. When someone speaks on either side of the cut, they remember the moment before it instead, because H3 would copy the earlier lip movement. Same scene also remembers its establishing view; a new scene follows its new setting prompt. Selected moments add chosen earlier views.'));
-    const sources = model.memorySources(layer ? videoLayers.layerView(this.state, this.selected, layer.id) : this.state,
-      this.selected);
+    const viewState = layer ? videoLayers.layerView(this.state, this.selected, layer.id) : this.state;
+    const sources = model.memorySources(viewState, this.selected);
     const listed = sources.map(source =>
-      `Clip ${this.state.boxes.findIndex(item => item.id === source.box) + 1} · ${source.whole ? 'Full video' : model.seconds(source.frame) + ' s'} · ${source.label}`).join(' / ');
-    if (box.memory === 'scene' || box.memory === 'cast') {
-      root.append(el('p', 'h3ct-hint', listed || (box.memory === 'cast' ? 'Nothing to remember yet.'
+      `Clip ${this.state.boxes.findIndex(item => item.id === source.box) + 1} (${source.box}@${source.frame}${source.whole ? ' · Full video' : ` · ${model.seconds(source.frame)} s`}) · ${source.label}`).join(' / ');
+    if (box.memory === 'scene' || box.memory === 'scene_tail' || box.memory === 'cast') {
+      root.append(el('p', 'h3ct-hint h3ct-memory-sources', listed || (box.memory === 'cast' ? 'Nothing to remember yet.'
         : 'The scene starts here. Its later clips can remember this view.')));
+      if (box.memory === 'scene' && !layer && model.sceneHasPriorContinuation(this.state, this.selected)) {
+        const warnRow = el('div', 'h3ct-row h3ct-memory-posture-warning');
+        warnRow.append(
+          el('span', 'h3ct-hint problem', 'Same scene pulls frame 0 of the scene start (before earlier continuations). If a character changed pose or blocking since then, switch to Scene tail.'),
+          button('Use Scene tail', 'Anchor memory to the previous clip ending instead of scene-start frame 0', () => {
+            box.memory = 'scene_tail';
+            this.commit();
+          }),
+        );
+        root.append(warnRow);
+      }
       return;
     }
     if (box.memory !== 'selected') return;
