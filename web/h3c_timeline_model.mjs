@@ -4,9 +4,9 @@ import {reconcileSceneAnchors} from './h3c_still_scene.mjs?v=0906bb5de9d7';
 // decide how a box runs. Mirrors h3_continuity/timeline.py.
 import {parseJSON, stringifyJSON, seedValue} from './h3c_project.mjs?v=0882b8a6265a';
 import {imageDescriptionPrompt, imageDescriptionSource} from './h3c_image_descriptions.mjs?v=5f858b2b6a5a';
-import {acceptedGuideFrames} from './h3c_shot_preview.mjs?v=9de34a3399af';
+import {acceptedGuideFrames} from './h3c_shot_preview.mjs?v=0c70ed8f7fed';
 import {AUDIO_WINDOWS_FEATURE, pruneWindows, resolveWindows, audioSourceLocked} from './h3c_audio_windows.mjs?v=cdefbd77b246';
-import {LAYER_FIELDS, SWAPS_DONT_FIT, clampSwitch, hasLayers, layerIds, switchFits} from './h3c_layers.mjs?v=9de34a3399af';
+import {LAYER_FIELDS, SWAPS_DONT_FIT, clampSwitch, hasLayers, layerIds, switchFits} from './h3c_layers.mjs?v=0c70ed8f7fed';
 export const FPS = 24;
 export const MAX_FRAMES = 362;
 export const GRID = 17;
@@ -603,7 +603,10 @@ export function duplicateBox(state, index, context) {
 
 export function setCut(state, index, cut, context) {
   state.boxes[index].cut = cut;
-  if (!cut) delete state.boxes[index].new_scene;
+  if (!cut) {
+    delete state.boxes[index].new_scene;
+    if (state.boxes[index].join && state.boxes[index].join.kind !== 'continue') delete state.boxes[index].join;
+  }
   normalize(state, context);
 }
 
@@ -1115,6 +1118,205 @@ export function referenceTags(images, audios = [], refmods = [], plates = {}, vi
   return tags;
 }
 
+const SCREEN_FX_PATTERNS = [
+  ['vignette', /\bvignett(?:e|ed|ing)\b/gi],
+  ['grain', /\b(?:film\s+)?grain(?:y|iness)?\b/gi],
+  ['crackle', /\bcrackl(?:e|ed|ing)\b/gi],
+  ['35mm', /\b35\s*mm\b/gi],
+  ['16mm', /\b16\s*mm\b/gi],
+  ['anamorphic', /\banamorphic\b/gi],
+  ['vintage', /\bvintage\b/gi],
+  ['analog', /\banalog(?:ue)?\b/gi],
+  ['scratches', /\b(?:film\s+)?scratch(?:es|ed|ing)?\b/gi],
+  ['light leak', /\blight\s+leaks?\b/gi],
+  ['lens flare', /\blens\s+flares?\b/gi],
+  ['letterbox', /\bletterbox(?:ed|ing)?\b/gi],
+  ['VHS', /\bvhs\b/gi],
+  ['CRT', /\bcrt\b/gi],
+  ['flicker', /\bflicker(?:s|ed|ing)?\b/gi],
+  ['overlay', /\boverlays?\b/gi],
+];
+const FX_NEGATION = /\b(?:without|avoid(?:ing)?|free\s+of|never(?:\s+(?:add|use|introduce|reproduce|import|carry\s+over)\w*)?|do\s+not\s+(?:add|use|introduce|reproduce|import|carry\s+over)|no)\b/gi;
+const FX_CLAUSE_BREAK = /[.!?;]|\n\s*\n|\n(?=[ \t]*(?:\[Shot\s+\d+\]|[A-Za-z][A-Za-z0-9_]*:))/gi;
+const FX_NONVISUAL_NO = /^(?:unsolicited\s+|added\s+)?(?:music|dialogue|speech|sound|cuts?|pause|reset)\b/i;
+const FX_FINITE_VERB = /\b(?:is|are|was|were|has|have|had|shows?|adds?|uses?|features?|applies|keeps?|stays?|becomes?)\b/i;
+const FX_CONTRAST = /\b(?:but|except|however|while|whereas|instead)\b/i;
+const DIEGETIC_CRACKLE = /\b(?:fire|hearth|campfire|bonfire|fireplace|embers?|flames?|sparks?|electric(?:al)?|machinery|welding)\b/i;
+const DIALOGUE_TAG = /<d>[\s\S]*?(?:<\/d>|(?![\s\S]))/g;
+const VISUAL_CUTOFF = /^[ \t]*(?:overall_soundscape|non_diegetic_music)\s*:/im;
+const SCENE_SECTION = /^[ \t]*(?:detailed_description|integrated_multimodal_description)\s*:\s*([\s\S]*?)(?=^[ \t]*(?:overall_soundscape|non_diegetic_music|subject_definitions|summary|retention_analysis)\s*:|(?![\s\S]))/im;
+const SHOT_MARKER = /^[ \t]*\[Shot [1-9]\d*\](?=\s|$)/gm;
+const FRAMING_OPEN_TIERS = [
+  [0, /\b(?:extreme\s+wide|wide\s+(?:shot|view|frame|framing|angle|establishing)|establishing\s+shot|long\s+shot|full\s+wide)\b/gi],
+  [1, /\b(?:medium\s+(?:shot|wide|close-?up)|two-?shot|waist-?up|chest-?up)\b/gi],
+  [2, /(?<!medium\s)\b(?:extreme\s+close-?up|tight\s+close-?up|close-?up|macro\s+shot|tight\s+(?:[\w-]+\s+){0,2}fram(?:e|ing)|tight\s+on)\b/gi],
+];
+const FRAMING_EXIT_WIDE = /\b(?:pulls?\s+out|pulling\s+out|zooms?\s+out)\b/gi;
+const FRAMING_DESTINATION = /\b(?:into|toward|to|ending\s+(?:in|on)|reaching)\s+(?:(?:a|an|the)\s+)?(?:[\w-]+\s+){0,2}$/i;
+const OPENING_CUE = /^[ \t]*(?:Initial\s+state|Shot\s+size|Composition):[ \t]*([^\n]+)/gim;
+const SPEED_SLOW = /\b(?:slow(?:ly)?|gentle|gently|unhurried|creeping|drifting|gradual(?:ly)?|languid|lingering|at\s+slow\s+speed|camera\s+speed:\s*slow|static\s+shot|camera\s+holds\s+steady)\b/i;
+const SPEED_FAST = /\b(?:fast|rapid(?:ly)?|quick(?:ly)?|swift(?:ly)?|brisk(?:ly)?|frantic(?:ally)?|sudden\s+burst|sprint(?:s|ing)?|whip-?pan|darts?|rushes?|at\s+fast\s+speed|camera\s+speed:\s*fast|large\s+amplitude|sweeping\s+(?:arc|pan|move|camera)|arcs?\s+back\s+around|dynamic\s+orbit)\b/i;
+const LIGHT_DARK = /\b(?:low-?key(?:\s+light\w*)?|underexposed|moonlit|candlelit|near-?darkness|dim(?:ly|mer)?\s+(?:lit|light\w*|room|interior|hall\w*|corridor|street|alley|scene|exposure|glow|ambien\w*)|dark(?:er|ened)?\s+(?:lit|light\w*|room|interior|scene|exposure|shadow\w*|ambien\w*|alley|night\w*|sky)|shadowy\s+(?:light\w*|room|interior|scene|hall\w*|alley|corner)|lighting:\s*(?:dim|dark|low-?key|shadowy)|in\s+(?:dim|low|dark)\s+light\w*)\b/i;
+const LIGHT_BRIGHT = /\b(?:high-?key(?:\s+light\w*)?|sun-?drenched|overexposed|harsh\s+midday|vivid\s+daylight|flooded\s+with\s+light|blazing\s+(?:sun\w*|daylight|light\w*)|bright(?:er|ly)?\s+(?:lit|light\w*|sun\w*|daylight|midday|exposure|key\s+light|room|interior|scene|overhead|window\s+light)|brilliant\s+(?:sun\w*|daylight|light\w*)|lighting:\s*(?:bright|high-?key|sunny|daylight)|in\s+bright\s+(?:light\w*|sun\w*|daylight))\b/i;
+const LIGHT_WARM = /\b(?:warm\s+(?:light\w*|glow|tungsten|amber|golden|sunlight|key)|golden\s+hour|amber\s+light\w*|tungsten\s+light\w*)\b/i;
+const LIGHT_COOL = /\b(?:cool\s+(?:light\w*|blue|cyan|daylight|moonlight|overcast|fluorescent|key)|cold\s+(?:blue|fluorescent|light\w*)|icy\s+blue\s+light\w*|sterile\s+fluorescent)\b/i;
+
+function fxNegated(text, start) {
+  const breaks = [...text.slice(0, start).matchAll(FX_CLAUSE_BREAK)];
+  const boundary = breaks.length ? breaks.at(-1).index + breaks.at(-1)[0].length : 0;
+  const prefix = text.slice(boundary, start).replace(/\s+/g, ' ');
+  const matches = [...prefix.matchAll(FX_NEGATION)];
+  if (!matches.length) return false;
+  const neg = matches.at(-1);
+  const between = prefix.slice(neg.index + neg[0].length).trim();
+  if (FX_CONTRAST.test(between)) return false;
+  if (!between.includes(',')) return (between.match(/[\w-]+/g) ?? []).length <= 6;
+  if (FX_FINITE_VERB.test(between)) return false;
+  const items = between.split(/,|\band\b|\bor\b/i).map((part) => part.trim()).filter(Boolean);
+  if (!items.length) return false;
+  if (neg[0].trim().toLowerCase() === 'no' && FX_NONVISUAL_NO.test(items[0])) return false;
+  return items.every((item) => (item.match(/[\w-]+/g) ?? []).length <= 6);
+}
+
+function fxHits(text) {
+  const found = new Map();
+  for (const [token, pattern] of SCREEN_FX_PATTERNS) {
+    for (const match of text.matchAll(pattern)) {
+      if (fxNegated(text, match.index)) continue;
+      if (token === 'crackle') {
+        const window = text.slice(Math.max(0, match.index - 28), Math.min(text.length, match.index + match[0].length + 28));
+        if (DIEGETIC_CRACKLE.test(window)) continue;
+      }
+      if (!found.has(token)) found.set(token, match[0]);
+      break;
+    }
+  }
+  return found;
+}
+
+export function lintScreenFx(texts, allowedContext = '') {
+  const items = typeof texts === 'string' ? [texts] : [...(texts ?? [])];
+  const allowed = fxHits(allowedContext || '');
+  const warnings = [], seen = new Set();
+  for (const text of items) {
+    if (typeof text !== 'string' || !text.trim()) continue;
+    for (const [token, matched] of fxHits(text)) {
+      if (allowed.has(token) || seen.has(token)) continue;
+      seen.add(token);
+      warnings.push({
+        code: 'unsolicited_screen_fx',
+        token,
+        match: matched,
+        message: `Unsolicited screen-FX trigger '${matched}' (${token}); under CFG=1 without a negative prompt this can introduce spontaneous vignette, grain, crackle, or overlays.`,
+      });
+    }
+  }
+  return warnings;
+}
+
+function visualParts(prompt) {
+  const text = (prompt || '').replace(DIALOGUE_TAG, ' ');
+  const scene = SCENE_SECTION.exec(text);
+  let visual;
+  if (scene) visual = scene[1];
+  else {
+    const cutoff = VISUAL_CUTOFF.exec(text);
+    visual = cutoff ? text.slice(0, cutoff.index) : text;
+  }
+  const markers = [...visual.matchAll(SHOT_MARKER)];
+  if (!markers.length) return [visual, visual, visual];
+  const preamble = visual.slice(0, markers[0].index).trim();
+  const shots = markers.map((marker, i) => visual.slice(marker.index, i + 1 < markers.length ? markers[i + 1].index : visual.length).trim());
+  return [`${preamble}\n${shots[0]}`.trim(), shots.at(-1), visual];
+}
+
+function framingTier(text, {first = true, checkCue = true} = {}) {
+  if (first && checkCue) {
+    for (const cue of text.matchAll(OPENING_CUE)) {
+      const found = framingTier(cue[1], {first: true, checkCue: false});
+      if (found.tier != null) return found;
+    }
+  }
+  const tiers = first ? FRAMING_OPEN_TIERS : [...FRAMING_OPEN_TIERS, [0, FRAMING_EXIT_WIDE]];
+  const hits = [];
+  for (const [tier, pattern] of tiers) {
+    for (const match of text.matchAll(pattern)) {
+      if (first) {
+        const prefix = text.slice(Math.max(0, match.index - 40), match.index);
+        if (FRAMING_DESTINATION.test(prefix)) continue;
+      }
+      hits.push([match.index, tier, match[0]]);
+    }
+  }
+  if (!hits.length) return {tier: null, word: ''};
+  hits.sort((a, b) => a[0] - b[0]);
+  const chosen = first ? hits[0] : hits.at(-1);
+  return {tier: chosen[1], word: chosen[2]};
+}
+
+const speedPolarity = (text) => {
+  const slow = SPEED_SLOW.test(text), fast = SPEED_FAST.test(text);
+  return slow && !fast ? 'slow' : fast && !slow ? 'fast' : '';
+};
+
+const polarity = (text, leftRe, rightRe, leftName, rightName) => {
+  const left = leftRe.test(text), right = rightRe.test(text);
+  return left && !right ? leftName : right && !left ? rightName : '';
+};
+
+export function lintContinuationPair(prevPrompt, nextPrompt, {sameScene = true, continuous = true} = {}) {
+  if (!prevPrompt || !nextPrompt) return [];
+  const [, prevLast, prevVisual] = visualParts(prevPrompt);
+  const [nextFirst, , nextVisual] = visualParts(nextPrompt);
+  const warnings = [];
+  if (continuous) {
+    const prevFrame = framingTier(prevLast, {first: false});
+    const nextFrame = framingTier(nextFirst, {first: true});
+    if (prevFrame.tier != null && nextFrame.tier != null && Math.abs(prevFrame.tier - nextFrame.tier) >= 2) {
+      warnings.push({
+        code: 'continuation_framing_jump',
+        previous: prevFrame.word,
+        next: nextFrame.word,
+        message: `Continuation framing jump without a cut ('${prevFrame.word}' -> '${nextFrame.word}'); match the previous exit framing or mark this box as a cut.`,
+      });
+    }
+    const prevSpeed = speedPolarity(prevLast), nextSpeed = speedPolarity(nextFirst);
+    if (prevSpeed && nextSpeed && prevSpeed !== nextSpeed) {
+      warnings.push({
+        code: 'continuation_speed_flip',
+        previous: prevSpeed,
+        next: nextSpeed,
+        message: `Continuation motion speed flip (${prevSpeed} -> ${nextSpeed}) without a cut; carry steady motion cadence across the join.`,
+      });
+    }
+  }
+  if (sameScene) {
+    const prevBright = polarity(prevVisual, LIGHT_DARK, LIGHT_BRIGHT, 'dark', 'bright');
+    const nextBright = polarity(nextVisual, LIGHT_DARK, LIGHT_BRIGHT, 'dark', 'bright');
+    if (prevBright && nextBright && prevBright !== nextBright) {
+      warnings.push({
+        code: 'lighting_drift',
+        axis: 'brightness',
+        previous: prevBright,
+        next: nextBright,
+        message: `Same-scene lighting exposure flips from ${prevBright} to ${nextBright}; lock exposure and light sources across adjacent boxes of the same scene.`,
+      });
+    }
+    const prevTemp = polarity(prevVisual, LIGHT_WARM, LIGHT_COOL, 'warm', 'cool');
+    const nextTemp = polarity(nextVisual, LIGHT_WARM, LIGHT_COOL, 'warm', 'cool');
+    if (prevTemp && nextTemp && prevTemp !== nextTemp) {
+      warnings.push({
+        code: 'lighting_drift',
+        axis: 'temperature',
+        previous: prevTemp,
+        next: nextTemp,
+        message: `Same-scene lighting color temperature flips from ${prevTemp} to ${nextTemp}; keep color temperature consistent within the same scene.`,
+      });
+    }
+  }
+  return warnings;
+}
+
 export function describeBox(state, index, connected, context) {
   const box = state.boxes[index];
   const fresh = isFresh(state, index);
@@ -1209,7 +1411,18 @@ export function describeBox(state, index, connected, context) {
     problems.push(`Clip ${index + 1} continues from clip ${index}. With several videos in clip ${index}, `
       + `clip ${index + 1} must start with a Cut.`);
   }
-  return { mode, tags, guides, problems, warnings: swapWarnings(state, index), fresh };
+  const allowedContext = [state.prompt ?? '', state.bible?.style ?? ''].filter(Boolean).join('\n');
+  const warnings = [...swapWarnings(state, index), ...lintScreenFx(box.prompt ?? '', allowedContext).map((item) => item.message)];
+  const prevIndex = tracks.previousIndex(state, index);
+  if (prevIndex != null) {
+    const prevBox = state.boxes[prevIndex];
+    const continuous = !fresh;
+    const sameScene = !(box.cut && box.new_scene);
+    for (const item of lintContinuationPair(prevBox?.prompt ?? '', box.prompt ?? '', {sameScene, continuous})) {
+      if (!warnings.includes(item.message)) warnings.push(item.message);
+    }
+  }
+  return { mode, tags, guides, problems, warnings, fresh };
 }
 
 // Whether a clip runs as FLF2VA once `flf_refmods` is on. Its First/Last frames and accepted endpoint guides become the

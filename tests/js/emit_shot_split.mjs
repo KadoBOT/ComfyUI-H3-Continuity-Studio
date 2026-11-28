@@ -1,6 +1,6 @@
 // Emit browser state for renderer agreement and saved-guide compatibility tests.
-import { parseState, serialize } from '../../web/h3c_timeline_model.mjs?v=9de34a3399af';
-import { splitBox } from '../../web/h3c_shot_split.mjs?v=52dc9e6863ab';
+import { parseState, serialize } from '../../web/h3c_timeline_model.mjs?v=0c70ed8f7fed';
+import { splitBox } from '../../web/h3c_shot_split.mjs?v=e1f20098b08d';
 import { CONTEXT, shotGuideTimeline, savedGuideSplitTimeline, unstructuredGuideTimeline } from './shot_split_fixtures.mjs';
 
 const shot = parseState(JSON.stringify(shotGuideTimeline()));

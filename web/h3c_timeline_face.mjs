@@ -1,5 +1,5 @@
 // The Timeline face and native advanced widgets share the Studio editor's saved state.
-import {joinKind} from './h3c_timeline_model.mjs?v=9de34a3399af';
+import {joinKind} from './h3c_timeline_model.mjs?v=0c70ed8f7fed';
 import {setText} from './h3c_dom.mjs?v=584a9bf55653';
 export const FACE_HEIGHT = 120;
 const STYLE_ID = 'h3ct-face-style';
@@ -25,7 +25,7 @@ function button(text, title, onClick, className = '') {
   node.title = title;
   node.addEventListener('click', (event) => {
     event.preventDefault();
-    onClick();
+    onClick(event);
   });
   return node;
 }
@@ -48,7 +48,8 @@ export class TimelineFace {
     this.progressEl.setAttribute('aria-live', 'polite');
     this.nextButton = button('Render next', 'Queue one run, for the next box that is not rendered yet', renderNext);
     this.allButton = button('▶ Render', 'Queue one run per box that is not rendered yet', renderAll, 'h3ct-primary');
-    this.generateButton = button('Generate clip', 'Generate the selected clip using its seed mode', () => editor.queueBox(1));
+    this.generateButton = button('Generate clip', 'Generate the selected clip using its seed mode',
+      (event) => editor.queueBox(1, {rebuild: !!(event?.ctrlKey || event?.metaKey)}));
     const actions = el('div', 'h3ct-face-actions');
     actions.append(button('Open Studio', 'Edit this Timeline in a full-window Studio', open), this.nextButton, this.allButton, this.generateButton);
     this.root.append(this.summaryEl, this.progressEl, actions);

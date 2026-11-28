@@ -4,27 +4,27 @@ import {Pins, SwitchSection} from './h3c_switch_section.mjs?v=c253500f4908';
 import * as tracks from './h3c_tracks.mjs';
 // The H3 Timeline editor: a track of boxes, the selected box and the shared prompt.
 // Plain DOM without ComfyUI imports; the host object connects it to the node.
-import { MentionCard, MentionLayer } from './h3c_mentions.mjs?v=fbb81d592421';
+import { MentionCard, MentionLayer } from './h3c_mentions.mjs?v=10797c1f1bd1';
 import { promptSections, promptShots, writePromptSections } from './h3c_prompt_sections.mjs?v=1f35473e5668';
-import {PromptFormPanel} from './h3c_prompt_form.mjs?v=171d8f4f4388';
-import * as model from './h3c_timeline_model.mjs?v=9de34a3399af';
-import * as videoLayers from './h3c_layers.mjs?v=9de34a3399af';
+import {PromptFormPanel} from './h3c_prompt_form.mjs?v=fe1eecb39e53';
+import * as model from './h3c_timeline_model.mjs?v=0c70ed8f7fed';
+import * as videoLayers from './h3c_layers.mjs?v=0c70ed8f7fed';
 import {audioSourceLocked} from './h3c_audio_windows.mjs?v=cdefbd77b246';
-import { AudioLanes } from './h3c_audio_lanes.mjs?v=b235582f2780';
-import { shotFrames, frameTargets, syncTargets, acceptedGuideFrames, endpointGuide, endpointReference, adoptEndpointGuides } from './h3c_shot_preview.mjs?v=9de34a3399af';
-import {FrameImages, targetLabel, imageDrop} from './h3c_frame_images.mjs?v=289496b275a0';
-import { splitBox, splitTiming } from './h3c_shot_split.mjs?v=52dc9e6863ab';
+import { AudioLanes } from './h3c_audio_lanes.mjs?v=8467aa30de66';
+import { shotFrames, frameTargets, syncTargets, acceptedGuideFrames, endpointGuide, endpointReference, adoptEndpointGuides } from './h3c_shot_preview.mjs?v=0c70ed8f7fed';
+import {FrameImages, targetLabel, imageDrop} from './h3c_frame_images.mjs?v=5b7657df7cdf';
+import { splitBox, splitTiming } from './h3c_shot_split.mjs?v=e1f20098b08d';
 import { fillReferenceSwitches } from './h3c_reference_switches.mjs?v=e94b5b02e02b';
-import { ReferenceReplacements } from './h3c_reference_replacements.mjs?v=556aba837682';
+import { ReferenceReplacements } from './h3c_reference_replacements.mjs?v=0f15b996ea89';
 import { fillPicturePicker, mentionedReferences, referenceChip } from './h3c_reference_pictures.mjs?v=8198307be3fa';
-import { CastPage } from './h3c_cast.mjs?v=00eace751241';
-import { PicturesPanel, highestSlot } from './h3c_pictures.mjs?v=865f6a40e067';
-import { CheckPanel } from './h3c_check.mjs?v=44383c7e3632';
-import { BridgePanel, bridgeLine } from './h3c_bridges.mjs?v=abe0fc56e9fa';
-import { DialoguePanel } from './h3c_dialogue.mjs?v=5de4580e0063';
+import { CastPage } from './h3c_cast.mjs?v=c886efda0923';
+import { PicturesPanel, highestSlot } from './h3c_pictures.mjs?v=d00c8cc737a1';
+import { CheckPanel, hasCheckIssue } from './h3c_check.mjs?v=e094466f59ac';
+import { BridgePanel, bridgeLine } from './h3c_bridges.mjs?v=2589f0a51016';
+import { DialoguePanel } from './h3c_dialogue.mjs?v=d4285596835d';
 import { ChainSettings } from './h3c_chain_settings.mjs?v=abda9883f8cc';
-import { exportedVideo } from './h3c_partial_video.mjs?v=201bf0f48645';
-import { MAX_TAKES, TakesPanel, followNote, renderLabel } from './h3c_takes.mjs?v=9668f7a904e3';
+import { exportedVideo, videoSeconds } from './h3c_partial_video.mjs?v=201bf0f48645';
+import { MAX_TAKES, TakesPanel, followNote, renderLabel } from './h3c_takes.mjs?v=b599b8ef89a3';
 import { drawsSame, replaceChanged, setText, showImages } from './h3c_dom.mjs?v=584a9bf55653';
 
 const STYLE_ID = 'h3ct-style';
@@ -45,6 +45,7 @@ const CSS = `
   background: var(--comfy-input-bg, #222); border: 1px solid var(--border-color, #444); border-radius: 4px; }
 .h3ct-button:hover:not(:disabled) { filter: brightness(1.3); }
 .h3ct-button:disabled { opacity: .45; cursor: default; }
+.h3ci-button[hidden], .h3ct-button[hidden] { display: none; }
 .h3ct-primary { border-color: #5b8fe8; }
 .h3ct-link { color: #8fbcff; white-space: nowrap; }
 .h3ct-link[hidden] { display: none; }
@@ -146,6 +147,7 @@ const CSS = `
 .h3ct-box.cut { border-left: 3px solid #e6e6e6; }
 .h3ct-box.new-scene { border-left: 3px double #f0c674; }
 .h3ct-box.problem { border-color: #e0605a; box-shadow: inset 0 0 0 1px #e0605a; }
+.h3ct-box.warning:not(.problem) { border-color: #d9a04a; }
 .h3ct-box.selected { z-index: 2; outline: 2px solid #7aa2f7; outline-offset: 1px; }
 .h3ct-box img { position: absolute; top: 0; right: 0; height: 100%; max-width: 50%; object-fit: cover; opacity: .7;
   pointer-events: none; }
@@ -505,9 +507,17 @@ export class TimelineEditor {
     }, 'h3ct-primary');
     const render = el('span', 'h3ctk-render');
     render.append(this.boxRenderButton);
+    this.playJoinButton = button('Play join', 'Play across the join into this clip in the Studio viewer', () => {
+      const region = this.joinPreviewRegion();
+      if (!region) return;
+      (this.clipActions.isConnected ? this.clipActions : this.trackEl).dispatchEvent(
+        new CustomEvent('h3c-play-region', {bubbles: true, detail: region}));
+    });
+    decorateIcon(this.playJoinButton, 'play', 'Play join', {text: true});
+    this.playJoinButton.hidden = true;
     this.clipActions = el('div', 'h3ct-clip-actions');
     const actions = el('div', 'h3ct-row');
-    actions.append(this.leftButton, this.rightButton, this.duplicateButton, this.deleteButton);
+    actions.append(this.playJoinButton, this.leftButton, this.rightButton, this.duplicateButton, this.deleteButton);
     this.clipActions.append(actions);
     panelHead.append(this.titleEl, el('span', 'h3ct-grow'), this.clipActions, render);
     this.panelTabsEl = el('div', 'h3ct-panel-tabs');
@@ -904,6 +914,29 @@ export class TimelineEditor {
   }
 
   // The picked video as describeBox sees it: what it renders as and what stops Generate.
+  // Region (~3.5 s) around the start of clip `index` on the active full/preview/partial movie clock, or null.
+  joinPreviewRegion(index = this.selected) {
+    const box = this.state.boxes[index];
+    if (!box || this.pickedLayer()) return null;
+    if (tracks.enabled(this.state) ? tracks.previousIndex(this.state, index, false) === null : index <= 0) return null;
+    const shown = this.status?.ok === true && !this.queuing ? exportedVideo(this.status) : null;
+    if (!shown?.file) return null;
+    const seamFrame = tracks.startFrame(this.state, box.id);
+    if (!(seamFrame > 0)) return null;
+    let at;
+    if (this.videoClock?.length) {
+      const covered = this.videoClock.reduce((most, [, count, start, moves]) => Math.max(most, moves ? start + count : start), 0);
+      if (seamFrame >= covered) return null;
+      at = videoSeconds(this.videoClock, seamFrame);
+    } else {
+      const limit = shown.preview?.frames ?? model.totalFrames(this.state);
+      if (seamFrame >= limit) return null;
+      at = seamFrame / model.FPS;
+    }
+    if (at == null) return null;
+    return {start: Math.max(0, Number((at - 1.75).toFixed(3))), end: Number((at + 1.75).toFixed(3))};
+  }
+
   pickedInfo(connected = this.connectedSets(), context = this.host.context()) {
     const layer = this.pickedLayer();
     if (!layer) return model.describeBox(this.state, this.selected, connected, context);
@@ -1605,6 +1638,8 @@ export class TimelineEditor {
     }
     if (replaced) summary += ` · ${replaced} ${replaced === 1 ? 'replacement' : 'replacements'}`;
     if (ok && !this.stale) summary += ` · ${this.status.message}`;
+    const seamCount = ok && !this.stale ? (this.status.seam_warnings?.length ?? 0) : 0;
+    if (seamCount) summary += ` · ${seamCount} seam ${seamCount === 1 ? 'warning' : 'warnings'}`;
     if (ok && !this.stale && this.status.full_video_building) summary += ' · Building the full video in the background…';
     else if (ok && !this.stale && this.status.preview_video_building) summary += ' · Building the video so far…';
     else if (ok && !this.stale && this.status.preview_error && !this.status.preview_video) summary += ` · ${this.status.preview_error}`;
@@ -1689,6 +1724,8 @@ export class TimelineEditor {
       starts.push(start);
       const info = this.describe(index, connected, context);
       const status = this.statusOf(box);
+      const seamWarnings = (this.stale ? null : status?.seam_warnings) ?? [];
+      const checkIssue = !this.stale && hasCheckIssue(status?.check);
       const item = el('div', 'h3ct-box');
       item.tabIndex = 0;
       item.setAttribute('role', 'button');
@@ -1696,6 +1733,7 @@ export class TimelineEditor {
       if (status) item.classList.add(status.status);
       item.classList.toggle('selected', index === this.selected);
       item.classList.toggle('problem', info.problems.length > 0);
+      item.classList.toggle('warning', info.warnings.length > 0 || seamWarnings.length > 0 || checkIssue);
       item.classList.toggle('cut', index > 0 && !!box.cut);
       item.classList.toggle('new-scene', index > 0 && !!box.cut && !!box.new_scene);
       item.style.left = percent(start / span);
@@ -1708,13 +1746,16 @@ export class TimelineEditor {
         item.append(image);
       }
       const mark = { done: ' ✓', next: ' ●', outdated: ' ⟳' }[status?.status] ?? '';
+      const warn = !info.problems.length && (seamWarnings.length > 0 || checkIssue) ? ' ⚠' : '';
       const label = el('span', 'h3ct-boxlabel',
-        `${index > 0 && box.cut ? '✂ ' : ''}#${index + 1} · ${model.seconds(box.frames)} s${mark}`);
+        `${index > 0 && box.cut ? '✂ ' : ''}#${index + 1} · ${model.seconds(box.frames)} s${mark}${warn}`);
       item.append(label);
       if (box.layers?.length) this.drawStack(item, label, index);
       item.title = [`Clip ${index + 1}: ${model.lengthLabel(this.state, index, context)}`, info.mode,
         status?.status === 'outdated' ? `Outdated take, still playing: ${status.reason ?? 'the box changed since it was rendered'} Regenerate it to update it.` : status?.reason,
-        box.prompt.trim().slice(0, 160), ...info.problems, ...info.warnings].filter(Boolean).join('\n');
+        box.prompt.trim().slice(0, 160), ...info.problems, ...seamWarnings.map((w) => w.message),
+        checkIssue ? 'Continuity check found issues (open Takes → Continuity check).' : '',
+        ...info.warnings].filter(Boolean).join('\n');
       const handle = el('div', 'h3ct-handle');
       handle.title = 'Drag to change the length';
       handle.addEventListener('pointerdown', (event) => this.resizeStart(event, index));
@@ -2782,10 +2823,19 @@ export class TimelineEditor {
     this.clipActions.setAttribute('aria-label',`Clip ${this.selected+1} actions`);
     const layer = this.pickedLayer(), label = this.pickedLabel();
     const info = this.pickedInfo(this.connectedSets(), context);
-    const spoken = this.stale || layer ? '' : this.statusOf(box)?.dialogue_problem;
+    const joinRegion = this.clipActions.closest?.('.h3cs') ? this.joinPreviewRegion() : null;
+    this.playJoinButton.hidden = !joinRegion;
+    if (joinRegion) {
+      this.playJoinButton.title = `Play ${(joinRegion.end - joinRegion.start).toFixed(1)} s across the join into clip ${this.selected + 1}`;
+    }
+    const statusForInfo = this.stale || layer ? null : this.statusOf(box);
+    const spoken = statusForInfo?.dialogue_problem;
     const blocking = [...info.problems, ...(spoken ? [`${spoken.charAt(0).toUpperCase()}${spoken.slice(1)}.`] : [])];
-    setText(this.promptProblemEl, [...blocking, ...info.warnings].join(' '));
-    this.promptProblemEl.hidden = !blocking.length && !info.warnings.length;
+    const seamMsgs = (statusForInfo?.seam_warnings ?? []).map((w) => w.message);
+    const hints = [...new Set([...blocking, ...seamMsgs, ...info.warnings])];
+    setText(this.promptProblemEl, hints.join(' '));
+    this.promptProblemEl.classList.toggle('problem', blocking.length > 0);
+    this.promptProblemEl.hidden = !hints.length;
     this.dialogueField.hidden = !this.state.dialogue?.cues?.length;
     this.dialogueSelect.value = this.video().dialogue === 'manual' ? 'manual' : 'cues';
     setIconLabel(this.boxRenderButton,this.generateLabel());

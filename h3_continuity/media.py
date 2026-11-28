@@ -11,7 +11,7 @@ import torch
 
 from comfy_api.latest._input_impl.video_types import set_video_color_properties, video_stream_color_space
 
-from .timing import sample_at_frame
+from .timing import AUDIO_TICKS_PER_SECOND, audio_tail_start, sample_at_frame, ticks_for_frames
 
 AUDIO_BIT_RATE = 192000
 CROSSFADE_SECONDS = 0.1
@@ -212,38 +212,159 @@ def read_frames(path, indices):
     return found
 
 
+def carried_local_sample(prev_entry, prev_end_sample, entry, first, sample_rate):
+    """Sample offset inside `entry`'s waveform matching `prev_end_sample` on H3's 40 Hz audio tick grid, or None.
+
+    H3 copies carried audio on the 40-ticks/s (25 ms) latent grid (`audio_tail_start`), which differs from
+    `sample_at_frame(context_frames, sr)` on the 24 fps video clock by +/-8.33 ms whenever
+    `(source_frames - context_frames) % 3 != 0`. Aligning to `prev_end_sample` eliminates crossfade phase flanging.
+    """
+    if prev_entry is None or prev_end_sample is None or first != 0 or not sample_rate:
+        return None
+    if not entry.get("carried_audio"):
+        return None
+    context = int(entry.get("context_frames") or 0)
+    if context <= 0:
+        return None
+    source_frames = int(prev_entry.get("frames") or 0)
+    if source_frames < context:
+        return None
+    if entry.get("carried_from") and prev_entry.get("created") and entry["carried_from"] != prev_entry["created"]:
+        return None
+    source_ticks = ticks_for_frames(source_frames)
+    tail_start = audio_tail_start(source_frames, source_ticks, context)
+    target_start = int((entry.get("audio_pin") or {}).get("start_tick") or 0)
+    source_start = tail_start + target_start
+    return max(0, int(prev_end_sample) - round(source_start * sample_rate / AUDIO_TICKS_PER_SECOND)
+               + round(target_start * sample_rate / AUDIO_TICKS_PER_SECOND))
+
+
+def assemble_entry_audio(items, crossfade_seconds=CROSSFADE_SECONDS):
+    """Assemble audio for `(entry, first, count, played, waveform, sample_rate, break_seam[, continues_prev])` items.
+
+    Tracks cumulative decoded sample positions and applies `carried_local_sample` across contiguous
+    continuations (`break_seam=False`, `continues_prev=True`, `first == 0`, matching `played` end of previous entry).
+    """
+    parts = []
+    prev_entry = prev_end_sample = prev_played = None
+    prev_first = prev_count = 0
+    prev_break = True
+    cursor = 0
+    for item in items:
+        entry, first, count, played, wave, sr, break_seam = item[:7]
+        continues_prev = bool(item[7]) if len(item) > 7 else (not break_seam)
+        context = int(entry.get("context_frames") or 0) if entry is not None else 0
+        contiguous = (continues_prev and prev_entry is not None and not break_seam and not prev_break
+                      and entry is not None and first == 0 and prev_played is not None
+                      and prev_first + prev_count == prev_played)
+        local = (carried_local_sample(prev_entry, prev_end_sample, entry, first, sr)
+                 if contiguous and wave is not None else None)
+        if wave is not None and sr:
+            this_local = local if local is not None else sample_at_frame(context + first, sr)
+            span_samples = sample_at_frame(cursor + count, sr) - sample_at_frame(cursor, sr)
+            prev_end_sample = this_local + span_samples
+        else:
+            prev_end_sample = None
+        cursor += count
+        prev_entry, prev_first, prev_count, prev_played, prev_break = entry, first, count, played, break_seam
+        parts.append((context + first + count, context + first, wave, sr, local))
+    return assemble_audio(parts, crossfade_seconds=crossfade_seconds)
+
+
+def _taper_tail(merged, real_end, sample_rate):
+    """Apply a 2 ms raised-cosine tail fade-out before trailing zero padding so tick-deficit endings do not click."""
+    if real_end <= 0 or float(merged[:, real_end - 1].abs().max()) <= 1e-4:
+        return
+    taper = min(round(0.002 * sample_rate), real_end)
+    if taper <= 1:
+        return
+    t = (torch.arange(taper, dtype=torch.float32) + 0.5) / taper
+    merged[:, real_end - taper:real_end] *= 0.5 * (1.0 + torch.cos(math.pi * t))
+
+
+def _declick_cut(merged, cut, actual_len, end, sample_rate):
+    """Smooth a non-crossfaded hard cut step discontinuity across +/-3 ms without adding latency."""
+    if cut <= 0 or actual_len <= 0 or end <= cut:
+        return
+    jump = merged[:, cut:cut + 1] - merged[:, cut - 1:cut]
+    if float(jump.abs().max()) <= 1e-4:
+        return
+    half = min(round(0.003 * sample_rate), cut, actual_len, end - cut)
+    if half <= 1:
+        return
+    left_was_unit = float(merged[:, cut - half:cut].abs().max()) <= 1.0 + 1e-6
+    right_was_unit = float(merged[:, cut:cut + half].abs().max()) <= 1.0 + 1e-6
+    t = (torch.arange(half, dtype=torch.float32) + 0.5) / half
+    left_curve = 0.5 * (0.5 - 0.5 * torch.cos(math.pi * t))
+    right_curve = -0.5 * (0.5 + 0.5 * torch.cos(math.pi * t))
+    merged[:, cut - half:cut] += jump * left_curve
+    merged[:, cut:cut + half] += jump * right_curve
+    if left_was_unit:
+        merged[:, cut - half:cut].clamp_(-1.0, 1.0)
+    if right_was_unit:
+        merged[:, cut:cut + half].clamp_(-1.0, 1.0)
+
+
 def assemble_audio(parts, crossfade_seconds=CROSSFADE_SECONDS):
     """Join segment audio on the 24 fps timeline.
 
-    `parts` holds (frames, context_frames, waveform [C, S] or None, sample_rate or None) per segment.
+    `parts` holds `(frames, context_frames, waveform [C, S] or None, sample_rate or None)` or a 5-tuple ending
+    with an explicit `local_sample` override for tick-aligned H3 continuations.
     Each segment fills the span of its new frames from its own waveform, starting after its carried
     frames, and fades in over the end of the previous segment from its own decode of that moment.
-    Returns (waveform, sample_rate), or None when no segment has audio."""
-    with_audio = [(waveform, rate) for _, _, waveform, rate in parts if waveform is not None]
+    Returns `(waveform, sample_rate)`, or `None` when no segment has audio."""
+    normalized = [(part[0], part[1], part[2], part[3], part[4] if len(part) > 4 else None) for part in parts]
+    with_audio = [(waveform, rate) for _, _, waveform, rate, _ in normalized if waveform is not None]
     if not with_audio:
         return None
     sample_rate = with_audio[0][1]
     channels = min(2, max(waveform.shape[0] for waveform, _ in with_audio))
-    out = torch.zeros(channels, sample_at_frame(sum(f - c for f, c, _, _ in parts), sample_rate))
+    total = sample_at_frame(sum(f - c for f, c, _, _, _ in normalized), sample_rate)
+    out = torch.zeros(channels, total)
     position = 0
-    for index, (frames, context, waveform, rate) in enumerate(parts):
+    real_end = 0
+    for index, (frames, context, waveform, rate, local_override) in enumerate(normalized):
         start = sample_at_frame(position, sample_rate)
         position += frames - context
         end = sample_at_frame(position, sample_rate)
         if waveform is None:
+            if crossfade_seconds > 0 and 0 < real_end <= start:
+                _taper_tail(out, real_end, sample_rate)
             continue
         waveform = waveform.float().cpu()
         if rate != sample_rate:
             import comfy.audio
             waveform = comfy.audio.resample(waveform, rate, sample_rate)
         waveform = waveform[:channels] if waveform.shape[0] >= channels else waveform.repeat(channels, 1)
-        local = sample_at_frame(context, sample_rate)
-        piece = waveform[:, local:local + end - start]
-        out[:, start:start + piece.shape[1]] = piece
+        local = sample_at_frame(context, sample_rate) if local_override is None else max(0, int(local_override))
+        local = min(local, waveform.shape[1])
         fade = min(round(crossfade_seconds * sample_rate), local, start) if index and waveform.shape[1] >= local else 0
+        span = max(0, end - start)
+        piece = waveform[:, local - fade:local + span]
+        actual_len = piece.shape[1]
+        if actual_len > fade + span:
+            piece = piece[:, :fade + span]
+            actual_len = fade + span
+        elif actual_len < fade + span:
+            piece = torch.nn.functional.pad(piece, (0, fade + span - actual_len))
         if fade > 0:
-            ramp = torch.linspace(0, 1, fade)
-            out[:, start - fade:start] = out[:, start - fade:start] * (1 - ramp) + waveform[:, local - fade:local] * ramp
+            valid_fade = max(0, min(fade, real_end - (start - fade)))
+            if valid_fade > 0:
+                ramp = torch.linspace(0, 1, valid_fade + 2)[1:-1]
+                fstart = start - fade
+                out[:, fstart:fstart + valid_fade] = (
+                    out[:, fstart:fstart + valid_fade] * (1 - ramp) + piece[:, :valid_fade] * ramp
+                )
+            if valid_fade < fade:
+                out[:, start - fade + valid_fade:start] = piece[:, valid_fade:fade]
+            out[:, start:end] = piece[:, fade:]
+        else:
+            out[:, start:end] = piece
+            if crossfade_seconds > 0 and real_end >= start:
+                _declick_cut(out, start, actual_len, end, sample_rate)
+        real_end = min(total, start - fade + min(actual_len, fade + span))
+    if crossfade_seconds > 0 and 0 < real_end < total:
+        _taper_tail(out, real_end, sample_rate)
     return out, sample_rate
 
 

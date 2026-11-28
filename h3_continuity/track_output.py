@@ -1,5 +1,6 @@
 """Compose independent tracks on their shared clock. Native generation and legacy sequence output stay separate."""
 import copy
+import math
 import os
 import threading
 from fractions import Fraction
@@ -77,6 +78,9 @@ def fingerprint(folder, parsed, manifest, mode, crf=16):
     for entry in [*manifest['segments'], *manifest.get('layers', []), *manifest.get('bridges', [])]:
         video = entry.get('video') or {}
         files = [video.get('file')]
+        overlap_file = (video.get('overlap') or {}).get('file')
+        if overlap_file:
+            files.append(overlap_file)
         if entry.get('audio_sample_rate'): files.append(entry['stem']+'.safetensors')
         for file in files:
             if not file: continue
@@ -168,11 +172,25 @@ def build(folder, name, parsed, manifest, crf, mode='full'):
     sig_by_id = {identity: media._signature(os.path.join(folder, entries[identity]['video']['file'])) for identity in used}
     width = min((s[2] for s in sig_by_id.values()), default=256)
     height = min((s[3] for s in sig_by_id.values()), default=144)
+    out_fps = max((float((entries[s].get('video') or {}).get('fps') or FPS)
+                   for s in used if s in entries and entries[s].get('video')), default=float(FPS))
+    out_rate = Fraction(FPS) if abs(out_fps - FPS) < 1e-3 else Fraction(str(round(out_fps, 6)))
+    k_mult = media._fps_multiplier(out_fps)
+    decay_len = max(1, round(media.OVERLAP_EXPOSURE_DECAY_SECONDS * out_fps))
+    box_index = {box.id: idx for idx, box in enumerate(parsed.boxes)}
     picks = {identity: [] for identity in used}
+    row_out_counts = []
     for row in rows:
+        out_start, out_count = media.window_at_fps(row['outputStart'], row['outputEnd'] - row['outputStart'], out_fps)
+        row_out_counts.append(out_count)
         for source in row['sources']:
             fps = entries[source['id']]['video'].get('fps') or FPS
-            picks[source['id']].extend(int((source['first']+f)*fps/FPS) for f in range(row['outputEnd']-row['outputStart']))
+            fps_frac = Fraction(str(round(float(fps), 6)))
+            total_src = max(1, int(entries[source['id']]['video'].get('frames') or 0) or 10**9)
+            for out_f in range(out_count):
+                tl_offset = (Fraction(out_start + out_f) + Fraction(1, 2)) * Fraction(FPS) / out_rate - Fraction(row['outputStart'])
+                src_idx = min(total_src - 1, max(0, int((Fraction(source['first']) + tl_offset) * fps_frac / Fraction(FPS))))
+                picks[source['id']].append(src_idx)
     streams = {identity: _track_frames(os.path.join(folder, entries[identity]['video']['file']), frames,
                                        (width, height), sig_by_id[identity][5]) for identity, frames in picks.items()}
     source_sound=None
@@ -180,19 +198,26 @@ def build(folder, name, parsed, manifest, crf, mode='full'):
         from safetensors import safe_open
         with safe_open(os.path.join(folder,source['audio']),framework='pt') as stream:
             source_sound=(stream.get_tensor('waveform'),int(stream.metadata()['sample_rate']))
-    sound_parts = []
+    sound_items = []
+    prev_sound_id = None
     for row in rows:
         count = row['outputEnd']-row['outputStart']
         entry = entries.get(row['sound'])
         wave = store.load_waveform(folder, entry) if entry and entry.get('audio_sample_rate') else None
         p = parsed.placements.get(row['sound'])
         first = row['start']-p['start'] if p else 0
-        carried = entry.get('context_frames', 0) if entry else 0
         rate=entry.get('audio_sample_rate') if wave is not None else None
-        if row['sound']=='source' and source_sound:
+        is_source = row['sound']=='source' and source_sound
+        if is_source:
             wave,rate=source_sound;first=row['start']
-        sound_parts.append((first+carried+count, first+carried, wave, rate))
-    sound = media.assemble_audio(sound_parts)
+        break_seam = bool(row.get('bridgeId') or is_source or entry is None)
+        continues_prev = (not break_seam and prev_sound_id in box_index and row['sound'] in box_index
+                          and not parsed.boxes[box_index[row['sound']]].cut
+                          and rules.previous_index(parsed, box_index[row['sound']]) == box_index[prev_sound_id])
+        played = store.played_frames(entry) if entry is not None and not break_seam else None
+        sound_items.append((None if is_source else entry, first, count, played, wave, rate, break_seam, continues_prev))
+        prev_sound_id = None if break_seam else row['sound']
+    sound = media.assemble_entry_audio(sound_items)
     soundtrack = audio_tracks.marked(parsed, manifest.get('reference_audio'))
     if soundtrack:
         coverage = [dict(frames=row['outputEnd']-row['outputStart'], coverage=[] if row['bridgeId'] else
@@ -201,24 +226,80 @@ def build(folder, name, parsed, manifest, crf, mode='full'):
     filename = f'tracks@{key}.mp4'
     path = os.path.join(folder, filename)
     temporary = path+f'.{threading.get_ident()}.tmp.mp4'
+    def _continuing_pair(prev_row, curr_row):
+        if not prev_row or prev_row['bridgeId'] or curr_row['bridgeId']:
+            return None
+        if len(prev_row['sources']) != 1 or len(curr_row['sources']) != 1:
+            return None
+        psrc, csrc = prev_row['sources'][0], curr_row['sources'][0]
+        if psrc['weight'] != 1 or csrc['weight'] != 1 or csrc['first'] != 0:
+            return None
+        pentry, centry = entries.get(psrc['id']), entries.get(csrc['id'])
+        pidx, cidx = box_index.get(psrc['id']), box_index.get(csrc['id'])
+        if not pentry or not centry or pidx is None or cidx is None:
+            return None
+        if rules.previous_index(parsed, cidx) != pidx or parsed.boxes[cidx].cut:
+            return None
+        if int(centry.get('context_frames') or 0) <= 0:
+            return None
+        if psrc['first'] + (prev_row['outputEnd'] - prev_row['outputStart']) != store.played_frames(pentry):
+            return None
+        return centry if store.has_overlap_video(folder, centry) else None
+
+    def _mux_span_frames(container, video_stream, span_frames):
+        for arr in span_frames:
+            frame = av.VideoFrame.from_ndarray(arr, format='rgb24')
+            frame = frame.reformat(width=width, height=height, format=video_stream.pix_fmt,
+                                   dst_colorspace=video_stream.codec_context.colorspace)
+            set_video_color_properties(frame, 'sRGB')
+            container.mux(video_stream.encode(frame))
+
     try:
         with av.open(temporary, mode='w') as container:
-            video = media._add_video_stream(container, Fraction(FPS), width, height, crf, 'sRGB', 'H.264')
+            video = media._add_video_stream(container, out_rate, width, height, crf, 'sRGB', 'H.264')
             audio = media._add_audio_stream(container, *sound) if sound is not None else None
-            for row in rows:
+            pending_frames = pending_row = decay_box_id = None
+            incoming_gain, decay_pos = 1.0, 0
+            for row, out_count in zip(rows, row_out_counts):
+                overlap_entry = _continuing_pair(pending_row, row)
+                if overlap_entry is not None and pending_frames:
+                    tail_keep = min(len(pending_frames), 3 * k_mult + max(0, k_mult - 1))
+                    tail_list = [f.astype(np.float32) / 255.0 for f in pending_frames[-tail_keep:]]
+                    overlap_rgb = media._decode_overlap(store.overlap_video_path(folder, overlap_entry),
+                                                        'sRGB', width, height, out_rate, color)
+                    blended, gain_delta, applied = media._blend_continuation_seam(tail_list, overlap_rgb, k_mult, False)
+                    if applied:
+                        pending_frames[-tail_keep:] = [np.clip(np.rint(rgb * 255.0), 0, 255).astype(np.uint8) for rgb in blended]
+                        incoming_gain, decay_pos = gain_delta, 0
+                        decay_box_id = row['sources'][0]['id']
+                if pending_frames is not None:
+                    _mux_span_frames(container, video, pending_frames)
+                curr_id = row['sources'][0]['id'] if (not row['bridgeId'] and len(row['sources']) == 1 and row['sources'][0]['weight'] == 1) else None
+                if curr_id != decay_box_id:
+                    incoming_gain, decay_pos, decay_box_id = 1.0, 0, None
                 slate = None
                 if row.get('missing'):
                     slate = Image.new('RGB', (width,height), '#252933')
                     ImageDraw.Draw(slate).text((12,12), f'Missing clip {row["missing"]}', fill='white')
-                for _ in range(row['outputEnd']-row['outputStart']):
-                    picture = np.asarray(slate) if slate is not None else np.zeros((height,width,3), dtype=np.uint8)
-                    if row['sources']:
+                curr_frames = []
+                for _ in range(out_count):
+                    if slate is not None:
+                        arr = np.asarray(slate)
+                    elif row['sources']:
                         picture = sum(next(streams[s['id']]).astype(np.float32)*s['weight'] for s in row['sources'])
-                    frame = av.VideoFrame.from_ndarray(np.clip(np.rint(picture),0,255).astype(np.uint8),format='rgb24')
-                    frame = frame.reformat(width=width, height=height, format=video.pix_fmt,
-                                           dst_colorspace=video.codec_context.colorspace)
-                    set_video_color_properties(frame, 'sRGB')
-                    container.mux(video.encode(frame))
+                        if incoming_gain != 1.0 and decay_pos < decay_len:
+                            w_decay = 0.5 * (1.0 + math.cos(math.pi * (decay_pos + 1) / (decay_len + 1)))
+                            picture = picture * (1.0 + (incoming_gain - 1.0) * w_decay)
+                            decay_pos += 1
+                            if decay_pos >= decay_len:
+                                incoming_gain, decay_box_id = 1.0, None
+                        arr = np.clip(np.rint(picture),0,255).astype(np.uint8)
+                    else:
+                        arr = np.zeros((height,width,3), dtype=np.uint8)
+                    curr_frames.append(arr)
+                pending_frames, pending_row = curr_frames, row
+            if pending_frames is not None:
+                _mux_span_frames(container, video, pending_frames)
             container.mux(video.encode(None))
             if audio is not None: media._mux_audio(container,audio,*sound)
         os.replace(temporary,path)
@@ -228,7 +309,8 @@ def build(folder, name, parsed, manifest, crf, mode='full'):
     frames = rows[-1]['outputEnd']
     clock = [[s['outputStart'], min(s['outputEnd'],frames)-s['outputStart'],s['start'],0 if s['bridgeId'] else 1]
              for s in tracks.output_spans(tracks.document(parsed)) if s['outputStart']<frames]
-    return dict(file=filename,sources=key,frames=frames,fps=FPS,clock=clock,mode=mode,note=note), note
+    return dict(file=filename,sources=key,frames=frames,fps=round(out_fps, 3) if abs(out_fps - FPS) >= 1e-3 else FPS,
+                clock=clock,mode=mode,note=note), note
 
 
 def ensure(folder, name, parsed, manifest, crf, mode='full', make=True):

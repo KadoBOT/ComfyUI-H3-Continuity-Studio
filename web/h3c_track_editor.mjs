@@ -1,4 +1,5 @@
 import {OverlapInspector} from './h3c_overlap_inspector.mjs';
+import {hasCheckIssue} from './h3c_check.mjs';
 import * as tracks from './h3c_tracks.mjs';
 import * as model from './h3c_timeline_model.mjs';
 import {icon,iconButton} from './h3c_icons.mjs';
@@ -56,6 +57,8 @@ const CSS=`
 .h3ct-lane-action.h3ct-lane-delete{opacity:0}.h3ct-track-head:hover .h3ct-lane-delete,.h3ct-lane-header:hover .h3ct-lane-delete,.h3ct-lane-delete:focus-visible{opacity:1}
 .h3ct-track-row.selected>.h3ct-track-head{background:#30405a}.h3ct-track-clip{position:absolute;top:4px;bottom:4px;background:#34584f;border:1px solid #63857c;border-radius:3px;overflow:hidden;color:#edf5f0;cursor:grab;touch-action:none;padding:3px 6px;text-align:left;font:12px/1.3 system-ui}
 .h3ct-track-row:nth-child(even) .h3ct-track-clip{background:#5c5130;border-color:#9a8951}.h3ct-track-clip.selected{outline:2px solid #9dbef1;outline-offset:-2px}
+.h3ct-track-clip.outdated{border-style:dashed}.h3ct-track-clip.cut{border-left:3px solid #e6e6e6}.h3ct-track-clip.new-scene{border-left:3px double #f0c674}
+.h3ct-track-clip.problem{border-color:#e0605a;box-shadow:inset 0 0 0 1px #e0605a}.h3ct-track-clip.warning:not(.problem){border-color:#d9a04a}
 .h3ct-track-clip img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.45;pointer-events:none}.h3ct-track-clip span{position:relative}
 .h3ct-track-clip .h3ct-handle{position:absolute;right:0;top:0;bottom:0;width:8px;cursor:ew-resize;background:#ffffff18}.h3ct-track-add{display:flex;align-items:center;gap:6px;position:sticky;left:0;padding:6px 8px;width:max-content;color:#c3cad4;font-size:12px}
 .h3ct-track-footer{flex:0 0 auto;background:#1d2027;border-top:1px solid #3c4350}.h3ct-track-message{margin:0;padding:0 8px;max-width:80ch;color:#edbd83;font-size:12px}.h3ct-track-message:empty{display:none}.h3ct-snap-guide{position:absolute;top:0;bottom:0;width:1px;background:#c8dfff;pointer-events:none;z-index:5}
@@ -107,8 +110,21 @@ export class TrackEditor {
   this.mutate(state=>{
    const track=state.tracks.find(t=>t.id===this.selectedTrack&&t.type==='video')??state.tracks.find(t=>t.type==='video');
    const id=track?.id??tracks.addTrack(state,'video');this.selectedTrack=id;
-   const start=Math.max(0,Math.round(this.editor.playheadFrame??tracks.durationFrames(state)));
-   const box={id:model.newId(state),track:id,start,frames:model.defaultFrames(true,this.editor.host.context()),cut:true,prompt:'',seed:model.newSeed(),first:'',last:''};
+   const context=this.editor.host.context();
+   const sameTrack=tracks.placements(state).filter(p=>p.track===id).sort((a,b)=>a.start-b.start);
+   let start=Math.max(0,Math.round(this.editor.playheadFrame??tracks.durationFrames(state)));
+   const resolveAt=(at)=>{
+    const prev=sameTrack.find(p=>p.end===at);
+    const prevBox=prev?state.boxes.find(b=>b.id===prev.id):null;
+    const continues=!!prevBox&&!prevBox.layers?.length;
+    return {continues,frames:model.defaultFrames(!continues,context)};
+   };
+   for(const p of sameTrack){
+    const {frames}=resolveAt(start);
+    if(p.end>start&&p.start<start+frames)start=p.end;
+   }
+   const {continues,frames}=resolveAt(start);
+   const box={id:model.newId(state),track:id,start,frames,cut:!continues,memory:state.bible?'cast':'scene',prompt:'',seed:model.newSeed(),first:'',last:''};
    state.boxes.push(box);return box.id;
   });this.editor.inspectClip();
  }
@@ -204,10 +220,27 @@ export class TrackEditor {
  }
  clip(body,index,start,end,editable) {
   const box=this.editor.state.boxes[index];if(!box)return;
-  const item=el('div','h3ct-track-clip');item.tabIndex=0;item.setAttribute('role','button');item.setAttribute('aria-label',`Clip ${index+1}`);item.classList.toggle('selected',index===this.editor.selected);
-  item.style.left=`${100*start/this.span}%`;item.style.width=`${100*(end-start)/this.span}%`;item.title=`Clip ${index+1}: ${box.prompt||'Enter a prompt'}`;
-  const thumb=this.editor.statusOf(box)?.thumb;if(thumb){const img=el('img');img.src=this.editor.host.viewUrl(thumb);img.alt='';img.draggable=false;item.append(img);}
-  item.append(el('span',null,`#${index+1}  ${model.seconds(box.frames)} s`));
+  const context=this.editor.host.context(),info=this.editor.describe(index,this.editor.connectedSets(),context);
+  const status=this.editor.statusOf(box),seamWarnings=(this.editor.stale?null:status?.seam_warnings)??[];
+  const checkIssue=!this.editor.stale&&hasCheckIssue(status?.check);
+  const hasPrev=tracks.previousIndex(this.editor.state,index,false)!=null,cutMark=hasPrev&&!!box.cut;
+  const hasWarning=info.warnings.length>0||seamWarnings.length>0||checkIssue;
+  const item=el('div','h3ct-track-clip');item.tabIndex=0;item.setAttribute('role','button');item.setAttribute('aria-label',`Clip ${index+1}`);
+  if(status)item.classList.add(status.status);
+  item.classList.toggle('selected',index===this.editor.selected);
+  item.classList.toggle('problem',info.problems.length>0);
+  item.classList.toggle('warning',hasWarning);
+  item.classList.toggle('cut',cutMark);
+  item.classList.toggle('new-scene',cutMark&&!!box.new_scene);
+  item.style.left=`${100*start/this.span}%`;item.style.width=`${100*(end-start)/this.span}%`;
+  item.title=[`Clip ${index+1}: ${model.lengthLabel(this.editor.state,index,context)}`,info.mode,
+   status?.status==='outdated'?`Outdated take, still playing: ${status.reason??'the box changed since it was rendered'} Regenerate it to update it.`:status?.reason,
+   box.prompt.trim().slice(0,160),...info.problems,...seamWarnings.map(w=>w.message),
+   checkIssue?'Continuity check found issues (open Takes → Continuity check).':'',...info.warnings].filter(Boolean).join('\n');
+  const thumb=status?.thumb;if(thumb){const img=el('img');img.src=this.editor.host.viewUrl(thumb);img.alt='';img.draggable=false;item.append(img);}
+  const mark={done:' ✓',next:' ●',outdated:' ⟳'}[status?.status]??'';
+  const warn=!info.problems.length&&(seamWarnings.length>0||checkIssue)?' ⚠':'';
+  item.append(el('span',null,`${cutMark?'✂ ':''}#${index+1} · ${model.seconds(box.frames)} s${mark}${warn}`));
   item.addEventListener('click',()=>{this.selectedTrack=box.track;this.editor.select(index);});item.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();this.editor.select(index);}});
   if(editable){item.addEventListener('pointerdown',event=>this.drag(event,index,item,body));const handle=el('div','h3ct-handle');handle.addEventListener('pointerdown',event=>this.drag(event,index,item,body,true));item.append(handle);}
   body.append(item);

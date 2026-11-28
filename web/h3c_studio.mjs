@@ -5,7 +5,7 @@ import {SwitchSection, rememberDisclosures} from './h3c_switch_section.mjs?v=c25
 // closes, opens another Timeline or the Timeline's Story changes. Its Story page edits the Story node's inputs.
 import { liveBadge, progressText } from './h3c_render_watch.mjs?v=7c8222569836';
 import { templateRow } from './h3c_templates.mjs?v=ff7103cdcba7';
-import { soundtrackLine, soundtrackSlots } from './h3c_timeline_model.mjs?v=9de34a3399af';
+import { soundtrackLine, soundtrackSlots } from './h3c_timeline_model.mjs?v=0c70ed8f7fed';
 
 import { ideaImagesRow } from './h3c_idea_images.mjs?v=990e7177d821';
 import { partialBadge, partialTitle, previewBadge, previewLabel, previewTitle, timelineFrame, videoSeconds } from './h3c_partial_video.mjs?v=201bf0f48645';
@@ -1679,7 +1679,8 @@ export class Studio {
       setText(this.badge, view === 'chosen' ? this.chosenLabel(chosen) : view === 'candidate' ? this.candidate.label
         : view === 'bridge'
         ? `Bridge before clip ${editor.selected + 1}${!entry || entry.status === 'done' ? '' : ' · older take'}`
-        : view === 'take' && takeUrl && (layer ? layerEntry : entry).status !== 'done' ? OLDER_TAKE
+        : view === 'take' && takeUrl && (layer ? layerEntry : entry).status !== 'done'
+        ? (!layer && entry?.reason ? `Outdated take — ${entry.reason}` : OLDER_TAKE)
         : view === 'full' && partial ? partialBadge(partial)
         : view === 'full' && soFar ? previewBadge(soFar) : '');
     }

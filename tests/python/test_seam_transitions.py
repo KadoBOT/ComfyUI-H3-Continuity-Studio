@@ -586,5 +586,78 @@ class StaleAndMixedProtectionStatusTest(unittest.TestCase):
             self.assertNotIn("seam_warnings", status2["boxes"][i])
 
 
+class AudioSeamAlignmentTest(unittest.TestCase):
+    def setUp(self):
+        self.folder = tempfile.mkdtemp(prefix="h3c-audio-seam-")
+
+    def tearDown(self):
+        shutil.rmtree(self.folder, ignore_errors=True)
+
+    def test_carried_audio_tick_alignment_eliminates_phase_flanging_across_chain(self):
+        rate = 32000
+        # 39-frame segments (17 new + 22 carried) so segment count is short while hitting 65 ticks -> tick remainder 2
+        # Actually test 90 -> 90 (22 context -> tail_start = round(68*5/3) = 113 != 113.333, 267-sample phase shift)
+        sr_total = timing.sample_at_frame(90 + 68 + 68, rate)
+        t = torch.arange(sr_total, dtype=torch.float32) / rate
+        master = torch.sin(2.0 * torch.pi * 440.0 * t).unsqueeze(0)
+
+        def seg(idx, start_sample, context, created, carried_from=None):
+            entry = {
+                "index": idx, "stem": store.stem(idx), "frames": 90, "context_frames": context,
+                "carried_audio": context > 0, "audio_sample_rate": rate, "created": created,
+                "timeline": {"box": f"b{idx}"},
+            }
+            if carried_from:
+                entry["carried_from"] = carried_from
+            samples = timing.ticks_for_frames(90) * rate // timing.AUDIO_TICKS_PER_SECOND
+            wave = master[:, start_sample:start_sample + samples].clone()
+            store.save_segment(self.folder, entry, torch.zeros(1, 1, 1, 1, 1), torch.zeros(1, 1, 1, 1), wave)
+            return entry
+
+        # Box 2 copies ticks 113..150 -> sample 113 * 800 = 90400 of Box 1!
+        s1 = seg(1, 0, 0, "2026-11-28T10:00:00")
+        b2_start = 113 * (rate // timing.AUDIO_TICKS_PER_SECOND)
+        s2 = seg(2, b2_start, 22, "2026-11-28T10:05:00", s1["created"])
+        # Box 3 starts relative to Box 2 at tick 113 of Box 2.
+        b3_start = b2_start + 113 * (rate // timing.AUDIO_TICKS_PER_SECOND)
+        s3 = seg(3, b3_start, 22, "2026-11-28T10:10:00", s2["created"])
+
+        parts = [(s1, 0, 90, False), (s2, 0, 68, False), (s3, 0, 68, False)]
+        merged, out_rate = nodes._generated_audio(self.folder, parts)
+        self.assertEqual(out_rate, rate)
+        self.assertEqual(merged.shape[-1], sr_total)
+
+        # Across both crossfade zones (~116800..120000 and ~207467..210667) the sine wave must have ZERO phase comb dip!
+        diff = (merged[0] - master[0]).abs()
+        self.assertLess(float(diff[115000:122000].max()), 1e-4)
+        self.assertLess(float(diff[206000:213000].max()), 1e-4)
+
+    def test_tick_deficit_tail_and_hard_cut_declick(self):
+        rate = 32000
+        # 56 frames -> ticks_for_frames(56) = 93 -> 74400 samples, 267 shorter than sample_at_frame(56, 32000) = 74667
+        w1 = torch.full((1, timing.ticks_for_frames(56) * (rate // timing.AUDIO_TICKS_PER_SECOND)), 0.5)
+        w2 = torch.full((1, timing.ticks_for_frames(39) * (rate // timing.AUDIO_TICKS_PER_SECOND)), 0.5)
+        e1 = {"index": 1, "stem": "seg_0001", "frames": 56, "context_frames": 0, "audio_sample_rate": rate}
+        e2 = {"index": 2, "stem": "seg_0002", "frames": 39, "context_frames": 17, "carried_audio": True,
+              "audio_sample_rate": rate}
+        local2 = media.carried_local_sample(e1, w1.shape[1], e2, 0, rate)
+        merged, _ = media.assemble_audio([(56, 0, w1, rate), (39, 17, w2, rate, local2)])
+        # No zero-hole right before frame 56 boundary (74400..74667).
+        self.assertGreater(float(merged[:, 71000:80000].min()), 0.499)
+
+        # Standalone 56-frame segment ending in sample_at_frame(56, sr) zero pad tapers cleanly instead of stepping.
+        solo, _ = media.assemble_audio([(56, 0, w1, rate)])
+        self.assertLess(float((solo[:, 1:] - solo[:, :-1]).abs().max()), 0.05)
+
+        # Hard cut +0.5 -> -0.5 with default crossfade declicks the 1.0 boundary step cleanly.
+        cut_a = torch.full((1, timing.sample_at_frame(22, rate)), 0.5)
+        cut_b = torch.full((1, timing.sample_at_frame(22, rate)), -0.5)
+        declicked, _ = media.assemble_audio([(22, 0, cut_a, rate), (22, 0, cut_b, rate)])
+        cut_sample = timing.sample_at_frame(22, rate)
+        self.assertLess(float((declicked[:, cut_sample - 10:cut_sample + 10].diff(dim=-1)).abs().max()), 0.05)
+        raw_butt, _ = media.assemble_audio([(22, 0, cut_a, rate), (22, 0, cut_b, rate)], crossfade_seconds=0)
+        self.assertAlmostEqual(float(raw_butt[0, cut_sample - 1] - raw_butt[0, cut_sample]), 1.0, places=5)
+
+
 if __name__ == "__main__":
     unittest.main()
