@@ -15,7 +15,10 @@ DEFAULT_INSTRUCTIONS = """Prepare one rich prompt for a single visible instant a
 Describe six concrete components: subject and visible state; setting and approved spatial layout; visual style
 and material detail; lighting and atmosphere; color palette; camera and composition. The prompt combines them
 into natural image prose. Preserve the supplied identity, outfit schedule, location geometry, props and camera.
-Enrich expression, composition, texture, light and color within the authored scene.
+Preserve the scene's established lighting, exposure, color palette and clean material texture; enrich expression
+and composition within the authored scene without shifting exposure or adding unsolicited screen effects (no
+vignette, darkened corners, film grain, crackle, dust, scratches, lens flares, borders or overlays unless
+explicitly requested).
 Treat identity pictures as identity evidence, not as a fixed reference pose, expression, camera or lighting.
 Describe the requested pose and expression actively. Integrate people and objects into the scene with coherent
 perspective and scale, illumination direction and color, reflected light, cast and contact shadows, depth of

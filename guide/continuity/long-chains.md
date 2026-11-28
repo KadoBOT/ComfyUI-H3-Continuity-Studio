@@ -40,6 +40,14 @@ Tested on isolated ComfyUI (`8189`) matching production **Veda Sparse Attention 
 
 Visual memory serves a different purpose. If a prop leaves the camera view, choose **Selected** memory from a moment that clearly shows it and label the details to retain. Automatic Same scene memory already includes an establishing view and recent view; those views may not clearly cover every object. Protection is not an object-permanence guarantee.
 
+### Prompt hygiene for long chains (CFG=1 turbo)
+
+Distilled/turbo H3 workflows run under `BasicGuider` (`CFG=1`) with **no negative prompt**, so every aesthetic keyword in the shared prompt or `bible.style` acts purely as a positive prior on every clip:
+
+- **Avoid unsolicited analog/film triggers:** Words like `35mm`, `16mm`, `anamorphic`, `film grain`, `vignette`, `vintage`, `crackle`, or `lens flare` invite spontaneous per-clip corner darkening and smooth-area grain/crackle that second-pass upscalers amplify. Describe a clean full-frame image with even edge-to-edge illumination unless you deliberately want analog FX.
+- **Lock exposure and lighting across same-scene clips:** Repeat the exact light sources, direction, color temperature, and exposure level in each continuing or same-scene clip rather than varying lighting adjectives per box.
+- **Carry motion through continuing exits:** Do not instruct a continuing clip to stop or hold its final pose unless an explicit pause is desired; match framing scale, camera speed, and subject cadence across `cut=false` joins so speed does not jump between adjacent clips.
+
 ### Attention balance
 
 Experimental. Clean anchors alone can still leave a chain slowly darkening, because each new clip reads its held carried frames far more than the single clean anchor. `attention_balance` changes that split and nothing else: of the attention a token gives to the anchors and the held carried frames together, the anchors take `balance` times their normal weight and the carried frames give up exactly that much. Attention to the prompt, references, audio and new frames is unchanged. **1 leaves attention unchanged** while the node's other protection remains active; Geiru's own default for the equivalent control is 20.

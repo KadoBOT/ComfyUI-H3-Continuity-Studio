@@ -28,7 +28,8 @@ def memory_references(clip, vae, memories, *, memory_frames=()):
             items.append({"type": "video", "data": frames[indices].clone(),
                           "timestamps": [frame / timing.FPS for frame in indices]})
             memory_blocks.append({"kind": "video", "latent_t": video.shape[2], "latent_h": video.shape[3],
-                                  "latent_w": video.shape[4], "ref_audio_t": 0, "latent": video, "audio_latent": None})
+                                  "latent_w": video.shape[4], "ref_audio_t": 0, "latent": video, "audio_latent": None,
+                                  "h3c_memory": True})
         clip = refmods.ReferenceClip(clip, items)
     return clip, memory_blocks
 

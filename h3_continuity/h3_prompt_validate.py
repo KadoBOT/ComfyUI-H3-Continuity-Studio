@@ -668,3 +668,310 @@ def validate_prompt(data, context, analysis=None):
     if errors:
         raise ValueError("\n".join(errors))
     return data
+
+
+# Unsolicited screen-FX / analog stock triggers that under CFG=1 turbo (BasicGuider, no negative prompt)
+# induce spontaneous corner vignetting, film grain, crackle, or overlays across clips.
+SCREEN_FX_PATTERNS = (
+    ("vignette", re.compile(r"\bvignett(?:e|ed|ing)\b", re.I)),
+    ("grain", re.compile(r"\b(?:film\s+)?grain(?:y|iness)?\b", re.I)),
+    ("crackle", re.compile(r"\bcrackl(?:e|ed|ing)\b", re.I)),
+    ("35mm", re.compile(r"\b35\s*mm\b", re.I)),
+    ("16mm", re.compile(r"\b16\s*mm\b", re.I)),
+    ("anamorphic", re.compile(r"\banamorphic\b", re.I)),
+    ("vintage", re.compile(r"\bvintage\b", re.I)),
+    ("analog", re.compile(r"\banalog(?:ue)?\b", re.I)),
+    ("scratches", re.compile(r"\b(?:film\s+)?scratch(?:es|ed|ing)?\b", re.I)),
+    ("light leak", re.compile(r"\blight\s+leaks?\b", re.I)),
+    ("lens flare", re.compile(r"\blens\s+flares?\b", re.I)),
+    ("letterbox", re.compile(r"\bletterbox(?:ed|ing)?\b", re.I)),
+    ("VHS", re.compile(r"\bvhs\b", re.I)),
+    ("CRT", re.compile(r"\bcrt\b", re.I)),
+    ("flicker", re.compile(r"\bflicker(?:s|ed|ing)?\b", re.I)),
+    ("overlay", re.compile(r"\boverlays?\b", re.I)),
+)
+_FX_NEGATION = re.compile(
+    r"\b(?:without|avoid(?:ing)?|free\s+of|"
+    r"never(?:\s+(?:add|use|introduce|reproduce|import|carry\s+over)\w*)?|"
+    r"do\s+not\s+(?:add|use|introduce|reproduce|import|carry\s+over)|"
+    r"no)\b",
+    re.I,
+)
+_FX_CLAUSE_BREAK = re.compile(
+    r"[.!?;]|\n\s*\n|\n(?=[ \t]*(?:\[Shot\s+\d+\]|[A-Za-z][A-Za-z0-9_]*:))",
+    re.I,
+)
+_FX_NONVISUAL_NO = re.compile(
+    r"^(?:unsolicited\s+|added\s+)?(?:music|dialogue|speech|sound|cuts?|pause|reset)\b",
+    re.I,
+)
+_FX_FINITE_VERB = re.compile(
+    r"\b(?:is|are|was|were|has|have|had|shows?|adds?|uses?|features?|applies|keeps?|stays?|becomes?)\b",
+    re.I,
+)
+_FX_CONTRAST = re.compile(r"\b(?:but|except|however|while|whereas|instead)\b", re.I)
+_DIEGETIC_CRACKLE = re.compile(
+    r"\b(?:fire|hearth|campfire|bonfire|fireplace|embers?|flames?|sparks?|electric(?:al)?|machinery|welding)\b",
+    re.I,
+)
+
+_VISUAL_CUTOFF = re.compile(r"(?im)^\s*(?:overall_soundscape|non_diegetic_music)\s*:")
+_SCENE_SECTION = re.compile(
+    r"(?ims)^\s*(?:detailed_description|integrated_multimodal_description)\s*:\s*(.*?)(?=^\s*(?:overall_soundscape|non_diegetic_music|subject_definitions|summary|retention_analysis)\s*:|\Z)"
+)
+_DIALOGUE_TAG = re.compile(r"<d>[\s\S]*?(?:</d>|\Z)")
+_SHOT_MARKER = re.compile(r"(?m)^[ \t]*\[Shot [1-9]\d*\](?=\s|$)")
+_FRAMING_OPEN_TIERS = (
+    (0, re.compile(r"\b(?:extreme\s+wide|wide\s+(?:shot|view|frame|framing|angle|establishing)|"
+                   r"establishing\s+shot|long\s+shot|full\s+wide)\b", re.I)),
+    (1, re.compile(r"\b(?:medium\s+(?:shot|wide|close-?up)|two-?shot|waist-?up|chest-?up)\b", re.I)),
+    (2, re.compile(r"(?<!medium\s)\b(?:extreme\s+close-?up|tight\s+close-?up|close-?up|macro\s+shot|"
+                   r"tight\s+(?:[\w-]+\s+){0,2}fram(?:e|ing)|tight\s+on)\b", re.I)),
+)
+_FRAMING_EXIT_WIDE = re.compile(r"\b(?:pulls?\s+out|pulling\s+out|zooms?\s+out)\b", re.I)
+_FRAMING_DESTINATION = re.compile(
+    r"\b(?:into|toward|to|ending\s+(?:in|on)|reaching)\s+(?:(?:a|an|the)\s+)?(?:[\w-]+\s+){0,2}$",
+    re.I,
+)
+_OPENING_CUE = re.compile(r"(?im)^[ \t]*(?:Initial\s+state|Shot\s+size|Composition):[ \t]*([^\n]+)")
+_SPEED_SLOW = re.compile(
+    r"\b(?:slow(?:ly)?|gentle|gently|unhurried|creeping|drifting|gradual(?:ly)?|languid|lingering|"
+    r"at\s+slow\s+speed|camera\s+speed:\s*slow|static\s+shot|camera\s+holds\s+steady)\b",
+    re.I,
+)
+_SPEED_FAST = re.compile(
+    r"\b(?:fast|rapid(?:ly)?|quick(?:ly)?|swift(?:ly)?|brisk(?:ly)?|frantic(?:ally)?|sudden\s+burst|"
+    r"sprint(?:s|ing)?|whip-?pan|darts?|rushes?|at\s+fast\s+speed|camera\s+speed:\s*fast|"
+    r"large\s+amplitude|sweeping\s+(?:arc|pan|move|camera)|arcs?\s+back\s+around|dynamic\s+orbit)\b",
+    re.I,
+)
+_LIGHT_DARK = re.compile(
+    r"\b(?:low-?key(?:\s+light\w*)?|underexposed|moonlit|candlelit|near-?darkness|"
+    r"dim(?:ly|mer)?\s+(?:lit|light\w*|room|interior|hall\w*|corridor|street|alley|scene|exposure|glow|ambien\w*)|"
+    r"dark(?:er|ened)?\s+(?:lit|light\w*|room|interior|scene|exposure|shadow\w*|ambien\w*|alley|night\w*|sky)|"
+    r"shadowy\s+(?:light\w*|room|interior|scene|hall\w*|alley|corner)|"
+    r"lighting:\s*(?:dim|dark|low-?key|shadowy)|"
+    r"in\s+(?:dim|low|dark)\s+light\w*)\b",
+    re.I,
+)
+_LIGHT_BRIGHT = re.compile(
+    r"\b(?:high-?key(?:\s+light\w*)?|sun-?drenched|overexposed|harsh\s+midday|"
+    r"vivid\s+daylight|flooded\s+with\s+light|blazing\s+(?:sun\w*|daylight|light\w*)|"
+    r"bright(?:er|ly)?\s+(?:lit|light\w*|sun\w*|daylight|midday|exposure|key\s+light|room|interior|scene|overhead|window\s+light)|"
+    r"brilliant\s+(?:sun\w*|daylight|light\w*)|"
+    r"lighting:\s*(?:bright|high-?key|sunny|daylight)|"
+    r"in\s+bright\s+(?:light\w*|sun\w*|daylight))\b",
+    re.I,
+)
+_LIGHT_WARM = re.compile(
+    r"\b(?:warm\s+(?:light\w*|glow|tungsten|amber|golden|sunlight|key)|golden\s+hour|"
+    r"amber\s+light\w*|tungsten\s+light\w*)\b",
+    re.I,
+)
+_LIGHT_COOL = re.compile(
+    r"\b(?:cool\s+(?:light\w*|blue|cyan|daylight|moonlight|overcast|fluorescent|key)|"
+    r"cold\s+(?:blue|fluorescent|light\w*)|icy\s+blue\s+light\w*|sterile\s+fluorescent)\b",
+    re.I,
+)
+
+
+def _fx_negated(text, start):
+    """Whether the FX token starting at `start` is inside a negative clause like 'no vignette, film grain, or overlays'
+    or a multiline guardrail like 'Do not reproduce the source images, ..., vignetting, film grain, or overlays.'"""
+    breaks = list(_FX_CLAUSE_BREAK.finditer(text, 0, start))
+    boundary = breaks[-1].end() if breaks else 0
+    prefix = re.sub(r"\s+", " ", text[boundary:start])
+    matches = list(_FX_NEGATION.finditer(prefix))
+    if not matches:
+        return False
+    neg = matches[-1]
+    between = prefix[neg.end():].strip()
+    if _FX_CONTRAST.search(between):
+        return False
+    if "," not in between:
+        return len(re.findall(r"[\w-]+", between)) <= 6
+    if _FX_FINITE_VERB.search(between):
+        return False
+    items = [part.strip() for part in re.split(r",|\band\b|\bor\b", between, flags=re.I) if part.strip()]
+    if not items:
+        return False
+    if neg.group(0).strip().lower() == "no" and _FX_NONVISUAL_NO.match(items[0]):
+        return False
+    return all(len(re.findall(r"[\w-]+", item)) <= 6 for item in items)
+
+
+def _fx_hits(text):
+    """Distinct non-negated (token, matched_text) screen-FX triggers found in `text`."""
+    found = {}
+    for token, pattern in SCREEN_FX_PATTERNS:
+        for match in pattern.finditer(text):
+            if _fx_negated(text, match.start()):
+                continue
+            if token == "crackle":
+                window = text[max(0, match.start() - 28):min(len(text), match.end() + 28)]
+                if _DIEGETIC_CRACKLE.search(window):
+                    continue
+            found.setdefault(token, match.group(0))
+            break
+    return found
+
+
+def lint_screen_fx(texts, allowed_context=""):
+    """Structured warnings for unsolicited screen-FX triggers in `texts`.
+
+    Tokens explicitly present (non-negated) in `allowed_context` (user guide, idea, or explicit style request)
+    are bypassed so intentional analog/vintage aesthetics stay quiet.
+    """
+    items = [texts] if isinstance(texts, str) else list(texts or ())
+    allowed = set(_fx_hits(allowed_context or ""))
+    warnings, seen = [], set()
+    for text in items:
+        if not isinstance(text, str) or not text.strip():
+            continue
+        for token, matched in _fx_hits(text).items():
+            if token in allowed or token in seen:
+                continue
+            seen.add(token)
+            warnings.append({
+                "code": "unsolicited_screen_fx",
+                "token": token,
+                "match": matched,
+                "message": (f"Unsolicited screen-FX trigger {matched!r} ({token}); under CFG=1 without a negative "
+                            "prompt this can introduce spontaneous vignette, grain, crackle, or overlays."),
+            })
+    return warnings
+
+
+def _visual_parts(prompt):
+    """(first_shot, last_shot, scene_visual) with spoken dialogue, non-visual audio, and ref definitions excluded."""
+    text = _DIALOGUE_TAG.sub(" ", prompt or "")
+    scene = _SCENE_SECTION.search(text)
+    if scene:
+        visual = scene.group(1)
+    else:
+        cutoff = _VISUAL_CUTOFF.search(text)
+        visual = text[:cutoff.start()] if cutoff else text
+    markers = list(_SHOT_MARKER.finditer(visual))
+    if not markers:
+        return visual, visual, visual
+    preamble = visual[:markers[0].start()].strip()
+    shots = [visual[m.start():markers[i + 1].start() if i + 1 < len(markers) else len(visual)].strip()
+             for i, m in enumerate(markers)]
+    return (f"{preamble}\n{shots[0]}".strip(), shots[-1], visual)
+
+
+def _framing_tier(text, *, first=True, _check_cue=True):
+    """0 (wide), 1 (medium), 2 (tight/close-up), or None; picks opening framing (`first=True`) or exit framing (`first=False`)."""
+    if first and _check_cue:
+        for cue in _OPENING_CUE.finditer(text):
+            tier, word = _framing_tier(cue.group(1), first=True, _check_cue=False)
+            if tier is not None:
+                return tier, word
+    tiers = _FRAMING_OPEN_TIERS if first else (*_FRAMING_OPEN_TIERS, (0, _FRAMING_EXIT_WIDE))
+    hits = []
+    for tier, pattern in tiers:
+        for match in pattern.finditer(text):
+            if first:
+                prefix = text[max(0, match.start() - 40):match.start()]
+                if _FRAMING_DESTINATION.search(prefix):
+                    continue
+            hits.append((match.start(), tier, match.group(0)))
+    if not hits:
+        return None, ""
+    hits.sort(key=lambda item: item[0])
+    chosen = hits[0] if first else hits[-1]
+    return chosen[1], chosen[2]
+
+
+def _speed_polarity(text):
+    slow, fast = bool(_SPEED_SLOW.search(text)), bool(_SPEED_FAST.search(text))
+    if slow and not fast:
+        return "slow"
+    if fast and not slow:
+        return "fast"
+    return ""
+
+
+def _polarity(text, left_re, right_re, left_name, right_name):
+    left, right = bool(left_re.search(text)), bool(right_re.search(text))
+    if left and not right:
+        return left_name
+    if right and not left:
+        return right_name
+    return ""
+
+
+def lint_continuation_pair(prev_prompt, next_prompt, *, same_scene=True, continuous=True):
+    """Structured warnings for cross-box contradictions between adjacent boxes.
+
+    On `continuous=True` (`cut=False`): flags framing-scale jumps (wide <-> tight close-up) and speed flips
+    (slow <-> fast) across the seam.
+    On `same_scene=True`: flags exposure/lighting wording polarity flips (dark <-> bright or warm <-> cool).
+    """
+    if not (prev_prompt and next_prompt):
+        return []
+    _, prev_last, prev_visual = _visual_parts(prev_prompt)
+    next_first, _, next_visual = _visual_parts(next_prompt)
+    warnings = []
+    if continuous:
+        prev_tier, prev_word = _framing_tier(prev_last, first=False)
+        next_tier, next_word = _framing_tier(next_first, first=True)
+        if prev_tier is not None and next_tier is not None and abs(prev_tier - next_tier) >= 2:
+            warnings.append({
+                "code": "continuation_framing_jump",
+                "previous": prev_word,
+                "next": next_word,
+                "message": (f"Continuation framing jump without a cut ({prev_word!r} -> {next_word!r}); "
+                            "match the previous exit framing or mark this box as a cut."),
+            })
+        prev_speed, next_speed = _speed_polarity(prev_last), _speed_polarity(next_first)
+        if prev_speed and next_speed and prev_speed != next_speed:
+            warnings.append({
+                "code": "continuation_speed_flip",
+                "previous": prev_speed,
+                "next": next_speed,
+                "message": (f"Continuation motion speed flip ({prev_speed} -> {next_speed}) without a cut; "
+                            "carry steady motion cadence across the join."),
+            })
+    if same_scene:
+        prev_bright = _polarity(prev_visual, _LIGHT_DARK, _LIGHT_BRIGHT, "dark", "bright")
+        next_bright = _polarity(next_visual, _LIGHT_DARK, _LIGHT_BRIGHT, "dark", "bright")
+        if prev_bright and next_bright and prev_bright != next_bright:
+            warnings.append({
+                "code": "lighting_drift",
+                "axis": "brightness",
+                "previous": prev_bright,
+                "next": next_bright,
+                "message": (f"Same-scene lighting exposure flips from {prev_bright} to {next_bright}; "
+                            "lock exposure and light sources across adjacent boxes of the same scene."),
+            })
+        prev_temp = _polarity(prev_visual, _LIGHT_WARM, _LIGHT_COOL, "warm", "cool")
+        next_temp = _polarity(next_visual, _LIGHT_WARM, _LIGHT_COOL, "warm", "cool")
+        if prev_temp and next_temp and prev_temp != next_temp:
+            warnings.append({
+                "code": "lighting_drift",
+                "axis": "temperature",
+                "previous": prev_temp,
+                "next": next_temp,
+                "message": (f"Same-scene lighting color temperature flips from {prev_temp} to {next_temp}; "
+                            "keep color temperature consistent within the same scene."),
+            })
+    return warnings
+
+
+def lint_timeline(boxes, allowed_context=""):
+    """Run screen-FX and adjacent-pair continuity lint across a sequence of box dicts ({id, prompt, cut, new_scene})."""
+    results = []
+    for index, box in enumerate(boxes):
+        box_id = box.get("id", f"box_{index + 1}")
+        prompt = box.get("prompt") or ""
+        for item in lint_screen_fx(prompt, allowed_context=allowed_context):
+            results.append({"box": box_id, **item})
+        if index > 0:
+            prev = boxes[index - 1]
+            cut = bool(box.get("cut", False))
+            new_scene = bool(box.get("new_scene", False))
+            for item in lint_continuation_pair(prev.get("prompt") or "", prompt,
+                                               same_scene=not (cut and new_scene), continuous=not cut):
+                results.append({"box": box_id, "previous_box": prev.get("id", f"box_{index}"), **item})
+    return results

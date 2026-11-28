@@ -14,11 +14,15 @@ BOX = {"id": "a", "frames": 124, "prompt": "p"}
 
 class ApiContinuityFieldsTest(unittest.TestCase):
     def test_the_new_timeline_fields_are_accepted(self):
-        self.assertTrue(LINE.is_valid({"version": 1, "boxes": [BOX], "context_noise": True, "continuation_guide": False,
-                                       "audio_feather": 4, "video_slices": ["video1"]}))
+        for guide in ("auto", True, False):
+            with self.subTest(continuation_guide=guide):
+                self.assertTrue(LINE.is_valid({"version": 1, "boxes": [BOX], "context_noise": True,
+                                               "continuation_guide": guide, "audio_feather": 4,
+                                               "video_slices": ["video1"]}))
 
     def test_wrong_values_are_refused(self):
-        for bad in ({"audio_feather": 17}, {"context_noise": "yes"}, {"video_slices": ["image1"]},
+        for bad in ({"audio_feather": 17}, {"context_noise": "yes"}, {"continuation_guide": "no"},
+                    {"continuation_guide": 0}, {"video_slices": ["image1"]},
                     {"video_slices": ["video1", "video1"]}):
             with self.subTest(bad=bad):
                 self.assertFalse(LINE.is_valid({"version": 1, "boxes": [BOX], **bad}))

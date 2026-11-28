@@ -336,6 +336,8 @@ def _status(name, folder, parsed, manifest, is_done, reasons=None, materialize=F
         checks = box_checks.load(folder)
         placed = {entry["index"]: entry for entry in store.placed(manifest, len(parsed.boxes))}
         shown = {entry["index"]: entry for entry in joined["segments"] if "stack" in entry}
+        seam_warns = box_checks.seam_warnings(folder, parsed, placed)
+        all_seam_warns = []
         for index, (item, box) in enumerate(zip(status["boxes"], parsed.boxes)):
             entry = placed.get(index + 1)
             if entry and entry.get("video"):
@@ -351,6 +353,9 @@ def _status(name, folder, parsed, manifest, is_done, reasons=None, materialize=F
                 item["check"] = check
             if reasons and index in reasons:
                 item["reason"] = reasons[index]
+            if index in seam_warns:
+                item["seam_warnings"] = seam_warns[index]
+                all_seam_warns.extend({"box": box.id, "index": index + 1, **warning} for warning in seam_warns[index])
             if parsed.dialogue is not None and context is not None:
                 try:
                     problem = dialogue.box_problem(parsed, index, context, rules.assemble_prompt(parsed, index))
@@ -358,6 +363,8 @@ def _status(name, folder, parsed, manifest, is_done, reasons=None, materialize=F
                     problem = str(error).removeprefix("H3 Timeline: ")
                 if problem:
                     item["dialogue_problem"] = problem
+        if all_seam_warns:
+            status["seam_warnings"] = all_seam_warns
         return status
 
 
@@ -464,7 +471,31 @@ def box_problem(parsed, index, entry, folder, entries, known, context, is_done, 
     if saved != memories:
         source = next(item["index"] for old, item in zip(saved, memories) if old != item)
         return "remembered", f"Box {source}, which it remembers, was rendered again."
+    stale = box_checks.stale_continuation_problem(folder, parsed, index, entry, entries, files=files)
+    if stale is not None:
+        return "stale_continuation", stale["message"]
     return None
+
+
+def resolve_continuation_guide(mode, folder, previous):
+    """Decide whether to pin the first generated frame of a continuation to `previous`'s last frame.
+    Returns (use_guide: bool, note: str | None)."""
+    from . import media as segment_media
+
+    if mode is False:
+        return False, None
+    if mode is True:
+        return True, None
+    exit_motion = previous.get("exit_motion") if isinstance(previous, dict) else None
+    if exit_motion is None:
+        exit_motion = segment_media.read_tail_exit_motion(folder, previous)
+    if exit_motion is not None and float(exit_motion) >= segment_media.EXIT_MOTION_THRESHOLD:
+        return False, (f"Continuation guide: auto-disabled (previous box exit motion {float(exit_motion):.2f} >= "
+                       f"{segment_media.EXIT_MOTION_THRESHOLD:.1f}).")
+    if exit_motion is not None:
+        return True, (f"Continuation guide: auto-enabled for static exit (previous box exit motion "
+                      f"{float(exit_motion):.2f} < {segment_media.EXIT_MOTION_THRESHOLD:.1f}).")
+    return True, None
 
 
 def status_test(parsed, folder, entries, known, context):
@@ -846,8 +877,17 @@ class H3C_Timeline(io.ComfyNode):
         sequence = continuity.SequenceRef(name, folder, next_index + 1, previous, video, audio)
         memories = visual_memory.records(parsed, next_index, folder, by_index, is_done, width, height)
         memory_args = {}
-        if video is not None and parsed.continuation_guide:
-            memory_args['continuation_image'] = store.load_continuation_frame(folder, previous)
+        if video is not None:
+            use_guide, guide_note = resolve_continuation_guide(parsed.continuation_guide, folder, previous)
+            if guide_note:
+                box.notes.append(guide_note)
+            if use_guide:
+                memory_args['continuation_image'] = store.load_continuation_frame(folder, previous)
+                if box_checks.is_post_processed_video(previous) and not store.has_guide_frame(folder, previous):
+                    box.notes.append(
+                        f"Warning: box {previous_index + 1} has no saved guide_frames on a post-processed/interpolated "
+                        "video; falling back to finished _last.png, which may mismatch carried latents."
+                    )
         if memories:
             memory_args["memories"] = visual_memory.load(folder, by_index, memories)
             memory_args["memory_frames"] = [item.get("frames") for item in memories]

@@ -94,8 +94,8 @@ class Timeline:
     dialogue: dict | None = None
     # Whether each box keeps its own typed dialogue instead of the cues; empty without `parse`. Not on Box either.
     manual_dialogue: list = field(default_factory=list)
-    # Continuing boxes only: the guide at the first new frame and paired context noise.
-    continuation_guide: bool = True
+    # Continuing boxes only: the guide at the first new frame ("auto", True, or False) and paired context noise.
+    continuation_guide: bool | str = "auto"
     context_noise: bool = False
     audio_feather: int = 0
     # Reference video slots each box receives only its own time of, as audio clips are cut by Timeline time.
@@ -332,9 +332,9 @@ def parse(text):
     if type(limit) is not int or not MAX_FRAMES <= limit <= LONG_MAX_FRAMES or limit % GRID != 5:
         raise _error(f"max_frames must be a length on the 17k+5 grid from {MAX_FRAMES} to {LONG_MAX_FRAMES} frames")
     parsed.max_frames = limit
-    parsed.continuation_guide = data.get("continuation_guide", True)
-    if not isinstance(parsed.continuation_guide, bool):
-        raise _error("continuation_guide must be true or false")
+    parsed.continuation_guide = data.get("continuation_guide", "auto")
+    if not (isinstance(parsed.continuation_guide, bool) or parsed.continuation_guide == "auto"):
+        raise _error("continuation_guide must be 'auto', true or false")
     parsed.context_noise = data.get("context_noise", False)
     if not isinstance(parsed.context_noise, bool):
         raise _error("context_noise must be true or false")
@@ -1009,13 +1009,13 @@ def assemble_prompt(timeline, index):
 
 
 def join_prompts(shared, prompt):
-    """Shared direction stays inside a structured prompt's body, after its alignment/header."""
+    """Shared direction sits at clip-header scope (before [Shot 1]) inside a structured prompt, governing all shots."""
     if shared and (prompt.startswith(("integrated_multimodal_description:", "subject_definitions:",
                                       "For the target video,", "How the reference pictures align"))
                    and "\noverall_soundscape:" in prompt and "\nnon_diegetic_music:" in prompt):
-        marker = "[Shot 1] "
-        if marker in prompt:
-            return prompt.replace(marker, marker + shared + " ", 1)
+        shot_one = re.search(r"(?m)(?:^|:)[ \t]*(\[Shot 1\])(?=\s|$)", prompt)
+        if shot_one:
+            return prompt[:shot_one.start(1)] + shared + "\n" + prompt[shot_one.start(1):]
     return "\n\n".join(part for part in (shared, prompt) if part)
 
 
@@ -1278,8 +1278,8 @@ def layout_key(timeline, index, context=39):
                 value["previous"] = timeline.boxes[before].id if before is not None else None
     if box.flf_refmods:
         value["flf_refmods"] = True
-    if not fresh and not timeline.continuation_guide:
-        value["continuation_guide"] = False
+    if not fresh and timeline.continuation_guide != "auto":
+        value["continuation_guide"] = timeline.continuation_guide
     if not fresh and timeline.context_noise:
         value["context_noise"] = True
     if not fresh and timeline.audio_feather:

@@ -4,9 +4,9 @@ import {reconcileSceneAnchors} from './h3c_still_scene.mjs?v=0906bb5de9d7';
 // decide how a box runs. Mirrors h3_continuity/timeline.py.
 import {parseJSON, stringifyJSON, seedValue} from './h3c_project.mjs?v=0882b8a6265a';
 import {imageDescriptionPrompt, imageDescriptionSource} from './h3c_image_descriptions.mjs?v=5f858b2b6a5a';
-import {acceptedGuideFrames} from './h3c_shot_preview.mjs?v=03f370baf50a';
+import {acceptedGuideFrames} from './h3c_shot_preview.mjs?v=9de34a3399af';
 import {AUDIO_WINDOWS_FEATURE, pruneWindows, resolveWindows, audioSourceLocked} from './h3c_audio_windows.mjs?v=cdefbd77b246';
-import {LAYER_FIELDS, SWAPS_DONT_FIT, clampSwitch, hasLayers, layerIds, switchFits} from './h3c_layers.mjs?v=03f370baf50a';
+import {LAYER_FIELDS, SWAPS_DONT_FIT, clampSwitch, hasLayers, layerIds, switchFits} from './h3c_layers.mjs?v=9de34a3399af';
 export const FPS = 24;
 export const MAX_FRAMES = 362;
 export const GRID = 17;
@@ -174,7 +174,7 @@ export function parseState(text) {
       ? { reference_descriptions: structuredClone(data.reference_descriptions) } : {}),
     ...(record(data.reference_replacements) ? {reference_replacements:structuredClone(data.reference_replacements)} : {}),
     ...(data.context_noise === true ? {context_noise: true} : {}),
-    ...(data.continuation_guide === false ? {continuation_guide: false} : {}),
+    ...(typeof data.continuation_guide === 'boolean' ? {continuation_guide: data.continuation_guide} : {}),
     ...(Number.isInteger(data.audio_feather) && data.audio_feather > 0 ? {audio_feather: data.audio_feather} : {}),
     ...(Array.isArray(data.video_slices) && data.video_slices.length ? {video_slices: [...data.video_slices]} : {}),
     ...(Array.isArray(data.disabled_refs) ? { disabled_refs: [...data.disabled_refs] } : {}),
@@ -238,7 +238,7 @@ export function serialize(state) {
     ...(state.reference_descriptions ? { reference_descriptions: state.reference_descriptions } : {}),
     ...(Object.keys(state.reference_replacements ?? {}).length ? {reference_replacements:state.reference_replacements} : {}),
     ...(state.context_noise === true ? {context_noise: true} : {}),
-    ...(state.continuation_guide === false ? {continuation_guide: false} : {}),
+    ...(typeof state.continuation_guide === 'boolean' ? {continuation_guide: state.continuation_guide} : {}),
     ...(state.audio_feather > 0 ? {audio_feather: state.audio_feather} : {}),
     ...(state.video_slices?.length ? {video_slices: state.video_slices} : {}),
     ...(state.disabled_refs ? { disabled_refs: state.disabled_refs } : {}),

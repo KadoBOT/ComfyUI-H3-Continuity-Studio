@@ -16,6 +16,7 @@ SOUNDS = {
 LEVELS = {"faint": "faint", "quiet": "quiet", "normal": "", "loud": "loud"}
 QUALITIES = ("neutral", "soft", "sharp", "muffled", "hollow", "metallic", "wooden", "ceramic",
              "crisp", "crackling", "airy", "rumbling", "buzzing", "wet")
+CRACKLING_KINDS = frozenset({"fire", "electronic", "machinery"})
 VOLUMES = {"normal": "at a conversational volume", "quiet": "quietly", "loud": "loudly",
            "whisper": "whispering", "shout": "shouting"}
 PACES = {"natural": "", "slow": "slowly", "quick": "quickly"}
@@ -33,6 +34,8 @@ RULES = """Audio uses typed choices, never prose. action.sound and overall_sound
 {kind, level, quality}; [] means no added sound. Select only audible events caused by the planned action or
 existing environment, not visual movements. For example a ceramic tap is
 [{"kind":"contact","level":"quiet","quality":"ceramic"}].
+Use quality "crackling" ONLY for fire, electronic, or machinery sounds (never for room_tone or general ambience,
+because audio crackle can induce visual film-crackle artifacts in AV generation).
 non_diegetic_music is {instruments, tempo, level}; instruments:[] means no music.
 audio_references[].use selects an audio role. dialogue[].delivery is {volume, pace, tone}, for example
 {"volume":"quiet","pace":"natural","tone":"neutral"}. Code writes every audio sentence.
@@ -64,8 +67,15 @@ def stage_schema(lines):
 
 def effects(value):
     validate.shape(value, effects_schema(), "audio effects")
+    for item in value:
+        if item["quality"] == "crackling" and item["kind"] not in CRACKLING_KINDS:
+            raise ValueError(
+                f'Audio quality "crackling" is only allowed for {", ".join(sorted(CRACKLING_KINDS))} sounds, '
+                f'not {item["kind"]!r}'
+            )
     return " ".join((" ".join(filter(None, (LEVELS[item['level']],
-        "" if item['quality'] == 'neutral' else item['quality'], SOUNDS[item['kind']])))).capitalize() + "."
+        "" if item['quality'] == 'neutral' or item['quality'] in SOUNDS[item['kind']] else item['quality'],
+        SOUNDS[item['kind']])))).capitalize() + "."
         for item in value)
 
 

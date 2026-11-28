@@ -48,10 +48,11 @@ A clip can hold several `[Shot N]` stages, each with its own timing. A single si
 
 ## Writing for continuity
 
-- Name the camera move and its speed when it matters. Quiet holds and static framing are valid.
-- Give each distinct action its own `[Shot N]` so it gets its own time.
-- For a **Continue** clip, start from the pose and motion the previous clip actually ended in. The Timeline carries the previous latent, and also uses the previous clip's saved last image as a guide at the first new frame so the pose does not reset.
-- Keep adjacent stages mechanically compatible: a turn, a gaze change or a step needs playable time.
+- **Clean-frame prompt hygiene (CFG=1 turbo has no negative prompt):** Avoid unsolicited analog/post-FX triggers (`35mm`, `16mm`, `anamorphic`, `film grain`, `vignette`, `crackle`, `vintage`, `lens flare`, `letterbox`, `overlays`) unless you deliberately want those effects. Specify a clean full-frame image with even edge-to-edge illumination, and keep `"crackling"` audio strictly for fire, electrical, or machinery sounds (never room tone/ambience).
+- **Lock lighting and exposure across same-scene clips:** Keep light sources, direction, colour temperature, and brightness wording consistent across adjacent boxes of the same scene unless a motivated change occurs.
+- **Preserve motion velocity without brake-and-hold exits:** Name the camera move and its speed when it matters (quiet holds and static framing are valid). On a clip followed by a **Continue** clip, carry ongoing motion and camera pace steadily through the end rather than stopping early; reserve stop-and-hold endings for cuts, final clips, or explicit holds.
+- **Match framing and cadence on Continue joins:** Start a **Continue** clip from the pose, framing scale, camera speed, subject pace, and lighting the previous clip actually ended in. Avoid jumping from a wide/pull-out shot to a tight close-up or flipping slow/fast pace without a cut.
+- Give each distinct action its own `[Shot N]` with playable natural-speed time (~0.8–1.5 s per step, reach, or turn), avoiding both over-compression and stretching a brief move into slow motion.
 
 !!! warning "Text cannot guarantee pixels"
     For exact prop counts or strict start and end poses, inspect and accept first and last [frame guides](frame-guides.md) before rendering. A matching first frame alone does not establish smooth motion in the frames after it.

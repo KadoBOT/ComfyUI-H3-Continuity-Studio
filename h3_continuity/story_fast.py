@@ -44,11 +44,53 @@ For each shot (one per action stage or view, even with a static camera):
 - action.sound: sounds synchronized with permitted actions; do not imply an extra unseen event.
   Continuous ambience goes in overall_soundscape;
   audience-only music or N/A goes in non_diegetic_music. Keep 'No music' out of scene descriptions.
-H3 never sees the previous box: write its ending out in full as this clip's opening composition. A cut within
-the same scene keeps its place, light, look, ambience and appearances, but adds no extra cast or events to repeat.
-Start new events after replay; do not repeat spoken lines or enact the next box. terminal_state records only
-the reached location, positions/poses and prop states.
+H3 never sees the previous box: write its ending out in full as this clip's opening composition, preserving its
+exact lighting/exposure, framing scale, camera speed, and ongoing subject pace. A cut within the same scene keeps
+its place, light, exposure, look, ambience and appearances, but adds no extra cast or events to repeat.
+Start new events after replay; do not repeat spoken lines or enact the next box. Keep a clean full-frame image with
+even edge-to-edge illumination and no unsolicited vignette, film grain, crackle, dust, scratches, lens flares,
+letterboxing, or overlays unless requested. terminal_state records setting, lighting (exact light source/exposure),
+positions, camera_motion (framing, movement, speed), subject_motion (ongoing trajectory and pace), and props.
 Return the scene, without a compliance report or self-review."""
+
+TERMINAL_STATE_KEYS = ("setting", "lighting", "positions", "camera_motion", "subject_motion", "props")
+EXPLICIT_HOLD = re.compile(
+    r"\b(?:holds?\s+(?:still|the\s+pose|a\s+pose|position|in\s+place)|"
+    r"remains?\s+(?:still|motionless|frozen|stationary)|"
+    r"stays?\s+(?:still|motionless|frozen)|"
+    r"motionless|frozen\s+in\s+place|static\s+hold|quiet\s+hold|"
+    r"comes?\s+to\s+a\s+(?:full\s+|complete\s+)?stop)\b",
+    re.I,
+)
+
+
+def _normalize_terminal_state(data):
+    """Fill optional exit-state fields missing from legacy saved replies."""
+    state = data.get("terminal_state") if isinstance(data, dict) else None
+    if not isinstance(state, dict):
+        return data
+    updated = {key: state.get(key, "") for key in TERMINAL_STATE_KEYS}
+    for key, value in state.items():
+        if key not in updated:
+            updated[key] = value
+    return dict(data, terminal_state=updated)
+
+
+def _parsed_state(previous):
+    """Extract a previous box's structured exit state dict from a neighbors entry, or {}."""
+    if not isinstance(previous, dict):
+        return {}
+    if isinstance(previous.get("terminal_state"), dict):
+        return previous["terminal_state"]
+    raw = previous.get("ending")
+    if isinstance(raw, str) and raw.lstrip().startswith("{"):
+        try:
+            loaded = json.loads(raw)
+            if isinstance(loaded, dict):
+                return loaded
+        except ValueError:
+            pass
+    return {}
 
 
 def earlier_looks(plan, index):
@@ -140,6 +182,7 @@ def response_schema(context, subjects, summary=False, image=False, stages=None, 
         shot["required"] += ["opening_state", "ending_state", "viewpoint"]
     elif endings:
         shot['properties']['ending_state'] = schema.TEXT
+        shot['properties']['continues_next'] = {"type": "boolean"}
     audio = schema.obj({"reference": schema.enum(context.slots.audios) if context.slots.audios else text,
                         "use": schema.TEXT})
     update = schema.obj({"subject": schema.enum(subjects) if subjects else text, "description": schema.TEXT})
@@ -147,7 +190,7 @@ def response_schema(context, subjects, summary=False, image=False, stages=None, 
                   "style": text, "shots": schema.array(shot, 1),
                   "overall_soundscape": text, "non_diegetic_music": text,
                   "audio_references": schema.array(audio, maximum=len(context.slots.audios)),
-                  "terminal_state": schema.obj({"setting": text, "positions": text, "props": text})}
+                  "terminal_state": schema.obj({key: text for key in TERMINAL_STATE_KEYS})}
     if context.mode == "Ref2VA" or summary:
         properties["summary"] = schema.TEXT
     videos = context.slots.video_inputs
@@ -196,17 +239,46 @@ def messages(ctx, plan, index, final, context, subjects, neighbors, bible=False,
     if direction:
         lines.append(direction)
     if index > 0:
-        before = ctx.boxes[index - 1]
+        tl = getattr(ctx, "timeline", None)
+        prev_index = rules.previous_index(tl, index) if tl is not None and hasattr(tl, "tracks") else index - 1
+        before = ctx.boxes[prev_index] if prev_index is not None else ctx.boxes[index - 1]
         previous = (neighbors or {}).get(before.id)
+        prev_state = _parsed_state(previous)
+        before_new_ms = round(before.frames * 1000 / prompts.FPS)
         where = "before the cut to this one" if box.fresh else "just before this one"
-        lines += [f"Box {before.number}, {where}, has this intended ending (not a rendered observation): " +
-                  (previous["ending"] if previous else plan.beats[index - 1].ends),
+        lines += [f"Box {before.number}, {where} ({before_new_ms} ms new time), has this intended ending "
+                  "(not a rendered observation): " +
+                  (previous["ending"] if previous else plan.beats[before.number - 1].ends),
                   "Previously spoken lines (do not repeat):",
-                  *(previous["said"] if previous else prompts.said_in(final.get(before.id, ""))),
-                  f"H3 never sees box {before.number}: state what this box keeps of that ending (place, light, "
-                  "looks, poses, props, movement) explicitly, without referring to it."]
-    if index + 1 < len(ctx.boxes):
-        lines.append(f"Next box (not events for this clip): {plan.beats[index + 1].beat}")
+                  *(previous["said"] if previous else prompts.said_in(final.get(before.id, "")))]
+        if not box.fresh:
+            if prev_state.get("lighting"):
+                lines.append(f"Box {before.number} exit lighting/exposure (match identically): {prev_state['lighting']}")
+            if prev_state.get("camera_motion"):
+                lines.append(f"Box {before.number} exit camera framing/motion (match framing and speed): "
+                             f"{prev_state['camera_motion']}")
+            if prev_state.get("subject_motion"):
+                lines.append(f"Box {before.number} exit subject motion/pace (carry trajectory and cadence): "
+                             f"{prev_state['subject_motion']}")
+            lines.append(f"H3 never sees box {before.number}: state what this box keeps of that ending (place, "
+                         "exact light/exposure, framing, camera speed, looks, poses, props, ongoing movement pace) "
+                         "explicitly, without referring to it.")
+        else:
+            if not box.new_scene and prev_state.get("lighting"):
+                lines.append(f"Same-scene lighting/exposure from box {before.number} (keep consistent across cut): "
+                             f"{prev_state['lighting']}")
+            lines.append(f"H3 never sees box {before.number}: state what this box keeps of that ending (place, "
+                         "light, looks, poses, props, movement) explicitly, without referring to it.")
+    after_index = (rules.following_index(ctx.timeline, index)
+                   if getattr(ctx, "timeline", None) is not None and hasattr(ctx.timeline, "tracks")
+                   else (index + 1 if index + 1 < len(ctx.boxes) else None))
+    if after_index is not None and after_index < len(plan.beats):
+        if not ctx.boxes[after_index].fresh:
+            lines.append(f"Next box continues seamlessly (no cut; not events for this clip): "
+                         f"{plan.beats[after_index].beat} Maintain steady ongoing motion and camera pace through "
+                         "the end of this box; do not brake to a pause unless an explicit hold is requested.")
+        else:
+            lines.append(f"Next box follows a cut (not events for this clip): {plan.beats[after_index].beat}")
     if ctx.regenerate:
         lines += ["Regenerate only this box. The storyline is fixed: preserve events, dialogue, cast and both boundaries.",
                   "Current prompt:", box.prompt or "(not written yet)"]
@@ -222,8 +294,8 @@ def messages(ctx, plan, index, final, context, subjects, neighbors, bible=False,
     else:
         instructions = INSTRUCTIONS if stages is None else ("Write one box as JSON. Preserve supplied identities, "
                        "references and user-edited appearance. Use English descriptions; dialogue keeps its language.\n"
-                       + story_stages.WRITER + "\nstyle: the visual medium and look. "
-                       "terminal_state: setting, positions and props.")
+                       + story_stages.WRITER + "\nstyle: the visual medium and clean look. "
+                       "terminal_state: setting, lighting, positions, camera_motion, subject_motion and props.")
         if context.mode == "Ref2VA":
             instructions += ("\nsummary: one or two sentences covering the main action's progression and reached state "
                              "across ALL shots, using supplied subject IDs. Do not repeat the opening composition "
@@ -297,15 +369,27 @@ def _voices(data, context, subjects, bible, index):
     return sent, notes
 
 
-def compile_prompt(data, ctx, plan, index, context, subjects, notes=None, kept=None, bible=None, image=False):
+def compile_prompt(data, ctx, plan, index, context, subjects, notes=None, kept=None, bible=None, image=False,
+                   continues_next=None, allowed_context=None):
     """Compile validated structured text; contradictory timing is never renderable. With `bible`, the subjects
     are bible entities: only those with pictures get labels, the bible gives the wording, style, sentences and
     voices, and the text comes back without prompts.prompt_text."""
-    data = validate.shot_cuts(data)
+    data = _normalize_terminal_state(validate.shot_cuts(data))
     image = image or (ctx is not None and ctx.renderer == "image")
     snapshots = any("opening_state" in shot for shot in data.get("shots", []))
     validate.shape(data, response_schema(context, subjects, bible is not None and "summary" in data, snapshots,
                                         endings=True))
+    if continues_next is None:
+        if (ctx is not None and index is not None and getattr(ctx, "timeline", None) is not None
+                and hasattr(ctx.timeline, "tracks")):
+            after = rules.following_index(ctx.timeline, index)
+            box_continues = after is not None and after < len(ctx.boxes) and not ctx.boxes[after].fresh
+        elif ctx is not None and index is not None and index + 1 < len(ctx.boxes):
+            box_continues = not ctx.boxes[index + 1].fresh
+        else:
+            box_continues = bool(data["shots"][-1].get("continues_next", False))
+    else:
+        box_continues = bool(continues_next)
     ref2va = context.mode == "Ref2VA"
     sent, voice_notes = _voices(data, context, subjects, bible, index) if bible and bible.voice_clips else ([], [])
     if sent and not ref2va:
@@ -340,6 +424,12 @@ def compile_prompt(data, ctx, plan, index, context, subjects, notes=None, kept=N
     if relative:
         warnings.append("its descriptions say " + ", ".join(f'"{word}"' for word in relative[:4])
                         + ", which assumes H3 saw another moment; H3 renders each box alone, so state it explicitly")
+    allowed_fx = (allowed_context if allowed_context is not None else
+                  "\n".join(part for part in (getattr(ctx, "guide", ""), getattr(ctx, "idea", ""),
+                                              getattr(ctx, "shared", "")) if isinstance(part, str) and part))
+    fx_texts = [bible.style if bible and bible.style else data["style"], *prose[1:]]
+    for fx_warning in validate.lint_screen_fx(fx_texts, allowed_context=allowed_fx):
+        warnings.append(fx_warning["message"])
     ids = bible.ids if bible else SUBJECT_ID
     mentioned = set(ids.findall(" ".join(prose)))
     if mentioned - subjects.keys():
@@ -451,9 +541,18 @@ def compile_prompt(data, ctx, plan, index, context, subjects, notes=None, kept=N
                   + " At the same time, ".join(compiler.sentence(text) for text in texts)
                   for (start, stop), texts in simultaneous.items()]
         if not image and shot.get('ending_state'):
-            parts.append(f"By {compiler.clock(end)}, end this action with: "
-                         + compiler.sentence(words(shot['ending_state'], selected))
-                         + " Keep that reached state; do not begin a later action.")
+            carries_on = (
+                (i < len(data["shots"]) and not data["shots"][i]["cut"])
+                or (i == len(data["shots"]) and (box_continues or bool(shot.get("continues_next"))))
+            )
+            if carries_on and not EXPLICIT_HOLD.search(shot['ending_state']):
+                parts.append(f"By {compiler.clock(end)}, reach "
+                             + compiler.clause(words(shot['ending_state'], selected))
+                             + " while maintaining steady ongoing motion and camera pace; do not pause or stop early.")
+            else:
+                parts.append(f"By {compiler.clock(end)}, end this action with: "
+                             + compiler.sentence(words(shot['ending_state'], selected))
+                             + " Keep that reached state; do not begin a later action.")
         # A place the box defines or describes in its own sentence needs no naming in the shots set there.
         missing = [subject for subject in selected if called(subject) not in " ".join(parts) + words(style, used)
                    and subject not in settings
@@ -501,7 +600,8 @@ def compile_prompt(data, ctx, plan, index, context, subjects, notes=None, kept=N
         for number, (use, pictures) in enumerate(guide_groups.items(), len(labels) + 1):
             label = f"<Subject {number}>"
             definitions.append(f"{label} is visual guidance from {compiler.listing(pictures)}: {use} "
-                               "Do not reproduce the source images, their layouts, depicted people, objects or text.")
+                               "Do not reproduce the source images, their layouts, depicted people, objects, text, "
+                               "borders, vignetting, film grain, crackle, lens flares or overlays.")
             guide_lines.append((label, use))
         if guide_lines:
             visual = " ".join(f"Apply {label} only for its stated visual attributes."
@@ -543,12 +643,13 @@ def compile_prompt(data, ctx, plan, index, context, subjects, notes=None, kept=N
     recorded = {subjects[key]["name"]: {"label": label, "line": lines[label], "edited": key in verbatim}
                 for key, label in labels.items() if label in lines}
     state = {**{key: words(value) for key, value in data["terminal_state"].items()}, "look": words(style),
-             "ambience": words(data["overall_soundscape"])}
+             "ambience": words(data["overall_soundscape"]),
+             "duration_ms": context.duration_ms, "new_ms": context.duration_ms - context.replayed_ms}
     if notes is not None:
         notes.extend(f"Box {index + 1}: Warning: {warning}. Prompt kept; edit it in the Timeline."
                      for warning in dict.fromkeys(warnings))
         notes.extend(voice_notes)
-    details = {"ending": json.dumps(state, ensure_ascii=False), "said": said,
+    details = {"ending": json.dumps(state, ensure_ascii=False), "terminal_state": state, "said": said,
                "looks": {subjects[name]["name"]: description for name, description in updates.items()},
                "definitions": recorded}
     if bible:

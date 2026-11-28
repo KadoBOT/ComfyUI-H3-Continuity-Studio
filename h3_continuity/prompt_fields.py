@@ -4,6 +4,8 @@ tests/fixtures/prompt_field_cases.json holds the browser's results for both pars
 import json
 import re
 
+from . import h3_prompt_validate as validate, timeline as rules
+
 TITLES = {
     'subject_definitions': 'Subjects & references', 'summary': 'Summary', 'retention_analysis': 'Reference retention',
     'detailed_description': 'Shots', 'integrated_multimodal_description': 'Shots',
@@ -284,8 +286,17 @@ def read(source, tags=()):
     return {'sections': result}
 
 
-def inspect(source, tags=()):
-    """Fields without the duplicated source text, plus counts an agent can check before saving."""
+def lint(source, allowed_context='', previous=None, *, same_scene=True, continuous=True):
+    """Structured screen-FX and optional cross-box continuity warnings for `source`."""
+    warnings = validate.lint_screen_fx(source, allowed_context=allowed_context)
+    if previous:
+        warnings.extend(validate.lint_continuation_pair(previous, source, same_scene=same_scene,
+                                                        continuous=continuous))
+    return warnings
+
+
+def inspect(source, tags=(), *, allowed_context='', previous=None, same_scene=True, continuous=True):
+    """Fields without the duplicated source text, plus counts and lint warnings an agent can check before saving."""
     parsed = read(source, tags)
     entries = [entry for section in parsed['sections'] for entry in section['entries']]
     cues = [entry for entry in entries if entry['kind'] == 'cue']
@@ -304,24 +315,77 @@ def inspect(source, tags=()):
             'dialogue': sum(entry['kind'] == 'dialogue' for entry in entries),
             'unstructured_text': len(unstructured),
         },
+        'warnings': lint(source, allowed_context=allowed_context, previous=previous,
+                         same_scene=same_scene, continuous=continuous),
     }
+
+
+def _previous_box(raw_timeline, line, boxes, index):
+    """Previous adjacent box on the same track, delegating to timeline.parse + timeline.previous_index when tracks exist."""
+    if line.get('tracks'):
+        try:
+            parsed = rules.parse(raw_timeline)
+            prev_index = rules.previous_index(parsed, index)
+            return boxes[prev_index] if prev_index is not None else None
+        except ValueError:
+            pass
+        placements = line.get('placements') if isinstance(line.get('placements'), dict) else {}
+
+        def _place(box):
+            p = placements.get(box.get('id'))
+            if isinstance(p, dict) and 'track' in p and 'start' in p:
+                return p['track'], p['start'], p.get('end', p['start'] + (box.get('frames') or 0))
+            if 'track' in box and 'start' in box:
+                return box['track'], box['start'], box['start'] + (box.get('frames') or 0)
+            return None
+
+        current = _place(boxes[index])
+        if current is None:
+            return None
+        track, start, _ = current
+        same = sorted(
+            ((i, pl) for i, box in enumerate(boxes) if (pl := _place(box)) is not None and pl[0] == track),
+            key=lambda item: item[1][1],
+        )
+        pos = next((k for k, (i, _) in enumerate(same) if i == index), 0)
+        if not pos:
+            return None
+        prev_i, prev_pl = same[pos - 1]
+        return boxes[prev_i] if prev_pl[2] == start else None
+    return boxes[index - 1] if index else None
 
 
 def request(body):
     """{prompt, tags?} or a saved {timeline, box, layer?, tags?}; tags map <Picture N> labels to slots as the Studio does."""
     prompt = body.get('prompt')
+    previous, same_scene, continuous = None, True, True
     if prompt is None:
         try:
-            line = json.loads(body['timeline'])
+            raw_timeline = body['timeline']
+            line = json.loads(raw_timeline)
         except (KeyError, TypeError, json.JSONDecodeError) as error:
             raise ValueError('Give a prompt, or a box of a saved Timeline.') from error
-        clip = next((box for box in line.get('boxes') or [] if isinstance(box, dict) and box.get('id') == body.get('box')), None)
+        boxes = [box for box in line.get('boxes') or [] if isinstance(box, dict)]
+        index = next((i for i, box in enumerate(boxes) if box.get('id') == body.get('box')), None)
+        clip = boxes[index] if index is not None else None
         if clip is not None and body.get('layer') is not None:
             clip = next((layer for layer in clip.get('layers') or [] if isinstance(layer, dict) and layer.get('id') == body['layer']), None)
+        elif clip is not None:
+            prev_box = _previous_box(raw_timeline, line, boxes, index)
+            if prev_box is not None:
+                previous = prev_box.get('prompt') or ''
+                cut = bool(clip.get('cut', False))
+                new_scene = bool(clip.get('new_scene', False))
+                same_scene = not (cut and new_scene)
+                continuous = not cut
         if clip is None:
             raise ValueError('Choose a box, and optionally one of its layers, from this Timeline.')
         prompt = clip.get('prompt') or ''
     tags = body.get('tags') or []
+    allowed_context = body.get('allowed_context') or ''
     if not isinstance(prompt, str) or not isinstance(tags, list) or any(not isinstance(tag, dict) for tag in tags):
         raise ValueError('The prompt must be text and tags a list of {tag, name} objects.')
-    return inspect(prompt, tags)
+    if not isinstance(allowed_context, str):
+        raise ValueError('allowed_context must be text.')
+    return inspect(prompt, tags, allowed_context=allowed_context, previous=previous,
+                   same_scene=same_scene, continuous=continuous)

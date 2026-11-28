@@ -19,8 +19,14 @@ wants one setting everywhere.
 | Transition | `join: {"kind": "transition", "note": "…"}` on a continuing box, with a Story bible | A continuation that H3 Story stages as an in-scene transition. `join` only tells the writer; rendering follows the flags. |
 | Bridge | top-level `bridges` entry | A few generated frames on a cut between two rendered boxes (see below). |
 
-- A continuing box must start from the pose and motion the previous box actually
-  reached. Write its prompt from the rendered ending, not from the plan.
+- A continuing box must start from the pose, framing scale, camera speed, subject pace,
+  and exact lighting/exposure the previous box actually reached. Write its prompt from
+  the rendered ending, not from the plan. On a box followed by a seamless continuation,
+  carry motion and camera pace through the end rather than braking to a stop/hold
+  (reserve stop/hold endings for cuts, final boxes, or explicit holds).
+- Never jump framing scale (such as wide/pull-out to tight close-up) or flip slow/fast
+  pace across a `cut: false` continuation; use a cut (`cut: true`) for framing jumps,
+  and lock exposure and light sources across adjacent boxes of the same scene.
 - A box can't be continued after a box that drops frames (an `exact` length off
   the grid), and the box before must play at least `context_frames` frames. See
   `h3-continuity-timing`.

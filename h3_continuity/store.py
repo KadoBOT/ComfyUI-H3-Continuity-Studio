@@ -15,6 +15,7 @@ from safetensors.torch import save_file
 from .timing import seconds
 
 MANIFEST = "manifest.json"
+OVERLAP_SUFFIX = "_overlap.mp4"
 _NAME = re.compile(r"[A-Za-z0-9_\-. ]{1,64}")
 
 
@@ -79,6 +80,13 @@ def full_video_fingerprint(folder, manifest, bridges=(), soundtrack_sources=()):
             except FileNotFoundError:
                 return None
             stamps.append([filename, stat.st_mtime_ns, stat.st_size])
+        overlap = entry["video"].get("overlap")
+        if isinstance(overlap, dict) and overlap.get("file"):
+            try:
+                stat = os.stat(os.path.join(folder, overlap["file"]))
+                stamps.append([overlap["file"], stat.st_mtime_ns, stat.st_size])
+            except FileNotFoundError:
+                stamps.append([overlap["file"], None])
         sources.append([entry, stamps])
     if sources and soundtrack_sources:
         sources.append(["soundtrack", list(soundtrack_sources)])
@@ -341,6 +349,20 @@ def load_continuation_frame(folder, entry):
     """The image a continuing box is guided to start from: the saved guide frame, else the finished last frame."""
     guide = _load_frame(os.path.join(folder, entry["stem"] + "_guide.png"))
     return guide if guide is not None else load_last_frame(folder, entry)
+
+
+def has_guide_frame(folder, entry):
+    return os.path.isfile(os.path.join(folder, entry["stem"] + "_guide.png"))
+
+
+def overlap_video_path(folder, entry):
+    overlap = (entry.get("video") or {}).get("overlap")
+    filename = overlap["file"] if isinstance(overlap, dict) and overlap.get("file") else entry["stem"] + OVERLAP_SUFFIX
+    return os.path.join(folder, filename)
+
+
+def has_overlap_video(folder, entry):
+    return os.path.isfile(overlap_video_path(folder, entry))
 
 
 def has_segment_latents(folder, entry):

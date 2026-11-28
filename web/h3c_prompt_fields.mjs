@@ -14,7 +14,7 @@ const range=(source,start,end)=>({start,end,before:source.slice(start,end)});
 const entryOf=(source,part,kind,value,shot=null)=>({kind,shot,range:range(source,part.entryStart??part.start,part.entryEnd??part.end),value});
 const descriptor=(key,prefix,rank,advanced=true,suggestions=[],repeatable=false)=>({key,prefix,rank,advanced,suggestions,repeatable});
 export const SHOT_FIELDS=[
-  descriptor('style','Style',0,false,['Cinematic','Live-action','2D animation','3D CG','Claymation','Watercolor','Vintage film']),
+  descriptor('style','Style',0,false,['Live-action','Modern digital','2D animation','3D CG','Claymation','Watercolor','Vintage film (stylized FX)']),
   descriptor('composition','Composition',10,false,['Wide shot','Medium shot','Close-up','Extreme close-up']),
   descriptor('initial_state','Initial state',20),descriptor('trigger','Trigger',30),descriptor('action','Action',40,false,[],true),
   descriptor('contact','Contact',50),descriptor('reaction','Reaction',60),descriptor('shot_size','Shot size',70,true,['Wide','Medium','Close-up','Extreme close-up']),
@@ -24,7 +24,7 @@ export const SHOT_FIELDS=[
   descriptor('camera_amplitude','Camera amplitude',120,false,['Small','Normal','Large']),descriptor('camera_subject','Camera subject',130),descriptor('focus','Focus',140),
   descriptor('effect_trigger','Effect N trigger',150),descriptor('effect','Effect N',160,true,['Sparks','Smoke','Dust','Debris','Water','Energy','Explosion','Lightning']),
   descriptor('effect_motion','Effect N motion',170),descriptor('effect_response','Effect N response',180),descriptor('physical_response','Physical response',180),
-  descriptor('lighting','Lighting',190,true,['Warm','Cool','Side light','Backlight','Haze','Shallow focus']),descriptor('light_direction','Light direction',200),
+  descriptor('lighting','Lighting',190,true,['Natural daylight','Warm tungsten','Cool overcast','Side light','Backlight','Soft even key']),descriptor('light_direction','Light direction',200),
   descriptor('colour_contrast','Colour and contrast',210),descriptor('reflections','Reflections',220),descriptor('atmosphere','Atmosphere',230),
   descriptor('materials','Materials',240),descriptor('depth_of_field','Depth of field',250),descriptor('gaze','Gaze',260),descriptor('expression','Expression',270),
   descriptor('breathing','Breathing',280),descriptor('posture','Posture',290),descriptor('hands','Hands',300),descriptor('continuity','Continuity',310),

@@ -72,12 +72,9 @@ def convert(rgb, source, target):
     if target == "HDR PQ":
         out = _pq_encode(linear * SDR_WHITE_PQ)
     elif target == "HDR":
-        if source == "sRGB":
-            out = _hlg_oetf(linear * SDR_WHITE_HLG)
-        else:
-            display = linear * SDR_WHITE_PQ / HLG_PEAK
-            scene = display * _luma(display) ** (-0.2 / 1.2)  # inverse OOTF
-            out = _hlg_oetf(scene)
+        display = linear * SDR_WHITE_PQ / HLG_PEAK
+        scene = display * _luma(display) ** (-0.2 / 1.2)  # inverse OOTF (consistent with HDR -> sRGB/PQ)
+        out = _hlg_oetf(scene)
     else:
         out = (linear.clamp(0, 1) @ torch.linalg.inv(_BT709_TO_BT2020).T).clamp(0, 1)
         out = torch.where(out <= 0.0031308, out * 12.92, 1.055 * out ** (1 / 2.4) - 0.055)

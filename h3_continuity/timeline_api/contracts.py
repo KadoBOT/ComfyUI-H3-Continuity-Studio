@@ -198,7 +198,7 @@ def _schemas():
                     "reference_replacements": {"type": "object", "propertyNames": SLOT, "additionalProperties": {
                         "oneOf": [_object({"source": SLOT}, ("source",)), _object({"file": FILE}, ("file",))]}},
                     "timed_text": {"type": ["object", "null"]}, "bible": {},
-                    "context_noise": BOOL, "continuation_guide": BOOL,
+                    "context_noise": BOOL, "continuation_guide": {"anyOf": [BOOL, {"const": "auto"}]},
                     "audio_feather": {"type": "integer", "minimum": 0, "maximum": 16},
                     "video_slices": _array({"type": "string", "pattern": "^video[1-9][0-9]*$"}, uniqueItems=True)},
                    ("boxes",), extra=True)
