@@ -20,19 +20,19 @@ class ContinuationSettingsTest(unittest.TestCase):
 
     def test_defaults_leave_layouts_unchanged(self):
         timeline, parsed = self.parse()
-        self.assertEqual(parsed.continuation_guide, "auto")
-        _, marked = self.parse(continuation_guide="auto")
+        self.assertIs(parsed.continuation_guide, True)
+        _, marked = self.parse(continuation_guide=True)
         self.assertEqual(timeline.layout_key(parsed, 1), timeline.layout_key(marked, 1))
 
     def test_settings_change_only_continuing_layouts(self):
         timeline, plain = self.parse()
-        _, always_on = self.parse(continuation_guide=True)
+        _, auto = self.parse(continuation_guide="auto")
         _, always_off = self.parse(continuation_guide=False)
-        self.assertEqual(timeline.layout_key(plain, 0), timeline.layout_key(always_on, 0))
+        self.assertEqual(timeline.layout_key(plain, 0), timeline.layout_key(auto, 0))
         self.assertEqual(timeline.layout_key(plain, 0), timeline.layout_key(always_off, 0))
-        self.assertNotEqual(timeline.layout_key(plain, 1), timeline.layout_key(always_on, 1))
+        self.assertNotEqual(timeline.layout_key(plain, 1), timeline.layout_key(auto, 1))
         self.assertNotEqual(timeline.layout_key(plain, 1), timeline.layout_key(always_off, 1))
-        self.assertNotEqual(timeline.layout_key(always_on, 1), timeline.layout_key(always_off, 1))
+        self.assertNotEqual(timeline.layout_key(auto, 1), timeline.layout_key(always_off, 1))
 
     def test_invalid_values_fail(self):
         for keys in ({"continuation_guide": "no"}, {"continuation_guide": 0}, {"continuation_guide": 1}):

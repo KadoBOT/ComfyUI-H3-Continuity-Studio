@@ -2,6 +2,21 @@
 
 All notable changes to H3 Continuity Studio are recorded here. Versions follow [Semantic Versioning](https://semver.org/).
 
+## [1.6.0] - 2026-11-28
+
+### Added
+
+- **Scene maps per clip and `H3C_SceneMap` node (#87).** A clip's **Scene map** switch adds a top-down plan with the camera and characters, edited on its own page with **Opening** and **End** tabs. Fresh T2VA and Ref2VA clips get the map in words on their first shot, Ref2VA clips can send the map picture as a storyboard reference, pixel still recipes get it as a 1 MP reference (using the end layout for Last stills), continuing clips start where the previous map ended, markers link to Cast entries, and **H3 Scene Map** (`H3C_SceneMap`, `21` nodes total) draws a map for still generators. Projects with a map enabled require `scene-map-1`.
+- **`scene_tail` ("Scene tail (latest)") visual memory mode and posture warning (#103).** Anchors cut clips after posture or blocking continuations to the previous clip's tail frame without pulling `scene_start@0`. Studio's Visual memory panel now shows resolved `box@frame` anchor IDs and surfaces a posture-change warning with a one-click **Use Scene tail** button whenever `Scene (auto)` follows a continuation.
+- **Multi-track & partial-video continuation seam parity (#110).** Preserves max segment FPS (e.g. 48 fps interpolated outputs) on multi-track builds while keeping the timeline clock in 24 fps units, stamps `_overlap.mp4` sidecars, and applies pairwise continuation overlap blending with 1 s decaying exposure matching across multi-track and partial-video exports.
+- **Studio & TrackEditor continuity diagnostics (#110).** Abutting `TrackEditor` **+ Clip** additions default to `cut: false`; lane clips show status, cut, and warning badges; the Check panel surfaces `continuity.warnings`, `Screen FX` (`about: 'fx'`), `seam_flash` / `contrast_drop_ratio`, backend `seam_warnings`, pre-render `lintScreenFx` / `lintContinuationPair`, one-click **Play join**, `setCut(false)` stale-transition cleanup, Ctrl/Cmd+click `{rebuild}`, and outdated-take `entry.reason`.
+- **Agent skill pack overhaul and global installer (#110).** Rewrote all 7 `skills/h3-continuity-*/SKILL.md` skills with explicit trigger keywords, tight size bounds, and full schema coverage, and expanded `skills/install.py` to link all global agent skill folders (`~/.agents`, `~/.claude`, `~/.claude-work`, `~/.codex`, `~/.cursor`, `~/.dsh`, `~/.gemini`, `~/.gemini/config`).
+
+### Fixed
+
+- **Continuation contrast flash on `t2va` joins (#111).** Restored `continuation_guide: true` (**On**) as the default so mild exit motion no longer drops the frame-0 continuation anchor, kept `t2va` continuations guided even when `"auto"` is selected, raised `EXIT_MOTION_THRESHOLD` from `1.5` to `3.5`, and added `contrast_drop_ratio` / `seam_flash` checks.
+- **Audio seam phase flanging, `frames % 3 == 2` tail dips, and hard-cut clicks (#110).** Aligned carried audio crossfades to H3's 40 Hz latent tick boundary (`carried_local_sample` / `assemble_entry_audio`), guarded `frames % 3 == 2` tick-deficit tails with a 2 ms taper, and added a 3 ms step-bridge declick across hard cuts.
+
 ## [1.5.0] - 2026-11-28
 
 ### Added

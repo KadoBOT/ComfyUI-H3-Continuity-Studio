@@ -13,6 +13,8 @@ import folder_paths
 from comfy_api.latest import io
 from comfy_execution.graph_utils import GraphBuilder
 
+from .scene_map import REFERENCE_ATTRIBUTE as SCENE_MAP_MEGAPIXELS
+
 StillRecipeType = io.Custom('H3C_STILL_RECIPE')
 UPSTREAM = 'https://huggingface.co/Comfy-Org/MiniMax-H3-Image'
 MISSING = '(none installed)'
@@ -153,9 +155,11 @@ class H3C_MiniMaxH3ImageStill(io.ComfyNode):
             model_link, clip_link = lora.out(0), lora.out(1)
         vae_node = g.node('VAELoader', vae_name=files['vae'])
         for key, value in references.items():
-            # Match the official edit workflow before its native vision/VAE reference scaling.
+            # Match the official edit workflow before its native vision/VAE reference scaling. An H3 Scene Map
+            # output names its own, smaller size: a layout needs fewer pixels, and each one costs sampling time.
+            megapixels = getattr(value, SCENE_MAP_MEGAPIXELS, None) or REFERENCE_MEGAPIXELS
             resized = g.node('ResizeImageMaskNode', input=value, resize_type='scale total pixels',
-                             **{'resize_type.megapixels': REFERENCE_MEGAPIXELS}, scale_method='area')
+                             **{'resize_type.megapixels': megapixels}, scale_method='area')
             aligned = g.node('ResizeImageMaskNode', input=resized.out(0), resize_type='scale to multiple',
                              **{'resize_type.multiple': 32}, scale_method='area')
             references[key] = aligned.out(0)

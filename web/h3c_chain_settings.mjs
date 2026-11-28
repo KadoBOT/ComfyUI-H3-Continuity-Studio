@@ -42,10 +42,10 @@ export class ChainSettings {
     this.root = el('details', 'h3ct-advanced');
     this.noiseInput = checkbox((on) => this.set('context_noise', on || undefined));
     this.guideInput = select([
-      ['auto', 'Auto (static exits only)'],
       ['on', 'On'],
+      ['auto', 'Auto (moving Ref2VA exits unguided)'],
       ['off', 'Off'],
-    ], (mode) => this.set('continuation_guide', mode === 'on' ? true : mode === 'off' ? false : undefined));
+    ], (mode) => this.set('continuation_guide', mode === 'auto' ? 'auto' : mode === 'off' ? false : undefined));
     this.featherInput = el('input', 'h3ct-number');
     Object.assign(this.featherInput, {type: 'number', min: '0', max: String(MAX_FEATHER), step: '1'});
     // On change, not input: a redraw while typing would put 0 back into a field just cleared.
@@ -63,8 +63,7 @@ export class ChainSettings {
       field('Context noise', 'Adds fading noise to the frames each continuing clip carries, so fine texture builds up '
         + 'less ("burn") over a long chain. About 10% slower per continuing clip.', this.noiseInput),
       field('Guide from the last frame', "Guides a continuing clip's first new frame with the previous clip's last "
-        + 'frame so static poses do not drift. Auto enables the guide only when the previous clip exits near-static, '
-        + 'avoiding the 3-frame motion hitch on moving shots.',
+        + 'frame so the opening frame keeps sharp contrast and pose. On is recommended; Auto skips moving Ref2VA exits.',
       this.guideInput),
       field('Audio feather', 'The last carried audio regenerates over this many ticks of 25 ms, rising from frozen to '
         + 'free. 0 keeps all carried audio frozen.', this.featherInput, el('span', 'h3ct-hint', 'ticks of 25 ms, 0–16')),
@@ -87,7 +86,7 @@ export class ChainSettings {
   render() {
     const state = this.editor.state;
     this.noiseInput.checked = state.context_noise === true;
-    this.guideInput.value = state.continuation_guide === true ? 'on' : state.continuation_guide === false ? 'off' : 'auto';
+    this.guideInput.value = state.continuation_guide === 'auto' ? 'auto' : state.continuation_guide === false ? 'off' : 'on';
     if (document.activeElement !== this.featherInput) this.featherInput.value = String(state.audio_feather ?? 0);
     const listed = state.video_slices ?? [];
     const connected = (this.editor.host.connected().videos ?? []).filter((ref) => !ref.problem).map((ref) => ref.name);

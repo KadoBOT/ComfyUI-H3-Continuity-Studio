@@ -1,6 +1,6 @@
 // Marker images own editable still prompts, candidates and the acceptance transaction. Queue recovery belongs to the host.
-import {frameTargets, applyFrameGuide, endpointGuide, endpointReference} from './h3c_shot_preview.mjs?v=9de34a3399af';
-import {parseState, serialize, newSeed} from './h3c_timeline_model.mjs?v=9de34a3399af';
+import {frameTargets, applyFrameGuide, endpointGuide, endpointReference} from './h3c_shot_preview.mjs?v=c3173f40aa48';
+import {parseState, serialize, newSeed} from './h3c_timeline_model.mjs?v=c3173f40aa48';
 import {StillPromptPreparation,preparedStillPrompt} from './h3c_still_prompt_preparation.mjs?v=9ea1bfd9b6b5';
 
 import {seedValue, stringifyJSON} from './h3c_project.mjs?v=0882b8a6265a';
@@ -186,7 +186,7 @@ export class FrameImages {
     if(this.controlLoad!==load||generation!==this.host.referenceContext?.()||boxId!==this.boxId||stamp!==key(this.target)) return;
     this.recipeAvailable=!!controls;
     this.generatorLabel=controls?.label;this.adapter=controls?.adapter;this.referenceLabel=controls?.referenceLabel;this.seedScope=controls?.seedScope;
-    this.additionalReferences=controls?.additionalReferences??[];
+    this.additionalReferences=controls?.additionalReferences??[];this.sceneMaps=controls?.sceneMaps??[];
     this.render();
   }
   saveField(field,value) {
@@ -256,9 +256,12 @@ export class FrameImages {
     const stillName=this.target.kind!=='shot'&&this.editor.runsFlf?.(this.editor.state.boxes.indexOf(box))?`${targetLabel(this.target)} frame`:targetLabel(this.target);
     setText(this.titleEl,`Clip ${this.editor.state.boxes.indexOf(box)+1} · ${stillName} image${this.generatorLabel?` · ${this.generatorLabel}`:''}`);
     this.uploadButton.disabled=typeof this.host.importGuide!=='function';
-    const additionalReferences=this.additionalReferences??[];
-    this.additionalReferencesEl.hidden=!additionalReferences.length;
-    setText(this.additionalReferencesEl,additionalReferences.length?`Connected picture aliases: ${additionalReferences.join(', ')}. Mention an alias in the frame image prompt to include that picture.`:'');
+    const additionalReferences=this.additionalReferences??[],sceneMaps=this.sceneMaps??[];
+    this.additionalReferencesEl.hidden=!additionalReferences.length&&!sceneMaps.length;
+    setText(this.additionalReferencesEl,[
+      additionalReferences.length?`Connected picture aliases: ${additionalReferences.join(', ')}. Mention an alias in the frame image prompt to include that picture.`:'',
+      sceneMaps.length?`Blocking map included as ${sceneMaps.join(', ')}: its camera and who stands where are described to the model automatically, unless the clip prompt names ${sceneMaps[0]} itself. Best for wide shots; each reference adds about 35 s.`:'',
+    ].filter(Boolean).join(' '));
     const saved=box.previews?.find(item=>key(itemTarget(item))===key(this.target));
     if(!this.promptEditing) {
       const prompt=this.framePrompt();

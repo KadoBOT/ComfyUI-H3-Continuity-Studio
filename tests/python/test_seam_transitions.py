@@ -81,7 +81,7 @@ class OverlapSeamBlendingTest(unittest.TestCase):
 
     def _write_two_48fps_segments(self, mode="rtx", color_space="sRGB", codec="H.264"):
         # Box A: 22 native frames (0..21). Box B: carries 5 native frames (17..21) + adds 17 new (22..38).
-        native_full = moving_bar_frames(39, size=48, speed=1.0)
+        native_full = moving_bar_frames(39, size=48, speed=1.5, offset=-8.0)
         a_48 = interpolate_2x(native_full[:22], mode=mode)
         b_48 = interpolate_2x(native_full[17:39], mode=mode)
 
@@ -292,13 +292,21 @@ class MotionAdaptiveGuideTest(unittest.TestCase):
 
     def test_auto_guide_disables_on_moving_exit_and_enables_on_static_exit(self):
         moving_entry = {"stem": "seg_0001", "exit_motion": 4.2}
+        mild_entry = {"stem": "seg_0003", "exit_motion": 2.7}
         static_entry = {"stem": "seg_0002", "exit_motion": 0.3}
 
-        use, note = timeline_node.resolve_continuation_guide("auto", self.folder, moving_entry)
+        use, note = timeline_node.resolve_continuation_guide("auto", self.folder, moving_entry, box_mode="ref2va")
         self.assertFalse(use)
         self.assertIn("auto-disabled", note)
 
-        use, note = timeline_node.resolve_continuation_guide("auto", self.folder, static_entry)
+        # Mild ambient motion (e.g. 2.7 < 3.5) and all t2va continuations keep the visual anchor guide.
+        use, _ = timeline_node.resolve_continuation_guide("auto", self.folder, mild_entry, box_mode="ref2va")
+        self.assertTrue(use)
+        use_t2va, note_t2va = timeline_node.resolve_continuation_guide("auto", self.folder, moving_entry, box_mode="t2va")
+        self.assertTrue(use_t2va)
+        self.assertIn("t2va", note_t2va)
+
+        use, note = timeline_node.resolve_continuation_guide("auto", self.folder, static_entry, box_mode="ref2va")
         self.assertTrue(use)
         self.assertIn("auto-enabled", note)
 
@@ -306,11 +314,11 @@ class MotionAdaptiveGuideTest(unittest.TestCase):
         self.assertEqual(timeline_node.resolve_continuation_guide(False, self.folder, static_entry)[0], False)
 
     def test_auto_guide_falls_back_to_reading_video_tail_when_metadata_absent(self):
-        # Moving clip without exit_motion metadata
+        # Fast moving clip without exit_motion metadata
         mv_path = os.path.join(self.folder, "seg_0001.mp4")
-        media.write_segment_video(mv_path, moving_bar_frames(12, size=48, speed=3.0), 24, 12)
+        media.write_segment_video(mv_path, moving_bar_frames(12, size=48, speed=7.0), 24, 12)
         mv_entry = {"stem": "seg_0001", "video": {"file": "seg_0001.mp4", "fps": 24.0, "frames": 12}}
-        self.assertFalse(timeline_node.resolve_continuation_guide("auto", self.folder, mv_entry)[0])
+        self.assertFalse(timeline_node.resolve_continuation_guide("auto", self.folder, mv_entry, box_mode="ref2va")[0])
 
         # Static clip without exit_motion metadata
         st_path = os.path.join(self.folder, "seg_0002.mp4")
@@ -584,6 +592,104 @@ class StaleAndMixedProtectionStatusTest(unittest.TestCase):
                                         lambda i, e: True)
         for i in (2, 3, 4):
             self.assertNotIn("seam_warnings", status2["boxes"][i])
+
+
+class AudioSeamAlignmentTest(unittest.TestCase):
+    def setUp(self):
+        self.folder = tempfile.mkdtemp(prefix="h3c-audio-seam-")
+
+    def tearDown(self):
+        shutil.rmtree(self.folder, ignore_errors=True)
+
+    def test_carried_audio_tick_alignment_eliminates_phase_flanging_across_chain(self):
+        rate = 32000
+        # 39-frame segments (17 new + 22 carried) so segment count is short while hitting 65 ticks -> tick remainder 2
+        # Actually test 90 -> 90 (22 context -> tail_start = round(68*5/3) = 113 != 113.333, 267-sample phase shift)
+        sr_total = timing.sample_at_frame(90 + 68 + 68, rate)
+        t = torch.arange(sr_total, dtype=torch.float32) / rate
+        master = torch.sin(2.0 * torch.pi * 440.0 * t).unsqueeze(0)
+
+        def seg(idx, start_sample, context, created, carried_from=None):
+            entry = {
+                "index": idx, "stem": store.stem(idx), "frames": 90, "context_frames": context,
+                "carried_audio": context > 0, "audio_sample_rate": rate, "created": created,
+                "timeline": {"box": f"b{idx}"},
+            }
+            if carried_from:
+                entry["carried_from"] = carried_from
+            samples = timing.ticks_for_frames(90) * rate // timing.AUDIO_TICKS_PER_SECOND
+            wave = master[:, start_sample:start_sample + samples].clone()
+            store.save_segment(self.folder, entry, torch.zeros(1, 1, 1, 1, 1), torch.zeros(1, 1, 1, 1), wave)
+            return entry
+
+        # Box 2 copies ticks 113..150 -> sample 113 * 800 = 90400 of Box 1!
+        s1 = seg(1, 0, 0, "2026-11-28T10:00:00")
+        b2_start = 113 * (rate // timing.AUDIO_TICKS_PER_SECOND)
+        s2 = seg(2, b2_start, 22, "2026-11-28T10:05:00", s1["created"])
+        # Box 3 starts relative to Box 2 at tick 113 of Box 2.
+        b3_start = b2_start + 113 * (rate // timing.AUDIO_TICKS_PER_SECOND)
+        s3 = seg(3, b3_start, 22, "2026-11-28T10:10:00", s2["created"])
+
+        parts = [(s1, 0, 90, False), (s2, 0, 68, False), (s3, 0, 68, False)]
+        merged, out_rate = nodes._generated_audio(self.folder, parts)
+        self.assertEqual(out_rate, rate)
+        self.assertEqual(merged.shape[-1], sr_total)
+
+        # Across both crossfade zones (~116800..120000 and ~207467..210667) the sine wave must have ZERO phase comb dip!
+        diff = (merged[0] - master[0]).abs()
+        self.assertLess(float(diff[115000:122000].max()), 1e-4)
+        self.assertLess(float(diff[206000:213000].max()), 1e-4)
+
+    def test_tick_deficit_tail_and_hard_cut_declick(self):
+        rate = 32000
+        # 56 frames -> ticks_for_frames(56) = 93 -> 74400 samples, 267 shorter than sample_at_frame(56, 32000) = 74667
+        w1 = torch.full((1, timing.ticks_for_frames(56) * (rate // timing.AUDIO_TICKS_PER_SECOND)), 0.5)
+        w2 = torch.full((1, timing.ticks_for_frames(39) * (rate // timing.AUDIO_TICKS_PER_SECOND)), 0.5)
+        e1 = {"index": 1, "stem": "seg_0001", "frames": 56, "context_frames": 0, "audio_sample_rate": rate}
+        e2 = {"index": 2, "stem": "seg_0002", "frames": 39, "context_frames": 17, "carried_audio": True,
+              "audio_sample_rate": rate}
+        local2 = media.carried_local_sample(e1, w1.shape[1], e2, 0, rate)
+        merged, _ = media.assemble_audio([(56, 0, w1, rate), (39, 17, w2, rate, local2)])
+        # No zero-hole right before frame 56 boundary (74400..74667).
+        self.assertGreater(float(merged[:, 71000:80000].min()), 0.499)
+
+        # Standalone 56-frame segment ending in sample_at_frame(56, sr) zero pad tapers cleanly instead of stepping.
+        solo, _ = media.assemble_audio([(56, 0, w1, rate)])
+        self.assertLess(float((solo[:, 1:] - solo[:, :-1]).abs().max()), 0.05)
+
+        # Hard cut +0.5 -> -0.5 with default crossfade declicks the 1.0 boundary step cleanly.
+        cut_a = torch.full((1, timing.sample_at_frame(22, rate)), 0.5)
+        cut_b = torch.full((1, timing.sample_at_frame(22, rate)), -0.5)
+        declicked, _ = media.assemble_audio([(22, 0, cut_a, rate), (22, 0, cut_b, rate)])
+        cut_sample = timing.sample_at_frame(22, rate)
+        self.assertLess(float((declicked[:, cut_sample - 10:cut_sample + 10].diff(dim=-1)).abs().max()), 0.05)
+        raw_butt, _ = media.assemble_audio([(22, 0, cut_a, rate), (22, 0, cut_b, rate)], crossfade_seconds=0)
+        self.assertAlmostEqual(float(raw_butt[0, cut_sample - 1] - raw_butt[0, cut_sample]), 1.0, places=5)
+
+
+class SeamFlashAndSceneTailTest(unittest.TestCase):
+    def test_video_join_flags_seam_contrast_flash(self):
+        sharp = (moving_bar_frames(6, size=48, speed=0.0).numpy() * 255.0).astype(np.uint8)
+        flashed = sharp[:4].copy()
+        flashed[0] = (0.5 * flashed[0] + 0.5 * 85.0).astype(np.uint8)
+        res = seam_checks.video_join(sharp, flashed)
+        self.assertTrue(res["seam_flash"])
+        self.assertLess(res["contrast_drop_ratio"], 0.70)
+
+        normal = seam_checks.video_join(sharp, sharp[:4])
+        self.assertFalse(normal["seam_flash"])
+        self.assertAlmostEqual(normal["contrast_drop_ratio"], 1.0, places=2)
+
+    def test_scene_tail_memory_skips_outdated_scene_start_frame(self):
+        b1 = box("b001", 107, cut=True, new_scene=True, memory="off", prompt="Sitting on floor.")
+        b2 = box("b002", 119, cut=False, memory="off", prompt="Standing up.")
+        b3_scene = box("b003", 206, cut=True, new_scene=False, memory="scene", prompt="Singing: <d>[English] Hi</d>")
+        b3_tail = box("b003", 206, cut=True, new_scene=False, memory="scene_tail", prompt="Singing: <d>[English] Hi</d>")
+
+        parsed_scene = rules.parse(json.dumps(document([b1, b2, b3_scene])))
+        parsed_tail = rules.parse(json.dumps(document([b1, b2, b3_tail])))
+        self.assertEqual([(src, frame) for src, frame, _ in rules.memory_sources(parsed_scene, 2)], [(0, 0), (1, 114)])
+        self.assertEqual([(src, frame) for src, frame, _ in rules.memory_sources(parsed_tail, 2)], [(1, 114)])
 
 
 if __name__ == "__main__":

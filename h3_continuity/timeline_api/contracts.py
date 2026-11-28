@@ -144,7 +144,7 @@ def _schemas():
     endpoint = {"anyOf": [IMAGE, {"const": ""}]}
     # A clip's other videos: up to three more H3 generations of its time. Native parsing checks the swaps.
     layer = _object({"id": ID, "seed": SEED, "prompt": TEXT, "first": endpoint, "last": endpoint,
-                     "previews": _array(preview), "memory": {"enum": ["off", "scene", "selected", "cast"]},
+                     "previews": _array(preview), "memory": {"enum": ["off", "scene", "scene_tail", "selected", "cast"]},
                      "memories": _array(moment, maxItems=3), "dialogue": {"enum": ["cues", "manual"]}}, ("id",))
     switch = _object({"cuts": _array(_object({"at": FRAME, "to": ID}, ("at", "to")), minItems=1),
                       "fade": {"type": "integer", "minimum": 0, "maximum": 12}, "sound": ID,
@@ -152,7 +152,7 @@ def _schemas():
     box = _object({"track": ID, "start": FRAME, "id": ID, "frames": POSITIVE, "seconds": POSITIVE, "seed": SEED, "prompt": TEXT,
                    "cut": BOOL, "new_scene": BOOL, "exact": BOOL, "first": {"anyOf": [IMAGE, {"const": ""}]},
                    "last": {"anyOf": [IMAGE, {"const": ""}]}, "previews": _array(preview),
-                   "plate_changes": _array(change), "memory": {"enum": ["off", "scene", "selected", "cast"]},
+                   "plate_changes": _array(change), "memory": {"enum": ["off", "scene", "scene_tail", "selected", "cast"]},
                    "memories": _array(moment, maxItems=3), "schedule": {}, "source": {}, "cast": {"type": "object"},
                    "dialogue": {"enum": ["cues", "manual"]}, "layers": _array(layer, maxItems=3), "switch": switch},
                   extra=True)

@@ -169,3 +169,53 @@ class TrackOutputTest(unittest.TestCase):
    self.assertAlmostEqual(float(frames[10].mean()), 127.5, delta=4.0)
    self.assertAlmostEqual(float(frames[35].mean()), 127.5, delta=6.0)
    self.assertLess(abs(float(frames[35].mean()) - float(frames[10].mean())), 5.0)
+
+ def test_continuing_48fps_clips_preserve_rate_and_blend_overlap_seam(self):
+  p = rules.parse(json.dumps(dict(
+   version=1,
+   requires=[tracks.FEATURE],
+   tracks=[dict(id='v1', type='video', name='Video 1')],
+   boxes=[
+    dict(id='A', track='v1', start=0, frames=22, exact=True, cut=True, prompt='Opening.'),
+    dict(id='B', track='v1', start=22, frames=17, exact=True, cut=False, prompt='Continuing.'),
+   ],
+  )))
+  with tempfile.TemporaryDirectory() as folder:
+   def frame_ramp(start, count):
+    t = torch.arange(start, start + count, dtype=torch.float32).view(count, 1, 1, 1) / 50.0
+    return (0.1 + t).expand(count, 32, 48, 3).clamp(0.0, 1.0)
+   a_24 = frame_ramp(0, 22)
+   b_ov_24 = frame_ramp(17, 5)
+   b_new_24 = frame_ramp(22, 17)
+   def interp(nat):
+    seq = []
+    for i in range(nat.shape[0]):
+     seq.append(nat[i])
+     seq.append(0.5 * (nat[i] + nat[i + 1]) if i + 1 < nat.shape[0] else nat[i])
+    return torch.stack(seq, dim=0)
+   a_48 = interp(a_24)
+   b_full_48 = interp(torch.cat([b_ov_24, b_new_24], dim=0))
+   b_ov_48 = b_full_48[:10]
+   b_new_48 = b_full_48[10:]
+   media.write_segment_video(os.path.join(folder, 'A.mp4'), a_48, 48, 12)
+   media.write_segment_video(os.path.join(folder, 'B.mp4'), b_new_48, 48, 12)
+   media.write_segment_video(os.path.join(folder, 'B_overlap.mp4'), b_ov_48, 48, 10)
+   entries = [
+    dict(index=1, stem='A', frames=22, context_frames=0, timeline=dict(box='A'),
+         video=dict(file='A.mp4', fps=48, frames=44)),
+    dict(index=2, stem='B', frames=22, context_frames=5, timeline=dict(box='B'),
+         video=dict(file='B.mp4', fps=48, frames=34,
+                    overlap=dict(file='B_overlap.mp4', frames=10, fps=48, color_space='sRGB'))),
+   ]
+   record, note = track_output.build(folder, 'test', p, dict(segments=entries), 12, 'full')
+   self.assertTrue(record, note)
+   self.assertEqual(record['fps'], 48)
+   self.assertEqual(record['frames'], 39)
+   with av.open(os.path.join(folder, record['file'])) as container:
+    stream = container.streams.video[0]
+    self.assertEqual(float(stream.average_rate), 48.0)
+    frames = [f.to_ndarray(format='rgb24') for f in container.decode(video=0)]
+   self.assertEqual(len(frames), 78)
+   l42, l43, l44 = float(frames[42].mean()), float(frames[43].mean()), float(frames[44].mean())
+   self.assertGreater(l43, l42 + 1.0)
+   self.assertLess(l43, l44 - 1.0)

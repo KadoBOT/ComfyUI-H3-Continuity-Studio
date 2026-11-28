@@ -108,6 +108,9 @@ def build(folder, name, parsed, manifest, done, soundtrack, crf):
             items.append([None, first, count])
             continue
         files = [entry["video"]["file"], *([entry["stem"] + ".safetensors"] if entry.get("audio_sample_rate") else [])]
+        overlap_file = ((entry.get("video") or {}).get("overlap") or {}).get("file") if store.has_overlap_video(folder, entry) else None
+        if overlap_file:
+            files.append(overlap_file)
         stamps = [_stamp(folder, filename) for filename in files]
         if None in stamps:
             return None, NO_FRAMES
@@ -127,20 +130,37 @@ def build(folder, name, parsed, manifest, done, soundtrack, crf):
         heard, pieces = _source_audio(folder, source), []
         for entry, first, count in found:
             if entry is not None:
-                pieces.append((entry["context_frames"] + count, entry["context_frames"],
-                               store.load_waveform(folder, entry) if entry.get("audio_sample_rate") else None,
-                               entry.get("audio_sample_rate")))
+                sr = entry.get("audio_sample_rate")
+                wave = store.load_waveform(folder, entry) if sr else None
+                pieces.append((entry, first, count, store.played_frames(entry), wave, sr, False))
             elif heard is not None:
                 waveform, rate = heard
-                pieces.append((count, 0, waveform[:, timing.sample_at_frame(first, rate):
-                                                  timing.sample_at_frame(first + count, rate)], rate))
+                wave = waveform[:, timing.sample_at_frame(first, rate):timing.sample_at_frame(first + count, rate)]
+                pieces.append((None, 0, count, None, wave, rate, True))
             else:
-                pieces.append((count, 0, None, None))
-        audio = media.assemble_audio(pieces)
+                pieces.append((None, 0, count, None, None, None, True))
+        audio = media.assemble_entry_audio(pieces)
+    seams = [None] * len(found)
+    for idx in range(1, len(found)):
+        prev_entry, prev_first, prev_count = found[idx - 1]
+        entry, first, _ = found[idx]
+        if prev_entry is None or entry is None or first != 0:
+            continue
+        if int(entry.get("context_frames") or 0) <= 0 or prev_first + prev_count != store.played_frames(prev_entry):
+            continue
+        if not store.has_overlap_video(folder, entry):
+            continue
+        overlap_meta = (entry.get("video") or {}).get("overlap") or {}
+        seams[idx] = {
+            "overlap": store.overlap_video_path(folder, entry),
+            "fps": overlap_meta.get("fps") or (entry.get("video") or {}).get("fps") or timing.FPS,
+            "color_space": overlap_meta.get("color_space") or (entry.get("video") or {}).get("color_space") or "sRGB",
+        }
     windows = [(os.path.join(folder, entry["video"]["file"] if entry else source["file"]),
                 *media.window_at_fps(first, count, entry["video"].get("fps") if entry else None))
                for entry, first, count in found]
-    written, note = media.build_full_video(os.path.join(folder, f"{name}_partial.mp4"), windows, audio, crf)
+    kwargs = {"seams": seams} if any(item is not None for item in seams) else {}
+    written, note = media.build_full_video(os.path.join(folder, f"{name}_partial.mp4"), windows, audio, crf, **kwargs)
     if written is None:
         return None, f"Partial video skipped: {note.removeprefix('Full video skipped: ')}"
     record = {"file": os.path.basename(written), "sources": fingerprint, "rendered": len(rendered), "boxes": len(found)}

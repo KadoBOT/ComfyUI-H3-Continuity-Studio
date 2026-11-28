@@ -34,7 +34,7 @@ function button(label, className, onClick) {
   node.type = 'button';
   node.addEventListener('click', (event) => {
     event.preventDefault();
-    onClick();
+    onClick(event);
   });
   return node;
 }
@@ -50,40 +50,60 @@ function injectStyle() {
 // "<what> (shot N)", the shot inside a closing stop; just "<what>" for shot 0, a problem not in one shot.
 const problemText = ({what, shot}) => (shot > 0 ? what.replace(/[.!?]?$/, (end) => ` (shot ${shot})${end}`) : what);
 
+const TAIL_GROUPS = {place: 1, join: 2, fx: 3};
+
+export function hasCheckIssue(check) {
+  return !!(check && !check.stale && (check.error || check.problems?.length || check.drift?.flagged
+    || check.holds?.length || check.continuity?.warnings?.length));
+}
+
 // The problems of `check` under headings: the entities of `schedule` ({entities, place}, the box's) by name in its
-// order, any other id (by name while `bible` has it), then Place and Join.
+// order, any other id (by name while `bible` has it), then Place, Join and Screen FX.
 export function checkGroups(check, bible, schedule) {
   const problems = check?.problems ?? [];
   const names = new Map((bible?.entities ?? []).map((entity) => [entity.id, entity.name]));
-  const others = problems.map((problem) => problem.about).filter((about) => about !== 'place' && about !== 'join');
-  const order = [...new Set([...(schedule?.entities ?? []), ...others, 'place', 'join'])];
-  const heading = (about) => (about === 'place' ? 'Place' : about === 'join' ? 'Join' : names.get(about) ?? about);
+  const others = problems.map((problem) => problem.about).filter((about) => !(about in TAIL_GROUPS));
+  const order = [...new Set([...(schedule?.entities ?? []), ...others, 'place', 'join', 'fx'])];
+  order.sort((a, b) => {
+    const left = TAIL_GROUPS[a] ?? 0, right = TAIL_GROUPS[b] ?? 0;
+    if (left || right) return left - right;
+    return 0;
+  });
+  const heading = (about) => (about === 'place' ? 'Place' : about === 'join' ? 'Join' : about === 'fx' ? 'Screen FX'
+    : names.get(about) ?? about);
   return order.map((about) => ({heading: heading(about),
     items: problems.filter((problem) => problem.about === about).map(problemText)})).filter((group) => group.items.length);
 }
 
 // The check's state line and the lines under it: "No problems found." or the error, the drift against the scene's
-// first box, numbered by `numberOf(id)`, and any still holds. `retake` is whether the current check found something.
+// first box, numbered by `numberOf(id)`, any still holds, and quantitative seam continuity warnings.
+// `retake` is whether the current check found something.
 export function checkState(check, numberOf = () => null) {
-  if (!check) return {state: 'Not checked yet.', lines: [], retake: false};
-  if (check.stale) return {state: 'The last check was of an earlier render.', lines: [], retake: false};
+  if (!check) return {state: 'Not checked yet.', lines: [], continuityWarnings: [], retake: false};
+  if (check.stale) return {state: 'The last check was of an earlier render.', lines: [], continuityWarnings: [], retake: false};
   const time = String(check.checked ?? '').slice(11, 16);
   const state = check.model ? `Checked at ${time} with ${check.model}.`
     : `Checked at ${time}: drift only, because the Story has no Vision model.`;
   const lines = [];
-  if (check.error) lines.push(check.error);
-  else if (Array.isArray(check.problems) && !check.problems.length) lines.push('No problems found.');
   const words = check.drift?.words;
+  const holds = Array.isArray(check.holds) ? check.holds : [];
+  const continuityWarnings = (check.continuity?.warnings ?? []).filter((w) => typeof w === 'string' && w.trim())
+    .map((w) => w.trim());
+  const anyIssue = !!(check.problems?.length || check.error || words || holds.length || continuityWarnings.length);
+  if (check.error) lines.push(check.error);
+  else if (!anyIssue && Array.isArray(check.problems) && !check.problems.length) lines.push('No problems found.');
   if (words) {
     const number = numberOf(check.drift.box);
     lines.push(`Drift: ${words} than ${number == null ? "the scene's first box" : `box ${number}`}.`);
   }
-  const holds = Array.isArray(check.holds) ? check.holds : [];
   for (const hold of holds) {
     const where = hold.join ? 'at the join' : `at ${(hold.start_ms / 1000).toFixed(1)} s`;
     lines.push(`Holds still: ${hold.frames} frames ${where}.`);
   }
-  return {state, lines, retake: !!(check.problems?.length || check.error || words || holds.length)};
+  for (const warning of continuityWarnings) {
+    lines.push(`Continuity: ${/[.!?]$/.test(warning) ? warning : `${warning}.`}`);
+  }
+  return {state, lines, continuityWarnings, retake: anyIssue};
 }
 
 export class CheckPanel {
@@ -102,7 +122,8 @@ export class CheckPanel {
     this.linesEl = el('div');
     this.noteEl = el('div', 'h3ck-note');
     this.noteEl.setAttribute('role', 'status');
-    this.retakeButton = button('Retake', 'h3ck-retake', () => editor.queueBox());
+    this.retakeButton = button('Retake', 'h3ck-retake', (event) =>
+      editor.queueBox(1, {rebuild: !!(event?.ctrlKey || event?.metaKey)}));
     this.root.append(head, this.stateEl, this.groupsEl, this.linesEl, this.retakeButton, this.noteEl);
   }
 
@@ -160,7 +181,7 @@ export class CheckPanel {
     if (this.note?.text === STALE && !editor.stale) this.note = null;
     this.retakeButton.hidden = !retake;
     this.retakeButton.disabled = editor.boxRenderButton.disabled;
-    this.retakeButton.title = editor.generateTitle ?? '';
+    this.retakeButton.title = editor.boxRenderButton.title || editor.generateTitle || '';
     const note = this.note?.box === box.id ? this.note.text : '';
     setText(this.noteEl, note);
     this.noteEl.hidden = !note;

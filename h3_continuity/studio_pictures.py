@@ -1,7 +1,7 @@
 """Studio pictures: files the user uploaded into the Timeline, loaded with ComfyUI's own Load Image code."""
 import os
 
-from . import timeline as rules
+from . import scene_maps, timeline as rules
 
 
 def used(timeline, index):
@@ -33,6 +33,8 @@ def load(timeline, index, loaded):
         slot, file = picture["slot"], picture["file"]
         if slot in loaded:
             continue
+        if picture.get("scene_map"):
+            scene_maps.ensure(picture)
         if path(file) is None:
             raise ValueError(f"H3 Timeline: box {index + 1} uses @{slot} ({file['filename']}), but the file is missing "
                              f"from ComfyUI's {file['type']} folder")
@@ -47,6 +49,11 @@ def fingerprint(timeline):
     for picture in timeline.pictures:
         if picture["slot"] in timeline.disabled_refs or picture['slot'] in timeline.reference_replacements:
             continue
+        if picture.get("scene_map"):
+            try:
+                scene_maps.ensure(picture)
+            except ValueError:
+                pass  # load() raises with the clip and file named; the fingerprint only records the file is missing.
         found = path(picture["file"])
         stat = os.stat(found) if found else None
         stamps.append((picture["slot"], found, stat.st_mtime_ns if stat else None, stat.st_size if stat else None))

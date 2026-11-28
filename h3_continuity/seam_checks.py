@@ -68,6 +68,7 @@ def _unavailable_video(reason):
             "boundary_luma_step": None, "ramp_luma_step": None, "ramp_luma_profile": [],
             "tail_step_mae": None, "duplicate_tail": False, "seam_freeze": False,
             "join_pop_ratio": None, "before_motion": None, "after_motion": None, "speed_ratio": None,
+            "contrast_drop_ratio": None, "seam_flash": False,
             "before_vignette": None, "after_vignette": None, "vignette_delta": None}
 
 
@@ -163,6 +164,13 @@ def video_join(before, after, *, fps=24.0):
     after_vig = _vignette_drop(after_seq[:4])
     vignette_delta = float(after_vig - before_vig)
 
+    std_before = float(np.asarray(before_seq[-1], dtype=np.float32).std()) / unit
+    std_after0 = float(np.asarray(after_seq[0], dtype=np.float32).std()) / unit
+    std_after_settle = float(np.asarray(after_seq[min(3, len(after_seq) - 1)], dtype=np.float32).std()) / unit
+    std_ref = min(std_before, std_after_settle)
+    contrast_drop_ratio = float(std_after0 / std_ref) if std_ref >= 15.0 else None
+    seam_flash = bool(contrast_drop_ratio is not None and contrast_drop_ratio < 0.70)
+
     return {
         "status": "ok",
         "boundary_frame_mae": join_step,
@@ -178,6 +186,8 @@ def video_join(before, after, *, fps=24.0):
         "before_motion": before_motion,
         "after_motion": after_motion,
         "speed_ratio": speed_ratio,
+        "contrast_drop_ratio": contrast_drop_ratio,
+        "seam_flash": seam_flash,
         "before_vignette": before_vig,
         "after_vignette": after_vig,
         "vignette_delta": vignette_delta,

@@ -173,6 +173,26 @@ class PartialVideoTest(unittest.TestCase):
         unbuilt = timeline_node._status("seq", self.folder, self.parsed, self.manifest, lambda index, entry: True)
         self.assertNotIn("partial_video", unbuilt, "only a materializing status builds it")
 
+    def test_partial_video_stamps_and_passes_adjacent_overlap_seams(self):
+        self.keep()
+        parsed = parse([box("a", 22), box("b", 17), box("c", 17)], video_slices=["video1"])
+        a = self.segment(1, "a", 22, 0, 0, 0.1)
+        b = self.segment(2, "b", 22, 5, 0, 0.1)
+        ov_file = "seg_0002_overlap.mp4"
+        media.write_segment_video(os.path.join(self.folder, ov_file), coded(5, 0, SEGMENT_SIZE), 24, 16)
+        b["video"]["overlap"] = {"file": ov_file, "frames": 5, "fps": 24, "color_space": "sRGB"}
+        manifest = {"segments": [a, b], "source": self.manifest["source"]}
+        captured = []
+        with mock.patch.object(media, "build_full_video",
+                               side_effect=lambda path, videos, audio, crf, size=None, **kw: (captured.append(kw), (path, ""))[1]):
+            record, note = partial_video.build(self.folder, "seq", parsed, manifest, {0, 1}, [], 16)
+        self.assertEqual(note, "")
+        self.assertIsNotNone(record)
+        self.assertEqual(len(captured), 1)
+        self.assertIn("seams", captured[0])
+        self.assertIsNone(captured[0]["seams"][0])
+        self.assertEqual(os.path.basename(captured[0]["seams"][1]["overlap"]), ov_file)
+
 
 if __name__ == "__main__":
     unittest.main()

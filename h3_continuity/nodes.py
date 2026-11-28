@@ -750,10 +750,15 @@ def audio_parts(manifest, ordered):
 
 
 def _generated_audio(folder, parts):
-    """The parts' own audio, each window from its saved waveform."""
-    return media.assemble_audio([(e["context_frames"] + first + count, e["context_frames"] + first,
-                                  store.load_waveform(folder, e) if e.get("audio_sample_rate") else None,
-                                  e.get("audio_sample_rate")) for e, first, count, *_ in parts])
+    """The parts' own audio, each window from its saved waveform, tick-aligned across carried seams."""
+    items = []
+    for part in parts:
+        e, first, count = part[:3]
+        inserted = bool(part[3]) if len(part) > 3 else False
+        sr = e.get("audio_sample_rate")
+        wave = store.load_waveform(folder, e) if sr else None
+        items.append((e, first, count, store.played_frames(e), wave, sr, inserted))
+    return media.assemble_entry_audio(items)
 
 
 def _video_windows(folder, parts):

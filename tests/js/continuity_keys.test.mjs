@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseState, serialize } from '../../web/h3c_timeline_model.mjs?v=9de34a3399af';
+import { parseState, serialize } from '../../web/h3c_timeline_model.mjs?v=c3173f40aa48';
 
 const boxes = [{id: 'a', frames: 124, prompt: 'p'}];
 
@@ -10,12 +10,12 @@ test('the Studio keeps context_noise, continuation_guide and audio_feather throu
   assert.equal(saved.context_noise, true);
   assert.equal(saved.audio_feather, 4);
   assert.equal(saved.continuation_guide, false);
-  const pinned = JSON.parse(serialize(parseState(JSON.stringify({version: 1, boxes, continuation_guide: true}))));
-  assert.equal(pinned.continuation_guide, true);
+  const pinned = JSON.parse(serialize(parseState(JSON.stringify({version: 1, boxes, continuation_guide: 'auto'}))));
+  assert.equal(pinned.continuation_guide, 'auto');
 });
 
 test('defaults are not written', () => {
-  const saved = JSON.parse(serialize(parseState(JSON.stringify({version: 1, boxes, context_noise: false, continuation_guide: 'auto', audio_feather: 0}))));
+  const saved = JSON.parse(serialize(parseState(JSON.stringify({version: 1, boxes, context_noise: false, continuation_guide: true, audio_feather: 0}))));
   assert.equal('context_noise' in saved, false);
   assert.equal('continuation_guide' in saved, false);
   assert.equal('audio_feather' in saved, false);

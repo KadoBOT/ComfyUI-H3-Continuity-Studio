@@ -114,7 +114,7 @@ class ParseTest(unittest.TestCase):
 
     def test_layer_dialogue_and_memory(self):
         self.refused([stacked(videos=[layer(dialogue="sung")])], "box 1 video 2 dialogue must be cues or manual")
-        self.refused([stacked(videos=[layer(memory="cast")])], "box 1 video 2 memory must be off, scene or selected")
+        self.refused([stacked(videos=[layer(memory="cast")])], "box 1 video 2 memory must be off, scene, scene_tail or selected")
 
     def test_continue_after_a_stack_is_refused(self):
         error = self.refused([box("a", 90, cut=True), stacked(), box("c", 73)], "Clip 3 continues")

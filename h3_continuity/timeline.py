@@ -14,6 +14,7 @@ from . import tracks
 from . import timed_text
 from . import audio_windows
 from . import layers
+from . import scene_maps
 
 MAX_FRAMES = 362
 # A Timeline may raise its box limit to this with "max_frames"; boxes past MAX_FRAMES are sampled in context windows.
@@ -34,9 +35,10 @@ BRIDGE_FRAMES = (12, 29, 46)
 MENTION = re.compile(r"(?<![\w@])@(image|audio|video_audio|video)(\d+)(?!\w)", re.IGNORECASE)
 RAW_TAG = re.compile(r"<(?:Picture|Audio|Video) \d+>")
 IMAGE_SLOT = re.compile(r"@?image(\d+)", re.IGNORECASE)
-MEMORY_MODES = ("off", "scene", "selected", "cast")
+MEMORY_MODES = ("off", "scene", "scene_tail", "selected", "cast")
 # Reader features a Timeline can name in "requires"; an editor writes them when the file depends on them.
-REQUIRES = ("dialogue-cues-1", "replacement-bridges-1", audio_windows.FEATURE, layers.FEATURE, tracks.FEATURE)
+REQUIRES = ("dialogue-cues-1", "replacement-bridges-1", audio_windows.FEATURE, layers.FEATURE, tracks.FEATURE,
+            scene_maps.FEATURE)
 
 
 @dataclass
@@ -94,8 +96,8 @@ class Timeline:
     dialogue: dict | None = None
     # Whether each box keeps its own typed dialogue instead of the cues; empty without `parse`. Not on Box either.
     manual_dialogue: list = field(default_factory=list)
-    # Continuing boxes only: the guide at the first new frame ("auto", True, or False) and paired context noise.
-    continuation_guide: bool | str = "auto"
+    # Continuing boxes only: the guide at the first new frame (True, "auto", or False) and paired context noise.
+    continuation_guide: bool | str = True
     context_noise: bool = False
     audio_feather: int = 0
     # Reference video slots each box receives only its own time of, as audio clips are cut by Timeline time.
@@ -108,6 +110,10 @@ class Timeline:
     placements: dict = field(default_factory=dict)
     text_lanes: list = field(default_factory=list)
     overlap_switches: list = field(default_factory=list)
+    # Each box's scene map as saved (see scene_maps.py), or None. Not on Box, whose every field a box plan records.
+    scene_maps: list = field(default_factory=list)
+    # {box index: Studio picture slot} of the boxes that send their map picture to H3.
+    scene_map_slots: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -201,6 +207,8 @@ def parse(text):
         if raw.get("dialogue", "cues") not in ("cues", "manual"):
             raise _error(f"box {n} dialogue must be cues or manual")
     parsed.manual_dialogue = [raw.get("dialogue") == "manual" for raw in boxes]
+    parsed.scene_maps = [scene_maps.validate(raw.get("scene_map"), n) for n, raw in enumerate(boxes, 1)]
+    scene_maps.check(parsed, requires)
     tracks.validate(parsed, data, lambda box,index: played_frames(parsed,index))
     layers.validate(parsed, boxes, requires)
     from . import still_scene, reference_assets
@@ -222,7 +230,7 @@ def parse(text):
                      "cast": raw["cast"] if isinstance(raw.get("cast"), dict) else {}} for raw in boxes]
     for index, box in enumerate(parsed.boxes):
         if box.memory not in MEMORY_MODES:
-            raise _error(f"box {index + 1} memory must be off, scene, selected or cast")
+            raise _error(f"box {index + 1} memory must be off, scene, scene_tail, selected or cast")
         if not isinstance(box.memories, list) or len(box.memories) > 3:
             raise _error(f"box {index + 1} can remember at most 3 earlier moments")
         for item in box.memories:
@@ -332,9 +340,9 @@ def parse(text):
     if type(limit) is not int or not MAX_FRAMES <= limit <= LONG_MAX_FRAMES or limit % GRID != 5:
         raise _error(f"max_frames must be a length on the 17k+5 grid from {MAX_FRAMES} to {LONG_MAX_FRAMES} frames")
     parsed.max_frames = limit
-    parsed.continuation_guide = data.get("continuation_guide", "auto")
+    parsed.continuation_guide = data.get("continuation_guide", True)
     if not (isinstance(parsed.continuation_guide, bool) or parsed.continuation_guide == "auto"):
-        raise _error("continuation_guide must be 'auto', true or false")
+        raise _error("continuation_guide must be true, 'auto' or false")
     parsed.context_noise = data.get("context_noise", False)
     if not isinstance(parsed.context_noise, bool):
         raise _error("context_noise must be true or false")
@@ -406,6 +414,7 @@ def parse(text):
     if parsed.bible is not None or any(box.memory == "cast" for box in parsed.boxes):
         from . import cast_memory
         cast_memory.check(parsed)
+    scene_maps.attach(parsed)
     return parsed
 
 
@@ -599,6 +608,8 @@ def memory_sources(timeline, index):
         result = cast_memory.windows(timeline, index)
     elif box.memory == "scene":
         result = scene_sources(timeline, index)
+    elif box.memory == "scene_tail":
+        result = scene_tail_sources(timeline, index)
     else:
         result = []
         for item in box.memories:
@@ -645,6 +656,23 @@ def scene_sources(timeline, index):
     if box.cut:
         return [(start,0,"scene establishing view"),(before,max(0,previous-5),"the moment before this cut")]
     return [(start,0,"scene establishing view"),(before,max(0,(previous-5)//2),"earlier view of the current scene")]
+
+
+def scene_tail_sources(timeline, index):
+    """Latest state in the current scene: 5 frames before the preceding clip's end (avoids pulling outdated
+    scene-start frame 0 after posture or blocking changes across a continuation chain)."""
+    box = timeline.boxes[index]
+    indices = track_indices(timeline, index)
+    indices = indices[:indices.index(index) + 1]
+    position = max(p for p, i in enumerate(indices)
+                   if p == 0 or (timeline.boxes[i].cut and timeline.boxes[i].new_scene) or timeline.boxes[i].plate_changes)
+    start = indices[position]
+    if start == index:
+        return []
+    before = indices[-2]
+    previous = played_frames(timeline, before)
+    label = "the moment before this cut" if box.cut else "latest state of the current scene"
+    return [(before, max(0, previous - 5), label)]
 
 
 def _changes(value, n):
@@ -1005,7 +1033,8 @@ def assemble_prompt(timeline, index):
     from . import reference_assets
     prompt = join_prompts(*(without_disabled_refs(part.strip(), timeline.disabled_refs + inactive)
                             for part in (timeline.prompt, timeline.boxes[index].prompt)))
-    return join_prompts(prompt,reference_assets.native_prompt(timeline,index))
+    prompt = join_prompts(prompt,reference_assets.native_prompt(timeline,index))
+    return scene_maps.insert(prompt, scene_maps.video_parts(timeline, index))
 
 
 def join_prompts(shared, prompt):
@@ -1278,7 +1307,9 @@ def layout_key(timeline, index, context=39):
                 value["previous"] = timeline.boxes[before].id if before is not None else None
     if box.flf_refmods:
         value["flf_refmods"] = True
-    if not fresh and timeline.continuation_guide != "auto":
+    if scene_maps.digest(timeline, index):
+        value["scene_map"] = scene_maps.digest(timeline, index)
+    if not fresh and timeline.continuation_guide is not True:
         value["continuation_guide"] = timeline.continuation_guide
     if not fresh and timeline.context_noise:
         value["context_noise"] = True
