@@ -1,118 +1,39 @@
 ---
 name: h3-continuity-timing
-description: Use when H3 Timeline box lengths or start times matter. That covers the 17k+5 frame grid, exact lengths and long edits of many short cuts (for example cut to a beat map), dropped frames and the cut that must follow them, where a box starts on the movie clock, boxes past 362 frames with H3 Context Windows, merging a continuing chain, and refining a rendered chain with H3 Join Chain. Part of the H3 Continuity pack; read h3-continuity-video first.
+description: Use when setting or troubleshooting H3 Timeline clip durations, start frames, lip-sync or music-video beat timing, the 17k+5 and 17k frame grids, exact off-grid lengths and dropped frames, carry_conflict errors, long clips above 362 frames with H3C_ContextWindows, chain merging (long_merge, H3C_JoinChain) or H3C_DiskCache and guide_frames.
 ---
 
-# Lengths, exact edits and long boxes
+# Lengths, phrasing, exact edits and long boxes
 
-## The grid and played frames
+## The 24 fps grid & clock
 
-- Output is 24 fps. A fresh box (box 1, or a cut) generates `17k + 5` frames, at
-  least 22. A continuing box generates `17k` new frames, at least 17, after the
-  `context_frames` it carries.
-- A box gives its length as `frames`, or as `seconds` (rounded to frames). Without
-  `exact` the length snaps to the **nearest** grid length: 96 frames play 90 fresh
-  or 102 continuing.
-- **A box starts where the boxes before it end**: its start on the movie clock is
-  the sum of the earlier boxes' played frames. Snapping one box moves every later
-  box, along with the audio, text and guides placed on them. Planning or preparing
-  reports each box's `delivered_range`, `generated_range` and `carry_range` as
-  half-open movie frames, so read those rather than recomputing them.
-- Lengths are the author's. Don't change one to make memory, guides, plate changes,
-  bridges or prompt timing fit; move those instead (see `h3-continuity-video`).
-  Give a box that must hold its length (lip sync, a beat) `exact`, or a length
-  already on the grid, so the length you wrote is the one that plays.
-- The default limit is 362 generated frames, or 362 minus `context_frames` new
-  frames for a continuing box (`limits.exact_frames`).
+- **Fresh box (`cut: true`, box 1, or track start):** generates **`17k + 5`** frames (`>= 22`):
+  `22, 39, 56, 73, 90, 107, 124, 141, 158, 175, 192, 209, 226, 243, 260, 277, 294, 311, 328, 345, 362` (default `max_frames`: `362` = `15.08 s`).
+- **Continuing box (`cut: false`):** generates **`17k` new frames** (`>= 17`) after `context_frames`:
+  `17, 34, 51, 68, 85, 102, 119, 136, 153, 170, 187, 204, 221, 238, 255, 272, 289, 306, 323` (up to `max_frames - context_frames`).
+- Without `exact: true`, `frames` (or `seconds`) snaps to the nearest grid length, shifting downstream boxes on sequential Timelines (`tracks` mode places boxes explicitly by `start`). Read `delivered_range`, `generated_range`, and `carry_range` from `h3_plan_video` / `prepare` instead of computing by hand.
 
-## Exact lengths
+## Music-video, dialogue & lip-sync phrasing
 
-`"exact": true` makes a box play exactly its `frames`, from 1 to its limit. H3
-generates the next grid length up, and the box keeps its first frames and drops the
-rest:
+- **Never put 1 lyric/dialogue line = 1 off-grid `exact: true` box.** Off-grid `exact: true` drops tail frames and **forces the next box to be a hard cut**, turning a continuous song or dialogue scene into jump cuts.
+- **How to keep exact lip sync AND seamless motion:**
+  1. **Group consecutive same-scene lines into grid-aligned `cut: false` chains** (e.g. `107` / `124` / `141` fresh -> `+102` / `+119` / `+136` continuing). `audio_clips` slices each box's exact audio window automatically, while `dialogue` cues (`dialogue-cues-1`) or timed `[Shot N] At MM:SS.mmm,` + `<d>` lines place every sung/spoken phrase at its exact timestamp inside the box.
+  2. **Beat cuts & B-roll during a verse:** Keep the main performance continuous on Track 1 and cut to B-roll on Track 2 with `tracks` + `overlap_switches`, or put parallel angles in multi-video `layers` + `switch` on a grid-aligned clip (see `h3-continuity-joins`).
+  3. **Snap near-grid edits when authoring:** A `140`-frame clip drops 1 frame (42 ms shy of `141`) and blocks continuation; round new scenes onto `17k + 5` / `17k` wherever a 1–2 frame tolerance is acceptable.
+  4. **Reserve off-grid `exact: true` for intentional cuts** — montage beat edits, scene endings, or matching an external cut list where the next clip genuinely starts with `cut: true`.
 
-| Plays | H3 generates | Dropped |
-| --- | --- | --- |
-| 9 (fresh) | 22 | 13 |
-| 30 (fresh) | 39 | 9 |
-| 96 (fresh) | 107 | 11 |
-| 22 (fresh) | 22 | 0 |
-| 40 (continuing) | 51 | 11 |
+## Exact lengths & `carry_conflict`
 
-- Box starts, timed text, audio lanes, guides, memory, pins, the check and the
-  Story's seconds all follow the **played** length. The saved video, its last-frame
-  PNG and its audio stop at the played length, while the saved latents keep every
-  generated frame. The full video lasts exactly as long as its boxes play, plus any
-  rendered bridges.
-- A last-frame guide lands on the last *played* frame. A 1-frame box shows only its
-  first frame.
-- **After a box that drops frames, the next box must be a cut**, or there must be no
-  next box, because a continuation replays the last *generated* frames. Preparation
-  refuses otherwise, for example: "box 3 drops 9 generated frames, so box 4 can't
-  continue it: make box 4 a cut, or give box 3 a length on the grid (22 or 39
-  frames), which moves every later box". Make the next box a cut, which keeps
-  every length. Ask the user before you change the length instead. An exact
-  length that sits on the grid drops nothing and can be continued.
-- A continuing box also needs the box before it to play at least `context_frames`
-  frames. Rendering stops at the continuing box otherwise, and the plan reports
-  `carry_conflict`. Here too, make the continuing box a cut rather than change a
-  length.
-- A bridge can't start after a box that drops frames either, so a join that should
-  take a bridge needs the box before it on the grid.
-- Choosing between the two: when a cut must land on an exact frame (a beat, a
-  lyric, a source edit), use `exact` and accept that the next box is a cut. When
-  boxes should flow into each other, keep grid lengths and let the boxes continue.
+- `"exact": true` plays `frames` (`1..limit`), renders the next grid length up, and truncates played video/audio/`last` PNG while keeping full latents internally.
+- **Rules:**
+  - Any box that drops frames (`dropped_frames > 0`) **cannot** be continued and **cannot** precede an insertion bridge — its follower must be `cut: true`.
+  - An `"exact": true` box whose length sits **on the grid** drops `0` frames and **can** be continued seamlessly.
+  - **`carry_conflict`:** A continuing box requires its predecessor to play `>= context_frames`.
+  - **Author's length rule:** When fixing either conflict on an existing Timeline with approved timings, set the following box to `cut: true` rather than changing lengths; ask the user first before shifting downstream boxes.
 
-## Long edits of many cuts
+## Long edits, > 362 frames, merging & disk cache
 
-A long edit is many short exact cuts, each usually opening on its own picture. Stage
-the pictures as Timeline pictures in slots from `image17` up, with no upper limit
-(`limits.saved_picture_slots`), and name them in each box's `first`, `last` and
-mentions. A box still sends H3 at most 9 pictures. See `h3-continuity-references`
-for pictures and guides, and the "Long edits" section of `external-timeline`.
-
-## Boxes longer than 362 frames
-
-- Raise the Timeline's `max_frames`, a `17k + 5` value from 362 to 991. A box over
-  362 generated frames then needs the **H3 Context Windows** node between the model
-  and the sampler, which samples the latent in overlapping windows. It wraps ComfyUI's
-  MiniMax H3 Context Windows node, so it needs a ComfyUI version that includes it.
-  The defaults are `context_length` 124, `context_overlap` 39, `fuse_method`
-  `pyramid`, with `freenoise` and `split_conds_to_windows` as options.
-- The Studio keeps a Timeline's `max_frames` and lets boxes reach it, but it has
-  no control to set it, and the Story planner still stops at 362. Set `max_frames`
-  in the JSON or through the API.
-- Guides anchor only the window they fall in. Guides unrelated to the prompt make
-  the middle windows follow the prompt alone, so the video cuts to the prompt's
-  scene and back. In tests, windowed runs moved a little more than unwindowed ones.
-  Memory with windows, last guides on boxes that drop frames, boxes past 498
-  frames and higher resolutions are not verified.
-
-## Merging and refining a continuing chain
-
-- `h3_continuity.long_merge.merge_continuing(timeline_json, first_id, last_id)`
-  turns a run of continuing boxes into one box. Frames add up on the grid, prompts
-  join in order, and previews and plate changes move with their frames. It refuses
-  cuts, exact boxes and a continuing box with a first frame. Windowed sampling then
-  blends the old seams. Nothing calls it automatically.
-- **H3 Join Chain** reads saved segments `first_segment`..`last_segment` of one
-  continuing chain from `output/h3_sequences/<name>` into a single latent, keeping
-  each carried stretch once. Noise it with a sampler `denoise` below 1 and sample it
-  through H3 Context Windows. It refuses a chain that crosses a cut or a segment that
-  dropped frames. The refined latent is not saved back as segments.
-
-## First-pass cache and saved execution
-
-H3 Disk Cache goes after the first-pass sampler; downstream decode, Save Segment
-and second pass read its result. Key the Timeline positive, latent and seed.
-Connect the first-pass 24 fps decode to Save Segment `guide_frames`, so later
-second-pass changes do not alter the next clip's first-pass guide. Cache modes
-are use, refresh and off; namespaces live under `output/h3c_cache`. Prompt,
-reference, seed, LoRA or first-pass changes invalidate it. CPU scheduler behavior
-is tested; full GPU rendering remains a separate validation boundary.
-
-Disk Cache, Context Windows, Join Chain and Save Segment codec/colour are graph
-configuration, discoverable with `h3_inspect` nodes. Capture a matching execution
-snapshot after wiring changes. MCP timing edits use `h3_get_project` and
-`h3_save_project`; preserve exact lengths and unknown metadata, then inspect the
-new `h3_plan_video` before explicitly submitting work.
+- **Long edits of many cuts:** Stage unlimited still frames in `pictures[]` from `image17` up (`limits.saved_picture_slots`, max `9` per box), referenced via `first`, `last`, and `@imageN` mentions.
+- **Boxes past `362` frames (`H3C_ContextWindows`):** Raise `max_frames` (a `17k + 5` integer up to `991`) in JSON / API (no Studio widget; Story plans `<= 362`), and insert `H3C_ContextWindows` between model and sampler (`context_length: 124`, `context_overlap: 39`, `fuse_method: "pyramid"`, optional `freenoise` / `split_conds_to_windows`). Guides only steer their local window; keep prompts grounded so middle windows stay on-scene. Memory with windows, last guides on frame-dropping boxes, and > 498f are unverified.
+- **Merge / refine chains:** `h3_continuity.long_merge.merge_continuing(timeline_json, first_id, last_id)` merges un-cut, non-exact continuing boxes (without middle `first` frames) into one box for `H3C_ContextWindows`. **`H3C_JoinChain`** loads `first_segment`..`last_segment` of a non-cut, non-dropping rendered chain into one latent for low-denoise `< 1` refinement through `H3C_ContextWindows` (does not write back segments).
+- **`H3C_DiskCache` & Save Segment `guide_frames`:** Place `H3C_DiskCache` (`use`/`refresh`/`off` under `output/h3c_cache`) after the first-pass sampler, keyed on Timeline positive + latent + seed, and wire the first-pass 24 fps decode to `H3C_SaveSegment.guide_frames` so second-pass changes or upscaling never corrupt the next clip's first-pass guide or codec/colour. Inspect node schemas via `h3_inspect` `nodes` before editing workflows.

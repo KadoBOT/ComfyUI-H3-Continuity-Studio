@@ -1,195 +1,49 @@
 ---
 name: h3-continuity-video
-description: Use when authoring, rendering, reviewing or revising MiniMax H3 video with H3 Continuity Studio (the ComfyUI H3 Timeline, its Studio, H3 Story or the Timeline API), from a script, an agent or the Studio. The entry to the H3 Continuity skill pack, it says which scoped skill covers joins and memory, timing, references, sound, Story and the API.
+description: Use when authoring, planning, rendering, reviewing or debugging MiniMax H3 video in ComfyUI H3 Continuity Studio, H3 Timeline, H3 Story, .h3c projects, Timeline API v1 or MCP — including long seamless sequences, music videos, multi-track cutaways (tracks), multi-angle clip layers, joins, visual memory, references, soundtracks and continuity checks.
 ---
 
 # H3 Continuity Studio
 
-H3 Continuity Studio lays a film out as **boxes** on an **H3 Timeline**. The Studio
-calls them clips, while saved JSON and messages say box. Each box is one MiniMax H3
-generation. A box can continue the one before it, cut to a new angle, start a new
-scene, or be joined to it by a generated bridge. This skill is the entry to a pack
-of scoped skills. Load the ones the task touches, using the table below. You won't
-use every feature every time, but you should know each one exists before you choose
-how to build a shot.
+H3 Continuity Studio arranges a film as **boxes** (called clips in the Studio) on an **H3 Timeline**. Each box is one MiniMax H3 generation. This entry skill routes to six scoped skills — read the host guidance first, then open only the skills your task touches.
 
 ## Read the host first
 
-Over MCP, call `h3_capabilities`, then `h3_read_guidance` for this skill and
-`h3c://docs/MCP.md`. Load the scoped skills through their `skill://` resources.
-The server's Skills extension advertises the same canonical files; resource
-reading alone does not activate a client's skill. See `h3-continuity-api` for saved
-targets, exact JSON documents, receipts and installation.
+- **MCP:** call `h3_capabilities`, then `h3_read_guidance` (`skill://h3-continuity-video/SKILL.md` and `h3c://docs/MCP.md`). Load scoped skills via `skill://<name>/SKILL.md`.
+- **HTTP:** read `GET /h3c/timeline/instructions` before authoring. Prefer its `skills` and `guides[]` (`base`, `ref`, `prompt-writing`, `transitions`, `native-transitions`, `external-timeline`, `timeline-text`, `timeline-audio`, `timeline-references`, `timeline-api`, `limits`, `clients`) over local copies so guidance matches the running host.
 
-On the ComfyUI host you'll render on, read `GET /h3c/timeline/instructions` before
-authoring. It is a self-contained bundle:
-
-- `skill` is this file, and `skills` lists every skill of the pack (`name`, `body`)
-  at the version the host runs. If they differ from a local copy, prefer the
-  host's: it matches the code that renders.
-- `guides[].body`: `base` and `ref` (MiniMax's own prompt guides, when installed on
-  the host; otherwise the body says so, and you consult MiniMax's official H3
-  documentation under its terms), `prompt-writing`, `transitions`,
-  `native-transitions`, `external-timeline` (the Timeline JSON contract),
-  `timeline-text`, `timeline-audio`, `timeline-references` and `timeline-api`.
-- `examples[].body`, `limits` (the frame grid, context lengths, slot and per-box
-  reference limits, bridge lengths, `max_frames`), `revisions`, and `client` and
-  `clients` (the stdlib Python clients).
-
-Use the guide bodies, not their titles. In a checkout of the repository, the same
-texts are under `docs/` and the user guide is under `guide/`.
-
-## The pack
+## Skill pack
 
 | Skill | Load it when the work involves |
 | --- | --- |
-| `h3-continuity-joins` | how a box meets the one before it: continue, cut, new scene, transitions inside H3, **visual memory**, bridges, splitting a box before a timed Shot, opt-in **H3 Continuity Protection** sampling node |
-| `h3-continuity-timing` | box lengths, the frame grid, **exact lengths** and long edits of many cuts, where each box starts, long boxes past 362 frames, Context Windows, merging and refining continuing chains |
-| `h3-continuity-references` | prompts and what H3 sees in one box: the native prompt structure, `t2va`/`flf2va`/`ref2va` modes, `@` mentions, Timeline pictures, first/last frames and Shot guides, still candidates, RefMods, plates, replacements |
-| `h3-continuity-sound` | audio lanes, playing the original recording in the full video, character voice clips, Whisper timed text |
-| `h3-continuity-story` | H3 Story (the writer), templates, the Story bible and Cast (looks, schedules, pins), Cast memory, Story feedback, the continuity check and colour drift |
-| `h3-continuity-api` | driving the host from code: Timeline API v1 projects, plans, jobs, held jobs, artifacts, takes and workflow export, and the older graph-preparation route |
+| `h3-continuity-joins` | continue vs cut vs new_scene, seam freezes or brightness drift, `H3C_ContinuityProtection`, `continuation_guide`, visual memory (`cast`/`scene`/`selected`/`off`), multi-track `tracks` + `overlap_switches`, multi-video `layers` + `switch`, insertion bridges, splitting at `[Shot N]` |
+| `h3-continuity-timing` | `17k+5` / `17k` frame grid, beat/lip-sync/music-video phrasing without over-cutting, `exact` lengths, `carry_conflict`, `max_frames` > 362 (`H3C_ContextWindows`), `long_merge`, `H3C_JoinChain`, `H3C_DiskCache` |
+| `h3-continuity-references` | `t2va`/`flf2va`/`ref2va` modes, `flf_refmods`, prompt sections, `<Subject N>` rules, CFG=1 clean-frame lints, `@` mentions, pictures (`image17+`), guides, `h3_stills` (`P-H3-Image Still`), RefMods, plates, `video_slices` |
+| `h3-continuity-sound` | `audio_clips` (`@audio1..3`), master soundtrack (`in_full_video`), `box_windows`, `disabled_refs`, `dialogue` cues vs `<d>`, `carry_audio`, `audio_feather`, `voice_clips` (`audio4+`), `timed_text` and `text_lanes` |
+| `h3-continuity-story` | `H3C_Story` writer, `user/h3c_templates`, idea images, Story `bible`, Cast (`looks`, `schedules`, `pins`, `assign`), `memory: "cast"`, Vision QC (`checks.json`), CIELAB exposure/colour drift |
+| `h3-continuity-api` | `h3c-mcp` tools, `h3_inspect` / `h3_plan_video` / `h3_render_video`, Timeline API v1 (`/h3c/api/v1`), `/h3c/timeline/prepare`, `requires` flags, revisions, held jobs, takes, workflow export |
 
-## The Timeline in brief
+## Seamless continuity decision table
 
-- **Frames.** Output is 24 fps. A box that starts fresh generates `17k + 5` frames
-  (at least 22), and one that continues generates `17k` new frames (at least 17).
-  Without `exact` every box snaps to that grid. The default maximum is 362
-  generated frames. See `h3-continuity-timing`.
-- **Box fields** (H3 owns these keys): `id`, `frames`, `seconds`, `exact`, `prompt`,
-  `seed`, `cut`, `new_scene`, `first`, `last`, `memory`, `memories`, `previews`,
-  `plate_changes`, `plate_edits`, `cast`, `schedule`, `join`, `source` and
-  `flf_refmods`. Keep your own metadata on a box under another key (for example
-  `edit`), and H3 preserves it. `source` is what H3 Story wrote, so don't author
-  it yourself.
-- **Timeline fields** include the shared `prompt` (it goes before every box's prompt
-  and every bridge's), `pictures`, `audio_clips`, `voice_clips`, `timed_text`,
-  `bible`, `refmods`, `plates`, `disabled_refs`, `reference_replacements`,
-  `bridges` and `max_frames`.
-- **Node settings**: `width` and `height` (multiples of 32), `context_frames` (22,
-  39, 90 or 141: the frames a continuing box carries), `carry_audio`,
-  `ref_image_size` (`match` or `max`) and `audio_context_frames`.
-- **Mode.** Each box runs as `t2va`, `flf2va` or `ref2va`, decided by what it uses.
-  The mode changes how first and last frames behave, so read
-  `h3-continuity-references` before you add pictures, audio or guides to a box.
-- **Current boxes.** A box is current while its saved render still matches its
-  prompt, seed, length, join, pictures, RefMods, guides, audio, timed text,
-  memory and the node's settings. A continuing box also needs the box before it
-  unchanged. A box whose saved render no longer matches is *outdated*: it keeps
-  its take, thumbnail and place in the full video, and the Timeline says why.
-  Each queued run renders the next box that has no take; an outdated box renders
-  again only when it is selected (Regenerate, or `render_box`). Takes follow box
-  ids, so inserting or moving a box never makes later boxes lose theirs.
-- **Render order.** A continuing box, a bridge and a box that remembers another
-  each need their source rendered first. A re-render can make later boxes stale.
-- **Takes.** Each new render of a box or bridge keeps the one before it in
-  `takes/`. A take can be played, compared, put back without rendering (only
-  when it fits both neighbours) or deleted. The Studio can render 1 to 10 takes
-  of a box at once, and the API lists and switches takes (see `h3-continuity-api`).
-  Put an earlier take back rather than re-rendering when it was better.
-- **Full video.** Once every box has a take, `<name>_full.mp4` is assembled in
-  the background from the box videos in Timeline order (status reports
-  `full_video_building` meanwhile). Clips may differ in frame rate, HDR or size
-  and aspect ratio: the join uses the highest rate, HDR when any clip is HDR
-  and the dimensions of the smallest clip by pixel count. Larger clips resize to
-  that width and height even across aspect ratios, which can stretch them. It plays rendered
-  bridges on their joins, and the uploaded recording instead of H3's audio when
-  a clip is marked `in_full_video` (see `h3-continuity-sound`). Each box saves its
-  MP4 without carried frames, its latents (`.safetensors`) and a last-frame PNG
-  under `output/h3_sequences/<name>/`. Keep the folder together, because the
-  latents are what continuation, memory and bridges read.
+Pick the right Timeline tool before chopping a sequence into hard cuts:
 
-Saved projects and generations are separate identities. `h3_library` lists saved
-versions/checkpoints and earlier generations; a fresh generation keeps earlier
-outputs. Named checkpoints are immutable; restore opens an independent editable
-copy. Autosave preferences and browser Undo belong to the browser; explicit agent
-saves use server revisions. No browser synchronization is required, and unsaved
-browser edits are invisible. A stale save may overwrite newer work where existing
-guards permit it; reread on a revision conflict and never silently merge.
+| Creative need | Best Continuity tool | Avoid |
+| --- | --- | --- |
+| Continuous action, singing or dialogue in one setting | Grid-aligned **`cut: false` continue** (`17k+5` fresh, `+17k` continuing) or **timed `[Shot N] At MM:SS.mmm,` stages** in one box | Making 1 lyric/dialogue line = 1 off-grid `exact: true` cut |
+| B-roll or cutaways over an unbroken performance (music video, interview) | **Independent video `tracks`** (`timeline-tracks-1`) + `overlap_switches`: continuous performance on Track 1, cutaways on Track 2 | Breaking Track 1 performance continuity with cuts |
+| Multi-angle coverage of the exact same clip window | **Multi-video `layers` + `switch`** (`video-layers-1`): up to 4 parallel H3 takes switched on-beat inside one box | Duplicating the clock with off-grid cuts |
+| New camera angle in the same scene | **`cut: true, new_scene: false`** with `memory: "cast"` (if `bible` exists) or `"scene"`, plus `H3C_ContinuityProtection` | `memory: "off"` or guessing `selected` frame numbers on unrendered boxes |
+| New location, time of day, or wardrobe change | **`cut: true, new_scene: true`** (or `plate_changes` for an in-scene look/prop change) | Keeping `new_scene: false` across locations |
+| Soften an existing cut between rendered grid boxes (audio NOT locked) | Insertion **`bridges`** (`12`, `29`, `46` frames) | Adding bridges inside a locked `in_full_video` soundtrack |
 
-Status distinguishes full video, video so far and source-backed partial previews,
-including build progress/errors. `h3_inspect` status may build native previews;
-`h3_plan_video` is read-only. A preview is not proof that every box is current.
-Takes have ratings (0–5) and a tag; `h3_takes` previews scoped deletion before an
-explicit delete action. Keep better takes instead of automatically cleaning them.
+## Timeline in brief & authoring invariants
 
-## Box lengths belong to the author
-
-Lip sync, music beats, timed text, audio lanes and guides all hang off each box's
-length, and every box starts where the boxes before it end. A changed length moves
-every later box, so lengths stay fixed while you work:
-
-- Never change a box's `frames`, `seconds` or `exact` to make something else fit. A
-  remembered moment, a guide, a plate change, a bridge or timing in a prompt depends
-  on its box. It never sets the box's length. Move the dependent thing inside the
-  box's played frames, point it at another box, or remove it.
-- Turning `cut` on or off for a box without `exact` also changes its length, because
-  a fresh box and a continuing box snap to different grids.
-- Some errors offer a length change as one of two fixes, for example "make box 4 a
-  cut, or give box 3 a length on the grid". Take the fix that keeps every length.
-  If only a length change would work, stop and ask the user first, and say which
-  later boxes would move.
-- When a length did change by mistake, put back the approved length, then fix
-  what depended on the wrong one.
-
-## Defaults that differ by how a box is made
-
-A box drawn in the Studio or planned by H3 Story starts with visual memory on
-**Same scene** (`scene`). A box written as JSON without `memory` has memory **off**,
-so it knows nothing about earlier shots beyond what it carries. Choose each box's
-memory on purpose (see `h3-continuity-joins`); don't inherit `off` by omission.
-Likewise, a box without `exact` snaps its length to the grid, which moves every
-later box.
-
-## Every feature, in one line each
-
-- Joins: continue, cut, new scene and transition (`h3-continuity-joins`).
-- Visual memory, in `scene`, `selected`, `cast` and `off` modes, with up to three
-  chosen moments (`h3-continuity-joins`).
-- Bridges: 12, 29 or 46 generated frames on a cut, without re-rendering either box
-  (`h3-continuity-joins`).
-- Split a box before a timed `[Shot N]`; frame guides remain independent (`h3-continuity-joins`).
-- Exact lengths, long edits and saved pictures from `image17` up
-  (`h3-continuity-timing`).
-- Long boxes up to 991 frames with H3 Context Windows, merging a continuing chain
-  into one box, and refining a rendered chain with H3 Join Chain
-  (`h3-continuity-timing`).
-- Native prompt sections (complete or partial), timed `[Shot N]` stages, the field
-  and cue-line syntax the Studio's Sections form edits, the shared prompt, and the
-  effective-prompt inspection (`h3-continuity-references`).
-- Connected references (images, videos, video audio, audio), Timeline pictures,
-  enabling, disabling and replacing references, and the `image_N` outputs
-  (`h3-continuity-references`).
-- First and last frames, timed Shot guides, still candidates from the user's own image workflow,
-  scene anchors and prepared still prompts (`h3-continuity-references`).
-- RefMods, FLF2VA with cached RefMods, and appearance plates
-  (`h3-continuity-references`).
-- Audio lanes, `in_full_video`, voice clips, timed text and lettering contracts
-  (`h3-continuity-sound`).
-- H3 Story writing, rewriting and feedback, templates, idea images, the bible,
-  adding a Cast entity to a box, looks, schedules, pins, the continuity check and drift (`h3-continuity-story`).
-- Timeline API v1, the graph-preparation route, receipts, held jobs, artifacts,
-  takes, attached or forked workflow export, and project and generation export
-  (`h3-continuity-api`).
-
-## Always
-
-- Preserve the user's brief, wording, references and requested deliverable. The
-  Timeline takes native H3 prompts directly. Story and a writing provider are
-  optional, and no cast, canon, style or duration is assumed.
-- Continuity features give H3 more to work with; they don't guarantee identity,
-  geometry or timing. Watch each render, and especially each join. Report
-  technical completion (verified files and frame counts) separately from creative
-  acceptance (what the frames actually show).
-- Some decisions belong to a person: abandoning a held job, deleting takes, and
-  spending GPU time beyond what was asked. Surface them; don't make them yourself.
-
-## Installing the pack
-
-The pack lives in the repository's `skills/` folder and works as a whole, so
-install all of it. `python skills/install.py` links every skill folder of the pack
-into the agent skill folders that exist (`~/.agents/skills`, `~/.claude/skills`,
-`~/.codex/skills`), or into those you name with `--target`. Run it from the copy
-of the node that ComfyUI loads, so the skills match the installed code. A link
-follows that copy when it updates, and running the script again adds any skill
-added to the pack since.
+- **Frame grid (24 fps):** Fresh boxes (`cut: true` or track start) generate `17k + 5` (`>= 22`, max `362`); continuing boxes add `17k` new frames (`>= 17`, max `362 - context_frames`) and carry `context_frames` (`22`, `39`, `90`, `141`) + tick-aligned `carry_audio`. Raising `max_frames` (up to `991`) enables `H3C_ContextWindows`.
+- **Owned fields:** Box keys: `id`, `frames`, `seconds`, `exact`, `prompt`, `seed`, `cut`, `new_scene`, `first`, `last`, `previews`, `memory`, `memories`, `dialogue`, `flf_refmods`, `plate_changes`, `plate_edits`, `cast`, `schedule`, `join`, `source`, `track`, `start`, `layers`, `switch`. Timeline keys: `prompt` (shared header), `requires`, `tracks`, `overlap_switches`, `text_lanes`, `pictures`, `audio_clips`, `voice_clips`, `timed_text`, `dialogue`, `bible`, `refmods`, `plates`, `disabled_refs`, `reference_replacements`, `bridges`, `max_frames`, `continuation_guide`, `context_noise`, `audio_feather`, `video_slices`. Store extra custom metadata under another key (e.g. `edit`); never hand-author `source`.
+- **Box lengths belong to the author:** Never alter `frames`, `seconds`, `exact`, or flip `cut` on an un-exact box just to make a dependent frame, bridge, or prompt stage fit — move the dependent item instead, or ask the user before shifting downstream boxes.
+- **JSON vs Studio defaults:** Studio/Story clips default to `memory: "scene"`; raw JSON clips without `memory` default to `"off"`. Always set `memory` deliberately (`"cast"` with a `bible`, `"scene"` in-scene, `"selected"` for callbacks, `"off"` on continuations needing no earlier recall). Un-`exact` boxes snap to the grid unless `exact: true`.
+- **Self-contained `<Subject N>` & CFG=1 hygiene:** Every `<Subject N>` used in a box's `[Shot ...]` or `Dialogue:` MUST be defined in that box's `subject_definitions:` (or shared `prompt`), with exact matching numbers. Never put unsolicited `35mm`, `vignette`, `grain`, `crackle`, `vintage`, `lens flare`, or `overlay` words in prompts unless explicitly requested (`h3_inspect` `prompt_fields` lints both).
+- **Current vs Outdated, Takes & Full Video:** A box is current while its saved MP4 + latent `.safetensors` + last-frame PNG in `output/h3_sequences/<name>/` match its inputs and predecessor. Outdated takes stay playable until explicitly regenerated (`render_box` / Studio Regenerate). Earlier takes stay in `takes/` with ratings (`0..5`) and tags; restore good takes rather than deleting blindly. When all clips have takes, `<name>_full.mp4` builds asynchronously (`full_video_building`); mixed resolutions resize to the smallest pixel-count clip (preserve matching aspect ratios). `<name>_partial.mp4` and `<name>_overlap.mp4` aid review but do not prove all boxes are current.
+- **Revisions, Browser & Human Boundaries:** `h3_library` tracks immutable named checkpoints and server revisions; browser Undo/Redo, autosave, layout, playback, and waveform/beat snap stay browser-side (unsaved browser edits are invisible to MCP). Read before writing on revision conflicts. Never abandon a held job, delete takes, or spend extra GPU time without explicit human approval.
+- **Pre-render check:** Run `h3_inspect` (`prompt_fields`, `status`) and `h3_plan_video` before queueing GPU renders; verify technical completion (files, frames, duration) separately from creative acceptance (watching the joins).
+- **Install pack:** Run `python skills/install.py` from the ComfyUI node checkout so `~/.agents/skills`, `~/.claude/skills`, and `~/.codex/skills` link every skill to the running code.

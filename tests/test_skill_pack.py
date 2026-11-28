@@ -7,11 +7,15 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import yaml
+
 from h3_continuity import timeline_prepare
 
 ROOT = Path(__file__).resolve().parent.parent
 PACK = ROOT / "skills"
 ENTRY = "h3-continuity-video"
+MAX_SKILL_BYTES = 12_500
+MAX_SKILL_LINES = 175
 
 
 def installer():
@@ -42,6 +46,14 @@ class SkillPackTest(unittest.TestCase):
             front = re.match(r"---\nname: (.+)\ndescription: (.+)\n---\n", text)
             self.assertIsNotNone(front, name)
             self.assertEqual(front.group(1), name)
+            parsed = yaml.safe_load(f"name: {front.group(1)}\ndescription: {front.group(2)}\n")
+            self.assertEqual(parsed["name"], name)
+            description = parsed["description"]
+            self.assertIsInstance(description, str)
+            self.assertTrue(description.startswith("Use when "), f"{name} description must start with 'Use when '")
+            self.assertTrue(120 <= len(description) <= 600, f"{name} description length={len(description)}")
+            self.assertLessEqual(len(text.encode("utf-8")), MAX_SKILL_BYTES, f"{name} exceeds byte budget")
+            self.assertLessEqual(len(text.splitlines()), MAX_SKILL_LINES, f"{name} exceeds line budget")
             for mentioned in set(re.findall(r"`(h3-continuity-[a-z-]+)`", text)):
                 self.assertIn(mentioned, self.names, f"{name} names {mentioned}")
 

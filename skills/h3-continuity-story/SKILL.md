@@ -1,173 +1,34 @@
 ---
 name: h3-continuity-story
-description: Use when an H3 Timeline uses or could use H3 Story. That covers writing, rewriting or revising box prompts with a language model, story templates, idea images, the Story bible and Cast (characters, places, props, looks, schedules, joins, pins, adding an entity to a box), Cast visual memory, updating prose after Cast edits, and the continuity check with colour drift. Part of the H3 Continuity pack; read h3-continuity-video first.
+description: Use when authoring or checking stories with H3 Story, a Story bible, Cast entities or continuity diagnostics — including LLM prompt writing/rewriting/feedback, story templates (user/h3c_templates), idea images, characters/places/props, looks, cast schedules, Add from Cast (assign), memory "cast" and pins, CFG=1 vignette/grain prompt lints, Vision QC (checks.json) and CIELAB exposure/colour drift.
 ---
 
-# H3 Story, the bible and the continuity check
+# H3 Story, the bible, Cast and continuity checks
 
-Everything here is optional. A Timeline renders from its box prompts alone, and a
-person or an agent can write those prompts directly. H3 Story helps plan and write
-them, and the bible keeps cast and places consistent in the wording.
+Everything here is optional: timelines render from native box prompts directly, while Story (`H3C_Story`), the `bible`, and checks help plan consistent casts and catch continuity regressions.
 
-## H3 Story, the writer
+## H3 Story writer & templates
 
-Link **H3 Story**'s `story` output to the Timeline's `story` input. Renders never wait
-for it. It calls any OpenAI-compatible endpoint (`base_url`, `model`; optional
-separate story-planning and vision endpoints and models). API keys are kept per host
-on the ComfyUI server, never in the workflow.
+- **Node (`H3C_Story`):** Connects `story` -> Timeline `story` (renders never block on it). Calls configured OpenAI-compatible story/vision endpoints (API keys live on the ComfyUI server, never in workflows; `thinking` sets reasoning effort; `free_vram` yields GPU VRAM before LLM calls).
+- **Actions:** `Write story` (plans up to 60 s when empty and fills scoped boxes), `Rewrite selected clip`, `Rewrite entire Timeline`, `Feedback` (patches from a sentence while leaving unrelated timing/boxes untouched), `Undo last Write` (browser), and `Saved stories`.
+- **Structured compilation:** Model outputs structured shot/state data (`terminal_state`: setting, lighting, positions, camera/subject motion, props); Python compiles prompts so shot timestamps stay valid, dialogue lands verbatim, continuing exits emit carry-through motion (not stop/hold), and over-compressed or stretched slow-motion stages fail validation instead of corrupting prompts. `guide` ranks above idea, `bible`, box plan, and general rules.
+- **Idea images & templates:** Connected idea images guide palette/lighting/composition without consuming the 9-pic limit unless `@imageN` mentioned (**Send pictures to the writer** caches descriptions). Story **Templates** live in `user/h3c_templates` (`*.md` or folder with `SKILL.md`, `<= 100,000` chars; bundled read-only **Music video** and **Trailer** examples; `docs/STORY-TEMPLATES.md`).
 
-- **Write story** plans and writes. It plans the boxes too on an empty Timeline,
-  for `total_seconds` (0 lets the model choose, up to 60 s), and otherwise writes the
-  boxes in `scope`: empty boxes, or also boxes that still hold what Write wrote.
-  **Rewrite selected clip** and **Rewrite entire Timeline** rewrite. **Feedback**
-  patches the current story from a sentence and keeps unrelated text, timing and
-  boxes. **Undo last Write** restores the Timeline.
-- The model returns structured data, and **code compiles** the native prompt. That
-  keeps shot times consistent, inserts dialogue verbatim, and refuses plans that need
-  more time than a box has instead of speeding them up. Invalid replies stay as
-  drafts and never replace a prompt.
-- The writer prefers short, independently editable boxes, even for a continuous
-  take, and existing boundaries and cut flags stay authoritative. A continuing box
-  starts from the pose, lighting/exposure, framing scale, camera speed, and ongoing
-  subject pace actually reached (`terminal_state` carries `setting`, `lighting`,
-  `positions`, `camera_motion`, `subject_motion`, and `props` into the next box).
-  Continuing exits emit carry-through motion targets rather than brake-and-hold
-  endings, and stage scheduling rejects both over-compression and severe under-fill
-  (stretching a brief move into slow motion). Appearance is read-only for box writers:
-  change a look in Cast first.
-- **Clean-frame prompt hygiene (CFG=1 turbo):** Turbo/distilled H3 graphs run under
-  `BasicGuider` (`CFG=1`) with no negative prompt, so unsolicited analog/FX tokens
-  (`35mm`, `16mm`, `anamorphic`, `film grain`, `vignette`, `crackle`, `vintage`,
-  `lens flare`, `overlays`) in `bible.style` or box prompts cause spontaneous corner
-  vignettes and grain/crackle spikes (and `crackling` audio on `room_tone`/ambience
-  can cross-modally induce visual crackle). Keep clean modern digital/animation
-  defaults unless the user or Guide explicitly requests film/vintage FX, and check
-  `h3_inspect` `prompt_fields` warnings for unsolicited FX triggers or cross-box
-  framing/speed/lighting contradictions.
-- The `guide` input holds creative requirements, checked against the final prompts.
-  It ranks first: then the idea, the bible, the box's plan, the shot rules and last
-  the general H3 guidance.
-- **Idea images** are described and used as optional guidance for palette, texture,
-  lighting or composition. They are never reproduced, and only images a prompt
-  uses count toward the nine-picture limit. With **Send pictures to the writer**,
-  the model describes connected pictures that have no description. Descriptions are
-  cached per image.
-- `thinking` sets reasoning effort. `free_vram`, with a model server on the same
-  PC, takes a turn in ComfyUI's queue and frees ComfyUI's models while writing.
-- **Saved stories** keeps every story written on the server, and a story can be
-  loaded into a Timeline again.
+## Pre-render hygiene (CFG=1 & `prompt_fields` lints)
 
-## Templates
+- Turbo H3 graphs use `BasicGuider` at `CFG=1` with **no negative prompt**: unsolicited `35mm`, `16mm`, `anamorphic`, `film grain`, `vignette`, `crackle`, `vintage`, `lens flare`, or `overlay` words in `bible.style` or box prompts trigger dark corner vignettes and grain/crackle spikes (`crackling` ambience can also induce visual crackle). Keep clean modern positive wording unless film FX is requested.
+- Always inspect `h3_inspect` `prompt_fields` before queueing GPU renders — it catches unbound `<Subject N>`, `unsolicited_screen_fx`, `continuation_framing_jump`, `continuation_speed_flip`, and `lighting_drift`.
 
-A template is a video to resemble, written as text: its sequence, style and rules.
-Pick one on the Story page. Templates live in ComfyUI's `user/h3c_templates`, as a
-single `.md` or as a folder with a `SKILL.md` and references. Front matter gives
-`name` and `description`, and the whole template is limited to 100,000 characters.
-The planner spreads the template's sequence over the boxes, and each box writer stages
-its part in the template's look, camera, editing, typography and sound. A template
-ranks after everything the user wrote. Shipped examples, read-only, are **Music
-video** and **Trailer**. See `docs/STORY-TEMPLATES.md`.
+## Story bible, Cast & `memory: "cast"`
 
-## The Story bible and Cast
+- **`timeline.bible` + per-box `cast` / `schedule` / `join`:** Tracks characters, places, and props with descriptions, pictures, voices, and `looks` (outfit/state changes starting at a box, optional new picture). **Build bible** links existing `<Subject N>` lines to entities; Cast edits recompile Story-written boxes cleanly (`Update prose with the writer` patches contradicting hand-edited prose). Appearance belongs to Cast, not per-box invention.
+- **Prefer `Add from Cast` (`assign`):** Given `box` and `entity`, picks the next unused `<Subject N>` (avoiding `<Subject N>` numbering collisions), adds `subject_definitions:` + `cast` + `schedule`, and keeps atomic changes undoable — never adds shots/actions.
+- **Always use `memory: "cast"` when a `bible` exists:**
+  - Automatically sends up to 3 five-frame latent references (capped lower if RefMods videos exist): (1) scheduled characters without a current-look picture in the box (from their latest `pin` since that look began, else mid-shot/exit of the look's first box), then (2) the scheduled `place` (unless continuing in the same place). At a cut, the preceding shot still leads (unless the cut speaks/sings; see `h3-continuity-joins`).
+  - **Pin moment for…** in Studio lets you pin an ideal frame of a character or place once rendered; Write automatically promotes `scene` boxes using a bible to `cast` (while respecting explicit `off`/`selected`).
 
-The bible (`timeline.bible`) lists **characters, places and props**, each with
-pictures, a description, a voice and **looks** over time. Each box records which of
-its subjects is which entity (`cast`, mapping subject labels to entity ids), its
-`schedule` (the entities in it and its place) and its `join`
-(`{kind: continue|transition|cut|new_scene, note}`). Box prompts provide rendered
-prose. Render-time Cast memory, current appearance pictures, voices and reference
-preparation also read the bible/schedule; keep them consistent with the prompts.
+## Post-render continuity check (`checks.json`) & MCP tools
 
-- **Build bible** links each box's `<Subject N> is …` lines to entities without
-  changing any prompt. Lines it can't reproduce exactly stay unlinked, with a reason.
-- With a bible, the writer names entities by id and code writes the prompt from the
-  wording in force at that box. A Cast edit then recompiles the boxes Write wrote,
-  and a box edited by hand gets only a line-by-line update. **Update prose with the
-  writer** patches shot text that contradicts a new look.
-- A **look** applies from its box until the next look, and can have its own picture
-  (an outfit change). A look without a picture keeps the picture in force and says
-  the change in words.
-- A box's subject line **differs** when it isn't the bible's wording. Cast offers to
-  use the bible's wording, make it a look, or link someone else.
-- **Add from Cast** (bible action `assign` with `box` and `entity`) adds one
-  entity to one box: the next unused `<Subject N>` (above every number in the box
-  prompt, the shared prompt and the box's `cast`) defined with the bible's wording
-  and pictures in force at that box, plus its `cast` link and `schedule` entry
-  (`schedule.place` for a place). A prompt without `subject_definitions:` gains
-  it; an `integrated_multimodal_description:` header becomes
-  `detailed_description:`, and plain text moves under it. It returns
-  `{prompts, casts, schedules, subject, changed}` for one atomic save, or
-  `changed: false` with the existing label when the entity is already linked
-  there. It refuses, changing nothing, an entity with neither description nor
-  picture, disabled pictures, duplicate sections, or a box that would exceed
-  H3's reference limits. It never adds shots, retention or actions.
-- Removing an entity from a box's schedule leaves its prompt text and `cast`
-  link; edit or delete the `<Subject N>` definition separately, after removing
-  its other uses.
-- Voices and voice clips belong to characters (see `h3-continuity-sound`).
-- Each Cast change is one undo step.
-
-## Cast memory and pins
-
-With a bible, a box's `memory` can be `cast`. Up to three moments, fewer when the
-box has RefMods videos, are remembered in this order:
-
-1. Each scheduled character that no picture in the box shows as they look now. It
-   uses their latest **pin** since that look began, otherwise the middle of their
-   last shot in the first box of that look, or 5 frames before that box's end.
-2. The place, unless the box continues the box before at the same place. It uses
-   the place's latest pin, otherwise 5 frames before the end of the latest earlier
-   box set there.
-
-At a cut the whole preceding shot comes first, as for every memory mode (see
-`h3-continuity-joins`). A **pin** marks a moment of a box's current take for a
-character or place, through **Pin moment for…** in the Studio's player. A box Write
-writes from the bible moves from `scene` to `cast`, while boxes on `off` or
-`selected` keep their choice. Render the boxes a Cast box remembers first.
-
-## The continuity check and drift
-
-After rendering, the Story's **vision model** can check each rendered box against the
-bible, its pictures and the box before it. It looks at the middle of each shot (up to
-five) and the last frame, the pictures of the box's scheduled characters, props and
-place, and the join with the previous box's last frame, unless the box starts a new
-scene. It reports differences a viewer would notice in a character, prop, place, join
-(including same-scene exposure/brightness shifts and broken framing on continuations),
-or unrequested screen FX (`fx`: vignette, darkened corners, heavy film grain, crackle,
-dust, scratches, lens flares, borders, letterboxing, or overlays).
-
-- **Drift & continuity metrics:** Drift compares a box's mean CIELAB colour with its
-  scene's first box (naming shifts of `>= 8` on a\*b\* or `>= 4.5` in L\*, plus `>= 25%`
-  finer texture rises). Each check also measures adjacent-box (`Box N-1` end vs `Box N`
-  start) L\* exposure jumps, symmetric corner-vs-edge **vignette** and vignette steps,
-  smooth-region high-frequency **grain/crackle** spikes, and at **native segment FPS**
-  both **1-step duplicate/freeze** hitches and **exit-vs-entry motion speed ratios**
-  (`v_after / v_before`). Without a vision model the check runs these quantitative
-  checks only.
-- **Check** checks one box, and **Check all rendered clips** checks every box
-  without a current result. Both need a linked H3 Story node and an empty ComfyUI
-  queue. Results are stored in `checks.json`, and a re-render makes a result stale.
-- **Retake** renders that box alone with a new seed, and the old take stays in
-  `takes/`. The check only reads renders; nothing renders unless asked.
-- The check is a reviewer's aid, not acceptance. Watch the boxes it passes too.
-
-## Saved agent work
-
-`h3_story` exposes writing, rewriting, feedback, templates, bible transformations,
-continuity checks and still-prompt conversion. Configure provider/model widgets in
-the saved Story node; credentials stay on the server. Retired `writing_mode` and
-Guide Recheck are unavailable. Read `h3c://docs/MCP.md` for action payloads.
-
-Writing needs an explicit saved native graph/Story/Timeline and matching execution
-snapshot. Keep the request key/handle; a lost start acknowledgement reconciles
-only against matching request attribution. Poll with `h3_job_status`, retain the
-finished proposal, then explicitly save selected content with the current revision.
-A late result never overwrites a newer save. `taken` acknowledges a retained result
-without applying it. Cancel is scoped to that Story job.
-
-`h3_library` covers saved story versions, display names, deletion and named
-checkpoints. Checkpoints keep their pinned media and cannot be edited; restore
-returns an independent editable copy. `duplicate` copies a story with its renders
-under a new `title`, optionally from a corrected Timeline. Generation export/import verifies local
-installation media rather than embedding files or replaying old jobs. Browser
-Undo/Redo (including Undo last Write) is separate from saved revisions.
+- **Metrics + Vision QC:** Checks up to 5 shot midpoints + last frame + Cast pics + predecessor last frame (`new_scene` skips prior join). Vision reports `character`, `prop`, `place`, `join`, and `fx` defects; quantitative checks run even without a vision model: CIELAB drift from scene start (`a*b* >= 8`, `L* >= 4.5`, texture `>= +25%`), adjacent `Box N-1` -> `Box N` `L*` exposure steps, corner-vs-edge vignette + HF grain/crackle spikes, and **native-FPS** 1-step duplicate/freeze hitches + `v_after / v_before` speed ratio.
+- **Results & Retakes:** Cached in `checks.json` (re-render invalidates; never auto-renders; `Retake` tries a new seed while saving the old take). Always watch rendered joins directly too.
+- **MCP (`h3_story`, `h3_library`):** `h3_story` exposes write/rewrite/feedback/templates/bible/checks/still-prep against a saved graph + snapshot (keep request keys; poll `h3_job_status`; save explicit revisions; late results never overwrite newer saves; `taken` acknowledges without saving; `writing_mode` & Guide Recheck retired). `h3_library` manages versions, checkpoints (immutable; restore opens editable copy), `duplicate` under a new title, and export/import (installation media verified, no old job replay).
