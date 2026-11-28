@@ -18,9 +18,12 @@ PLAN_BIBLE = """- The bible lists the story's characters, places and props by id
 - In "cast", list only the new characters, places and props the story needs, each with its kind (character, place or prop), a description, how its voice sounds if it speaks ("voice": age, pitch, timbre and accent, not the language; else ""), and the references that show it, from the pictures no bible entry has. Phrase a description like "a tall man with ...", giving a character's age, build, face, hair and clothing; a place's layout, materials, time of day and light sources; a prop's shape, material and color. For a member with references, describe only what they show or their descriptions say, else its role; never invent its look.
 - Every story happens somewhere concrete. When neither the idea nor the bible names a place, invent one that fits the idea and add it to "cast" as a place.
 - A box's "on_screen" names who and what is in it, its ending included, by bible or cast name, and Write adds their pictures to it. Anyone its beat shows, even partly or in the background, is on screen; someone only heard or talked about is not. Its "place" names the place it happens in.- Suggest a reference picture when a person, place or object recurs and no reference shows it. Suggestions are optional."""
-STYLE = ('- "style" is one line naming the visual medium and look of the whole film, for example "Live-action, '
-         'cinematic, handheld 35 mm, warm tungsten light" or "3D CG animation, soft global illumination". Every box '
-         'uses it. Follow the Guide when it names a style.')
+STYLE = ('- "style" is one line naming the visual medium, lighting, and clean image look of the whole film, for '
+         'example "Live-action modern digital cinematography, clean full-frame image, even edge-to-edge illumination, '
+         'warm tungsten practical light" or "3D CG animation, soft global illumination, clean full-frame render". '
+         'Avoid unsolicited analog/film stock or screen-FX triggers (such as 35mm, 16mm, anamorphic, film grain, '
+         'vignette, crackle, vintage, lens flare, or overlays) unless the user or Guide explicitly asks for them. '
+         'Every box uses it. Follow the Guide when it names a style.')
 
 BOXES = {True: BOX_PLANNING_RULES + """
 - "duration_ms" is how many integer milliseconds of NEW time a box adds to the film, excluding replay (1000 ms = one second). A box that continues the box before it opens by replaying the end of that box, so it picks up exactly where that box ends: the same people, clothes, place, light and motion. H3 generates its new time plus that replayed part.
@@ -43,9 +46,10 @@ HOLDS = "- Intentional quiet holds remain valid when the story or Guide calls fo
 
 BEATS = """- Keep this plan small. Each beat is a self-contained brief of one to three sentences: its events and ALL assigned dialogue verbatim with speakers; the box writer stages only its assigned beat. No shot scripts or Guide rewrite.
 - Write beats as definite events, not options: avoid "may", "might", "can" and "or".
-- Every box shows a visible change: an action, a movement, a new position, framing, expression or light. Never plan a box that only holds a pose or repeats the box before. When a fixed length is longer than the idea's action, develop the idea with small concrete events that fit it.
+- Every box shows a visible change: an action, a movement, a new position, framing, or expression. Keep lighting and exposure consistent across same-scene boxes unless the story explicitly motivates a light change. Never plan a box that only holds a pose or repeats the box before. When a fixed length is longer than the idea's action, develop the idea with small concrete events that fit it.
+- Budget every planned action at natural real-world speed (a step, reach, turn, or gesture takes ~0.8-1.5 s; nothing visible happens in under 500 ms). Across continuing joins (new_shot=false), keep subject movement pace, camera speed, framing scale, and lighting/exposure continuous from box N into box N+1; never jump framing scale (such as wide shot to tight close-up) or flip slow/fast pace without a cut (new_shot=true).
 - When the Guide asks for a point-of-view or handheld-device camera (a selfie phone, a bodycam), every beat is what that lens sees: the device is not in the frame unless a mirror shows it.
-- "ends" is the physical endpoint, not action history: where each person is, their pose, and the state of the key props.
+- "ends" is the physical endpoint, not action history: where each person is, their pose, ongoing motion direction/pace if continuing, and the state of the key props.
 - The creative Guide, when there is one, holds the user's rules for every box, and its original text reaches each box writer: plan each beat, "on_screen" and "references" so that the box can follow them."""
 FIT = {True: "- Honor hard limits in every planned shot, counting background figures and arrivals. Use only the "
              "references those shots need; don't place unused cast in an establishing group shot.",
@@ -92,8 +96,10 @@ SHOTS = """Field guide, in output order:
 - subject_updates: only for an entity whose look this box changes: its id and the new look's complete
   description in plain words without ids, preserving its identity and unchanged traits. Keep timed
   transformations in shots; an update describes the look the box starts with. Otherwise [].
-- style: one line naming the clip's visual medium and look, for example "Live-action, cinematic, warm
-  tungsten light". Not a story summary. Code uses the bible's style instead when there is one.
+- style: one line naming the clip's visual medium and clean look, for example "Live-action modern digital
+  cinematography, clean full-frame image, even edge-to-edge illumination, warm tungsten light". Not a story
+  summary. Avoid unsolicited 35mm/anamorphic/film-grain/vignette/overlay terms unless requested. Code uses the
+  bible's style instead when there is one.
 - shots: one timed section per distinct action stage or view, even without a cut or camera change.
   A simple beat needs one. For each shot:
   - start_ms: 0 for the first shot, which also covers any replay; later shots start later. All times use the
@@ -122,8 +128,10 @@ SHOTS = """Field guide, in output order:
 - non_diegetic_music: music only the audience hears (instruments, tempo, dynamics), or "N/A". Keep "no music"
   out of every other field.
 - audio_references: how each supplied audio reference is used, or [] when none is supplied.
-- terminal_state: the last frame's facts: setting (place and light), positions (where each entity is and its
-  pose) and props (where each prop is and its state). No action history.
+- terminal_state: the last frame's facts: setting (place), lighting (exact light sources, direction, color
+  temperature, and exposure level), positions (where each entity is and its pose), camera_motion (framing scale,
+  camera position, movement direction, and speed, or static), subject_motion (ongoing trajectory, direction, and
+  pace/cadence, or stillness), and props (where each prop is and its state). No action history.
 Decide the shots, timing and key visual details, then write the JSON once; do not draft it in your reasoning.
 Return only the scene, without a compliance report or self-review."""
 
@@ -144,7 +152,8 @@ IDEA = "Original idea (apply the look changes it asks for in this box; do not ad
 def writer(ref2va, template=None, staged=False):
     """The box writer's system text, with the `template` Write follows, its rule and its rank; a Ref2VA box
     (`ref2va`) also gets the summary line, last, so that every box of a Write shares the text before it."""
-    fields = (story_stages.WRITER + "\nstyle: visual medium and look. terminal_state: setting, positions and props."
+    fields = (story_stages.WRITER + "\nstyle: visual medium and clean look. "
+              "terminal_state: setting, lighting, positions, camera_motion, subject_motion and props."
               if staged else SHOTS)
     blocks = [BOX_TASK, ORDER + "\n" + (BOX_ORDER if template is None else BOX_ORDER_TEMPLATE), BOX_BIBLE, BOX, fields,
               "General H3 guidance:\n" + H3_WRITING_RULES, TRANSITIONS]
@@ -222,7 +231,7 @@ start_ms begins at zero and increases across shots; cut records the story edit. 
 start_ms < end_ms within their shot. subjects lists only the entities visible in that shot; visible_people
 counts every visible person. Respect the creative Guide's cast limit per shot.
 subject_updates changes only explicitly requested attributes and preserves identity; use [] if unchanged.
-terminal_state records the final location, positions and prop states. audio_references lists selected
+terminal_state records the final setting, lighting, positions, camera_motion, subject_motion and prop states. audio_references lists selected
 audio sources; overall_soundscape and non_diegetic_music retain story sound metadata. Use empty arrays
 for absent events and references. summary summarizes the story beat when the schema requests it.
 Every snapshot is self-contained. Preserve the same room layout, furniture, materials, lighting and

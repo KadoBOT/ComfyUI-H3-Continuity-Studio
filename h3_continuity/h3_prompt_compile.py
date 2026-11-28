@@ -6,7 +6,24 @@ from .h3_prompt_validate import (NAME, NOT_NAMES, PLACED, SETTING, appearances, 
                                  validate_analysis, validate_prompt)
 from .h3_prompt_ir import PROSE_FIELDS, SUBJECT_ID, subjects, targets
 
-CONTINUATION = "Continue the supplied motion and camera framing seamlessly without a cut, pause or reset."
+CONTINUATION = (
+    "Continue the supplied subject motion, pace, camera speed, framing, lighting, exposure, "
+    "color grade, and clean frame surface seamlessly without a cut, pause, speed jump, exposure shift, or reset."
+)
+CAMERA_MOVED = re.compile(
+    r"\b(?:the\s+)?camera\s+(?:\w+ly\s+)?(?:holds|stays|remains|pans|tilts|tracks|follows|pushes|pulls|"
+    r"zooms|trucks|dollies|cranes|pedestals|arcs|orbits|circles|moves|glides|drifts|sweeps|rises|"
+    r"descends|rolls|shakes|travels|swings|shows\s+the\s+subject's\s+point\s+of\s+view)\b",
+    re.I,
+)
+CAMERA_SPEED_WORDS = {
+    "slow": re.compile(r"\b(?:slow(?:ly)?|gradual(?:ly)?|gentle|gently|unhurried|creeping|drifting)\b", re.I),
+    "fast": re.compile(r"\b(?:fast|rapid(?:ly)?|quick(?:ly)?|swift(?:ly)?|brisk(?:ly)?|whip)\b", re.I),
+}
+CAMERA_AMPLITUDE_WORDS = {
+    "small": re.compile(r"\b(?:small|slight(?:ly)?|subtle|subtly|tiny|gentle|minimal)\b", re.I),
+    "large": re.compile(r"\b(?:large|wide|broad|sweeping|dramatic|strong(?:ly)?|big)\b", re.I),
+}
 
 CAMERA_ACTIONS = dict(zip(
     ("Zoom In", "Zoom Out", "Push In", "Pull Out", "Pan Left", "Pan Right", "Truck Left", "Truck Right",
@@ -282,8 +299,16 @@ def compile_prompt(data, context, analysis=None):
                 movement += f" with {camera['amplitude']} amplitude"
             if camera["speed"] != "normal":
                 movement += f" at {camera['speed']} speed"
-        if not re.search(r"\bcamera\b", told, re.I):
+        if not CAMERA_MOVED.search(told):
             parts.append(movement + ".")
+        elif camera["type"] not in ("Static Shot", "POV"):
+            modifiers = []
+            if camera["amplitude"] != "normal" and not CAMERA_AMPLITUDE_WORDS[camera["amplitude"]].search(told):
+                modifiers.append(f"with {camera['amplitude']} amplitude")
+            if camera["speed"] != "normal" and not CAMERA_SPEED_WORDS[camera["speed"]].search(told):
+                modifiers.append(f"at {camera['speed']} speed")
+            if modifiers:
+                parts.append("Camera movement proceeds " + " ".join(modifiers) + ".")
         for line in shot["dialogue"]:
             voices = []
             introductions = []

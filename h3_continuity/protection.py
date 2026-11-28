@@ -17,7 +17,15 @@ RECEIPT_KEY = '_h3c_protection_receipt'
 LIGHTING_BLOCKS = '31-33, 36-44, 47'
 DEFAULT_STRENGTH = 0.70
 REF_STRENGTH_MULTIPLIER = 1.5
+SHORT_REF_TOKENS = 2
+SHORT_REF_MEAN_CAP = 0.25
 TAIL_ANCHOR_TOKENS = 12
+CARRIED_TAIL_TOKENS = 5
+SEAM_FEATHER_TOKENS = 8
+SEAM_RAMP_TOKENS = 2
+ROOT_PULL_MAX_STD = 0.25
+MEAN_TAIL_FLOOR = 0.85
+PHASE1_STD_HEADROOM = 1.15
 MODES = ('full', 'contrast_only')
 
 
@@ -99,13 +107,17 @@ def passthrough_reason(segment):
     return None
 
 
-def _has_appearance_change(parsed, chain):
-    return any(parsed.boxes[i].plate_changes or (parsed.boxes[i].new_scene and not parsed.boxes[i].cut)
-               for i in chain)
+def _is_appearance_reset(box):
+    return bool(box.plate_changes or (box.new_scene and not box.cut))
 
 
 def _resolve_root(parsed, index, seen=None):
-    """Find the earliest clean scene root index whose visual tone/lighting owns box `index`, or None."""
+    """Find the earliest clean scene root index whose visual tone/lighting owns box `index`, or None.
+
+    A `new_scene=True` cut always starts a fresh lighting/exposure root (never inheriting mean/color
+    across scene/lighting changes via `cast`, `selected`, or `scene` visual memory). An in-chain
+    `plate_changes` (or `new_scene` without `cut`) resets the root to that box for subsequent clips.
+    """
     seen = set() if seen is None else set(seen)
     if index in seen:
         return None
@@ -113,52 +125,33 @@ def _resolve_root(parsed, index, seen=None):
     box = parsed.boxes[index]
     chain = timeline.continuation_chain(parsed, index)
     if len(chain) >= 2:
-        if _has_appearance_change(parsed, chain):
-            return None
+        resets = [i for i in chain if _is_appearance_reset(parsed.boxes[i])]
+        if resets:
+            latest = resets[-1]
+            return None if latest == index else latest
         root = _resolve_root(parsed, chain[0], seen)
         return chain[0] if root is None else root
-    if not box.cut or box.memory == 'off':
+    if not box.cut or box.memory == 'off' or box.new_scene:
         return None
-    if not box.new_scene:
-        indices = timeline.track_indices(parsed, index)
-        pos = indices.index(index)
-        start_pos = max(p for p, i in enumerate(indices[:pos + 1])
-                        if p == 0 or (parsed.boxes[i].cut and parsed.boxes[i].new_scene)
-                        or parsed.boxes[i].plate_changes)
-        start = indices[start_pos]
-        if start == index:
-            return None
-        if parsed.boxes[start].plate_changes:
-            return start
-        root = _resolve_root(parsed, start, seen)
-        return start if root is None else root
-    # box.cut and box.new_scene and box.memory != 'off': follow explicit visual memory, skipping implicit previous.
-    sources = []
-    if box.memory == 'selected':
-        by_id = {b.id: i for i, b in enumerate(parsed.boxes)}
-        for item in box.memories:
-            src = by_id.get(item.get('box'))
-            if src is not None and src != index:
-                sources.append(src)
-    elif box.memory == 'cast':
-        prev = timeline.previous_index(parsed, index, False)
-        for src, _, _ in timeline.memory_sources(parsed, index):
-            if src != prev:
-                sources.append(src)
-    if not sources:
+    indices = timeline.track_indices(parsed, index)
+    pos = indices.index(index)
+    start_pos = max(p for p, i in enumerate(indices[:pos + 1])
+                    if p == 0 or (parsed.boxes[i].cut and parsed.boxes[i].new_scene)
+                    or _is_appearance_reset(parsed.boxes[i]))
+    start = indices[start_pos]
+    if start == index:
         return None
-    target = sources[0]
-    if parsed.boxes[target].plate_changes:
-        return target
-    root = _resolve_root(parsed, target, seen)
-    return target if root is None else root
+    if _is_appearance_reset(parsed.boxes[start]):
+        return start
+    root = _resolve_root(parsed, start, seen)
+    return start if root is None else root
 
 
 def source_info(parsed, index, entries, is_done, guides, ending):
     """Defer optional source failures: ordinary Timeline graphs need no protection anchor."""
+    if _is_appearance_reset(parsed.boxes[index]):
+        return dict(status='skip', reason='Appearance change: resets protection root for subsequent clips.')
     chain = timeline.continuation_chain(parsed, index)
-    if _has_appearance_change(parsed, chain):
-        return dict(status='skip', reason='Appearance change: protection resumes after the next fresh clip.')
     is_cut = len(chain) < 2
     root = _resolve_root(parsed, index)
     if root is None:
@@ -176,7 +169,7 @@ def source_info(parsed, index, entries, is_done, guides, ending):
         reason = 'An authored frame guide owns the target pose.'
     else:
         reason = ''
-    return dict(status='ready', mode=mode, same_shot=(not is_cut and root == chain[0]),
+    return dict(status='ready', mode=mode, same_shot=(not is_cut and root in chain),
                 source=copy.deepcopy(source), context_noise=parsed.context_noise, capstone_suppressed=reason)
 
 
@@ -240,7 +233,8 @@ def load_anchor_clip(segment, descriptor=None):
     anc_start = timing.tokens_for_frames(src_ctx) if src_ctx else 0
     delivered = src_ctx + store.played_frames(source)
     total_tok = store.video_tokens(folder, source)
-    end_tok = max(anc_start + 1, min(total_tok, timing.tokens_for_frames(timeline.generated_frames(delivered, True))))
+    delivered_tok = next((t for t in range(1, total_tok + 1) if timing.frames_for_tokens(t) >= delivered), total_tok)
+    end_tok = max(anc_start + 1, min(total_tok, delivered_tok))
     if (segment.protection_source or {}).get('same_shot'):
         tail_tokens = min(end_tok - anc_start, TAIL_ANCHOR_TOKENS)
         anc_start = end_tok - tail_tokens
@@ -336,6 +330,27 @@ def compute_phase_stats(video, abs_offset=0):
     }
 
 
+def compute_carried_tail_stats(carried_video):
+    """Phase-0 / phase-1 stats at the immediate exit of `carried_video` ([B, C, T_ctx, H, W]).
+
+    Uses the final token of each phase within the trailing 5-token cycle (`CARRIED_TAIL_TOKENS`) so
+    opening generated token `ctx_tok` meets the exact exit luminance/exposure of the previous clip.
+    """
+    z = carried_video[:1].float()
+    t = z.shape[2]
+    start = max(0, t - CARRIED_TAIL_TOKENS)
+    tail = z[:, :, start:]
+    t_tail = tail.shape[2]
+    p0 = [k for k in range(t_tail) if (start + k) % 5 == 0]
+    p1 = [k for k in range(t_tail) if (start + k) % 5 != 0]
+    last_stats = _tensor_stats(tail[:, :, -1:])
+    return {
+        0: _tensor_stats(tail[:, :, p0[-1:]]) if p0 else last_stats,
+        1: _tensor_stats(tail[:, :, p1[-1:]]) if p1 else last_stats,
+        'all': _tensor_stats(tail),
+    }
+
+
 def _stats_on_device(stats, device, cache):
     key = str(device)
     if key not in cache:
@@ -346,11 +361,34 @@ def _stats_on_device(stats, device, cache):
     return cache[key]
 
 
-def _stabilize_video(video, stats, *, abs_offset=0, strength=1.0, match_mean=True):
-    """Phase-aware per-channel upper-clamped std, optional mean alignment, and 3x3 HF overshoot damping."""
+def _smooth_temporal_mean(tok_mean):
+    """3-tap [0.25, 0.50, 0.25] replicate-padded temporal smoothing on [B, C, T, 1, 1] token means."""
+    if tok_mean.shape[2] <= 1:
+        return tok_mean
+    flat = tok_mean.squeeze(-1).squeeze(-1)
+    padded = F.pad(flat, (1, 1), mode='replicate')
+    smoothed = 0.25 * padded[:, :, :-2] + 0.50 * padded[:, :, 1:-1] + 0.25 * padded[:, :, 2:]
+    return smoothed.unsqueeze(-1).unsqueeze(-1)
+
+
+def _soft_clamp_delta(delta, cap):
+    """Smoothly bound |delta| to `cap` via cap * tanh(delta / cap)."""
+    cap = cap.clamp_min(1e-5)
+    return cap * torch.tanh(delta / cap)
+
+
+def _stabilize_video(video, stats, *, abs_offset=0, strength=1.0, match_mean=True,
+                     mean_strength=None, tail_stats=None, same_shot=True,
+                     seam_feather=0, seam_ramp=0, end_ramp=0,
+                     local_mean=False, phase1_std_headroom=1.0):
+    """Phase-aware per-channel upper-clamped std, seam-feathered mean alignment, and 3x3 HF damping."""
     orig_dtype = video.dtype
     z = video.float()
     t = z.shape[2]
+    detail_w = float(strength)
+    mean_w = detail_w if mean_strength is None else float(mean_strength)
+    if detail_w <= 0.0 and (not match_mean or mean_w <= 0.0):
+        return video
     p0 = [k for k in range(t) if (abs_offset + k) % 5 == 0]
     p1 = [k for k in range(t) if (abs_offset + k) % 5 != 0]
     out = z.clone()
@@ -360,28 +398,87 @@ def _stabilize_video(video, stats, *, abs_offset=0, strength=1.0, match_mean=Tru
             continue
         anc_mean, anc_std, anc_hf = stats[phase]
         cur = z[:, :, idx]
-        cur_mean = cur.mean(dim=(2, 3, 4), keepdim=True)
-        cur_std = cur.std(dim=(2, 3, 4), unbiased=False, keepdim=True).clamp_min(1e-5)
-        target_std = torch.minimum(cur_std, anc_std)
-        target_mean = anc_mean if match_mean else cur_mean
-        aligned = (cur - cur_mean) * (target_std / cur_std) + target_mean
-        low, high = _split_hf(aligned)
+        if local_mean:
+            tok_mean = cur.mean(dim=(3, 4), keepdim=True)
+            cur_mean = _smooth_temporal_mean(tok_mean) if (phase == 1 and cur.shape[2] >= 2) else tok_mean
+        else:
+            cur_mean = cur.mean(dim=(2, 3, 4), keepdim=True)
+        centered = cur - cur_mean
+        cur_std = centered.std(dim=(2, 3, 4), unbiased=False, keepdim=True).clamp_min(1e-5)
+        std_cap = anc_std * (float(phase1_std_headroom) if phase == 1 else 1.0)
+        target_std = torch.minimum(cur_std, std_cap)
+        std_aligned = centered * (target_std / cur_std)
+
+        low, high = _split_hf(std_aligned)
         cur_hf = high.pow(2).mean(dim=(2, 3, 4), keepdim=True).sqrt().clamp_min(1e-5)
         hf_scale = torch.clamp(anc_hf / cur_hf, max=1.0)
-        aligned = low + high * hf_scale
-        out[:, :, idx] = cur + float(strength) * (aligned - cur)
+        # Cancel replicate-padding boundary bias so HF damping preserves exact spatial mean.
+        detail_aligned = low + high * hf_scale - (hf_scale - 1.0) * high.mean(dim=(3, 4), keepdim=True)
+
+        idx_t = torch.tensor(idx, device=z.device, dtype=torch.float32).view(1, 1, -1, 1, 1)
+        detail_ramp = torch.ones_like(idx_t)
+        if seam_ramp > 0:
+            detail_ramp = torch.minimum(detail_ramp, ((idx_t + 1.0) / float(seam_ramp + 1)).clamp(0.0, 1.0))
+        end_fade = torch.ones_like(idx_t)
+        if end_ramp > 0:
+            dist_end = float(t - 1) - idx_t
+            end_fade = ((dist_end + 1.0) / float(end_ramp + 1)).clamp(0.0, 1.0)
+            detail_ramp = torch.minimum(detail_ramp, end_fade)
+
+        centered_out = centered + (detail_w * detail_ramp) * (detail_aligned - centered)
+
+        if match_mean and mean_w > 0.0:
+            if tail_stats is not None:
+                tail_mean = tail_stats[phase][0]
+                if same_shot:
+                    cap = anc_std * ROOT_PULL_MAX_STD
+                    far_mean = tail_mean + _soft_clamp_delta(anc_mean - tail_mean, cap)
+                    if seam_feather > 0:
+                        frac = (idx_t / float(seam_feather)).clamp(0.0, 1.0)
+                        alpha = 0.5 * (1.0 - torch.cos(math.pi * frac))
+                        target_mean = tail_mean + alpha * (far_mean - tail_mean)
+                    else:
+                        target_mean = far_mean
+                else:
+                    # Post-cut continuation: anchor mean strictly to carried tail; root owns std/HF only.
+                    target_mean = tail_mean
+                # target_mean already matches tail_mean at idx=0 and feathers smoothly; only fade near a frozen ending.
+                mean_ramp = end_fade
+            else:
+                target_mean = anc_mean
+                mean_ramp = detail_ramp
+            mean_out = cur_mean + (mean_w * mean_ramp) * (target_mean - cur_mean)
+        else:
+            mean_out = cur_mean
+
+        out[:, :, idx] = centered_out + mean_out
 
     return out.to(dtype=orig_dtype)
 
 
 def _schedule_weight(strength, u):
-    """Hold full stabilization through u=0.75 progress, tapering smoothly to 0.5*strength at the final step."""
+    """Hold full detail/std stabilization through u=0.75 progress, tapering smoothly to 0.5*strength at u=1.0."""
     if strength <= 0:
         return 0.0
     if u <= 0.75:
         return float(strength)
     frac = min(1.0, max(0.0, (u - 0.75) / 0.25))
     return float(strength) * (1.0 - 0.5 * frac)
+
+
+def _mean_schedule_weight(strength, u):
+    """Hold full mean stabilization through u=0.75, tapering only to MEAN_TAIL_FLOOR*strength at u=1.0."""
+    if strength <= 0:
+        return 0.0
+    if u <= 0.75:
+        return float(strength)
+    frac = min(1.0, max(0.0, (u - 0.75) / 0.25))
+    return float(strength) * (1.0 - (1.0 - MEAN_TAIL_FLOOR) * frac)
+
+
+def _schedule_weights(strength, u):
+    """Return (mean_weight, detail_weight) at normalized progress u in [0, 1]."""
+    return _mean_schedule_weight(strength, u), _schedule_weight(strength, u)
 
 
 class ProtectionReceipt:
@@ -393,6 +490,7 @@ class ProtectionReceipt:
         self.descriptor = None
         self.schedule = None
         self.calls = 0
+        self.post_cfg_calls = 0
         self.balanced = 0
         self.balanced_blocks = set()
 
@@ -497,8 +595,16 @@ def patch_model(model, prepared, segment, originals, capstone, descriptor, balan
     if anc_tensor is not None:
         anc_in = core.latent_format.process_in(anc_tensor.float())
         anc_stats = compute_phase_stats(anc_in, abs_offset=anchor_offset)
+    tail_stats = None
+    if originals is not None:
+        orig_in = core.latent_format.process_in(originals[:1].float())
+        tail_stats = compute_carried_tail_stats(orig_in)
+    same_shot = bool((segment.protection_source or {}).get('same_shot', True))
     dev_stats_cache = {}
+    dev_tail_cache = {}
     ref_cache = {}
+    use_post_cfg = hasattr(m, 'set_model_sampler_post_cfg_function')
+    active_shapes = [None]
 
     def call_model(apply_model, args):
         receipt.balanced_blocks.clear()
@@ -508,6 +614,55 @@ def patch_model(model, prepared, segment, originals, capstone, descriptor, balan
             raise ValueError(f'{WHO}: attention balance never ran on selected blocks {sorted(missing)}; '
                              'another attention patch may be bypassing native attention.')
         return result
+
+    def _stabilize_packed(packed, sigma, shapes):
+        if anc_stats is None or strength <= 0 or receipt.schedule is None:
+            return packed
+        sched = receipt.schedule
+        n_steps = max(1, len(sched) - 1)
+        step_idx = min(range(n_steps), key=lambda k: abs(sched[k] - sigma))
+        u = step_idx / max(1, n_steps - 1) if n_steps > 1 else 0.0
+        mean_w, detail_w = _schedule_weights(strength, u)
+        if detail_w <= 0 and (not match_mean or mean_w <= 0):
+            return packed
+        if shapes is None or len(shapes) != 2:
+            raise ValueError(f'{WHO}: missing native packed AV shapes for stabilization.')
+        is_nested = getattr(packed, 'is_nested', False)
+        video_x0, audio_x0 = _streams(packed, shapes)
+        ctx_tok = originals.shape[2] if originals is not None else 0
+        end_tok = segment.ending_video.shape[2] if segment.ending_video is not None else 0
+        gen_end = video_x0.shape[2] - end_tok
+        if ctx_tok < gen_end:
+            dev_st = _stats_on_device(anc_stats, video_x0.device, dev_stats_cache)
+            dev_tail = _stats_on_device(tail_stats, video_x0.device, dev_tail_cache) if tail_stats is not None else None
+            gen = _stabilize_video(
+                video_x0[:, :, ctx_tok:gen_end], dev_st, abs_offset=ctx_tok,
+                strength=detail_w, mean_strength=mean_w, match_mean=match_mean,
+                tail_stats=dev_tail, same_shot=same_shot,
+                seam_feather=SEAM_FEATHER_TOKENS if ctx_tok > 0 else 0,
+                seam_ramp=SEAM_RAMP_TOKENS if ctx_tok > 0 else 0,
+                end_ramp=SEAM_RAMP_TOKENS if end_tok > 0 else 0,
+                local_mean=True, phase1_std_headroom=PHASE1_STD_HEADROOM,
+            )
+            parts = ([video_x0[:, :, :ctx_tok]] if ctx_tok > 0 else []) + [gen] + (
+                [video_x0[:, :, gen_end:]] if end_tok > 0 else [])
+            video_out = parts[0] if len(parts) == 1 else torch.cat(parts, dim=2)
+            if is_nested:
+                from comfy.nested_tensor import NestedTensor
+                return NestedTensor((video_out, audio_x0))
+            return comfy.utils.pack_latents((video_out, audio_x0))[0]
+        return packed
+
+    def post_cfg(args):
+        if receipt.schedule is None:
+            return args['denoised']
+        sigma_val = args.get('sigma')
+        if sigma_val is None:
+            return args['denoised']
+        sigma = float(sigma_val.detach().float().flatten()[0])
+        shapes = active_shapes[0] or getattr(args.get('model'), 'latent_shapes', None)
+        receipt.post_cfg_calls += 1
+        return _stabilize_packed(args['denoised'], sigma, shapes)
 
     def evaluate(apply_model, args):
         c = args['c']
@@ -522,11 +677,6 @@ def patch_model(model, prepared, segment, originals, capstone, descriptor, balan
             raise ValueError(f'{WHO}: ambiguous model timestep for the sampling schedule.')
         receipt.calls += 1
 
-        sched = receipt.schedule
-        n_steps = max(1, len(sched) - 1)
-        step_idx = min(range(n_steps), key=lambda k: abs(sched[k] - sigma))
-        u = step_idx / max(1, n_steps - 1) if n_steps > 1 else 0.0
-
         shapes = c.get('latent_shapes')
         conditions = dict(c, transformer_options=dict(c_options))
 
@@ -538,20 +688,27 @@ def patch_model(model, prepared, segment, originals, capstone, descriptor, balan
             kf_count = sum(1 for kf in kfs if kf.get('latent') is not None)
             ref_entries = [r for r in refs if 'latent' in r]
             if cond_lats and len(cond_lats) == kf_count + len(ref_entries):
+                # Target only H3 Continuity visual-memory refs; leave user @video* refs, stills and keyframes untouched.
                 video_indices = [kf_count + i for i, r in enumerate(ref_entries)
-                                 if r.get('kind') in ('video', 'video_audio')]
+                                 if r.get('h3c_memory') and r.get('kind') in ('video', 'video_audio')]
                 if video_indices:
                     cache_key = tuple((idx, id(cond_lats[idx]), tuple(cond_lats[idx].shape)) for idx in video_indices)
                     if cache_key not in ref_cache:
                         new_cond_lats = list(cond_lats)
                         eff_ref_w = min(1.0, strength * REF_STRENGTH_MULTIPLIER)
+                        short_mean_w = min(SHORT_REF_MEAN_CAP, strength * 0.35)
                         for idx in video_indices:
                             ref_t = new_cond_lats[idx]
                             if isinstance(ref_t, torch.Tensor) and ref_t.ndim == 5 and ref_t.shape[1] == 24:
                                 dev_st = _stats_on_device(anc_stats, ref_t.device, dev_stats_cache)
-                                new_cond_lats[idx] = _stabilize_video(
-                                    ref_t, dev_st, abs_offset=0, strength=eff_ref_w, match_mean=match_mean,
+                                ref_mean_w = short_mean_w if ref_t.shape[2] <= SHORT_REF_TOKENS else eff_ref_w
+                                ref_in = core.latent_format.process_in(ref_t.float())
+                                ref_stab = _stabilize_video(
+                                    ref_in, dev_st, abs_offset=0,
+                                    strength=eff_ref_w, mean_strength=ref_mean_w, match_mean=match_mean,
+                                    phase1_std_headroom=PHASE1_STD_HEADROOM,
                                 )
+                                new_cond_lats[idx] = core.latent_format.process_out(ref_stab).to(dtype=ref_t.dtype)
                         ref_cache[cache_key] = new_cond_lats
                     new_payload = dict(payload)
                     new_payload['cond_video_latents'] = ref_cache[cache_key]
@@ -559,24 +716,10 @@ def patch_model(model, prepared, segment, originals, capstone, descriptor, balan
 
         packed = call_model(apply_model, dict(args, c=conditions))
 
-        step_w = _schedule_weight(strength, u)
-        if anc_stats is not None and step_w > 0:
-            if shapes is None or len(shapes) != 2:
-                raise ValueError(f'{WHO}: missing native packed AV shapes for stabilization.')
-            video_x0, audio_x0 = comfy.utils.unpack_latents(packed, shapes)
-            ctx_tok = originals.shape[2] if originals is not None else 0
-            end_tok = segment.ending_video.shape[2] if segment.ending_video is not None else 0
-            gen_end = video_x0.shape[2] - end_tok
-            if ctx_tok < gen_end:
-                dev_st = _stats_on_device(anc_stats, video_x0.device, dev_stats_cache)
-                gen = _stabilize_video(
-                    video_x0[:, :, ctx_tok:gen_end], dev_st, abs_offset=ctx_tok,
-                    strength=step_w, match_mean=match_mean,
-                )
-                parts = ([video_x0[:, :, :ctx_tok]] if ctx_tok > 0 else []) + [gen] + (
-                    [video_x0[:, :, gen_end:]] if end_tok > 0 else [])
-                video_out = parts[0] if len(parts) == 1 else torch.cat(parts, dim=2)
-                packed = comfy.utils.pack_latents((video_out, audio_x0))[0]
+        if not use_post_cfg:
+            cond_or_uncond = args.get('cond_or_uncond') or [0]
+            if 1 not in cond_or_uncond:
+                packed = _stabilize_packed(packed, sigma, shapes)
         return packed
 
     def sample(executor, noise, latent_image, sampler, sigmas, denoise_mask=None, callback=None,
@@ -584,7 +727,7 @@ def patch_model(model, prepared, segment, originals, capstone, descriptor, balan
         if not receipt.lock.acquire(blocking=False):
             raise ValueError(f'{WHO}: this prepared model is already sampling.')
         receipt.complete, receipt.accepted, receipt.descriptor = False, set(), None
-        receipt.calls = receipt.balanced = 0
+        receipt.calls = receipt.post_cfg_calls = receipt.balanced = 0
         receipt.schedule = None
         ref_cache.clear()
         try:
@@ -605,6 +748,7 @@ def patch_model(model, prepared, segment, originals, capstone, descriptor, balan
                 raise ValueError(f'{WHO}: sampler did not receive the prepared noise mask.')
             _current_source(segment, descriptor)
             receipt.schedule = schedule
+            active_shapes[0] = latent_shapes
             last_x0 = None
 
             def restored_callback(step, x0, x, total):
@@ -632,11 +776,14 @@ def patch_model(model, prepared, segment, originals, capstone, descriptor, balan
             receipt.complete = True
             return result
         finally:
+            active_shapes[0] = None
             receipt.schedule = None
             ref_cache.clear()
             receipt.lock.release()
 
     m.set_model_unet_function_wrapper(evaluate)
+    if use_post_cfg:
+        m.set_model_sampler_post_cfg_function(post_cfg, disable_cfg1_optimization=False)
     # Run restoration outside existing wrappers, so Save sees the final restored result.
     pe.add_wrapper_with_key(pe.WrappersMP.OUTER_SAMPLE, METHOD, sample, m.model_options, is_model_options=True)
     return m, receipt

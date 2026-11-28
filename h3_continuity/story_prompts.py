@@ -36,8 +36,8 @@ GUIDE = load_h3_guides()
 # Adapted from the Singularity writing specification; provenance in docs/H3-PROMPT-WRITING.md.
 BOX_PLANNING_RULES = """- Budget natural actions, speech, reactions and holds, then split into short, independently editable boxes by default. Prefer several short boxes even for one continuous take: the Timeline carries the previous latent and motion. A 15-second take can add 2 + 3 + 4 + 4 + 2 seconds across continuing boxes, with no cuts after the first. These NEW durations are illustrative, not a required count or template. Never rush content or add padding.
 - Prefer generated clips under about 10 seconds, replay included. This is a soft preference; 15 seconds is the hard limit, not a target. A longer box needs an explicit user request or a concrete benefit continuation cannot preserve; explain it briefly in the beat. Continuous motion, a locked camera, shared cast, setting or one dramatic beat alone do not justify a long box. Plan enough boxes for the total instead of stretching a few.
-- Boxes are render jobs, not camera cuts. Split at playable action stages as well as edits. For unbroken action after box 1 use new_shot=false, new_scene=false and join kind continue; preserve pose, momentum and direction without a pause or reset. Shot sections are timed stages; continuous/static views can use several with cut=false. For a longer box, describe its distinct stages in the beat. A character limit applies per shot, not across all shots.
-- Choose playable beats that fit the total; do not compress a large idea into it. Two-second boxes are valid when playable with the supplied replay. No minimum preferred length or equal split. Avoid needless fragmentation or filling to the limit. In automatic-length mode the total is a ceiling, not time to fill."""
+- Boxes are render jobs, not camera cuts. Split at playable action stages as well as edits. For unbroken action after box 1 use new_shot=false, new_scene=false and join kind continue; preserve pose, momentum, subject pace, camera speed, framing scale, lighting/exposure, and direction without a pause, framing jump, speed flip, or reset. Shot sections are timed stages; continuous/static views can use several with cut=false. For a longer box, describe its distinct stages in the beat. A character limit applies per shot, not across all shots.
+- Choose playable beats that fit the total at natural real-world speed (a step, reach, or turn takes ~0.8-1.5 s; nothing visible happens in under 500 ms); do not compress a large idea or stretch a brief move into slow motion. Two-second boxes are valid when playable with the supplied replay. No minimum preferred length or equal split. Avoid needless fragmentation or filling to the limit. In automatic-length mode the total is a ceiling, not time to fill."""
 
 
 SELF_CONTAINED = """Write every video prompt as a self-contained scene. H3 renders each box alone: it knows only this prompt and
@@ -71,8 +71,12 @@ add events to fill a checklist. A quiet hold or locked camera can be the complet
   recoil or reflections respond to the same force/contact; do not invent an effect or additional action.
 - Specify light source/direction, color and material response rather than relying on quality adjectives.
   Atmosphere, reflections and light changes follow the scene; motion blur belongs to rapid movement.
-- Within continuous action, carry screen direction, pose, prop ownership/state and persistent damage across
-  shots. A planned change of time or place may establish a new state; an angle change alone does not reset it."""
+- Render a clean full-frame image with even edge-to-edge illumination and consistent exposure across the scene.
+  Do not add unsolicited vignette, darkened corners, film grain, crackle, dust, scratches, lens flares,
+  light leaks, letterboxing, borders, or overlays unless the user or creative Guide explicitly asks for them.
+- Within continuous action, carry screen direction, subject pace, camera speed, framing scale, lighting/exposure,
+  pose, prop ownership/state and persistent damage across shots. A planned change of time or place may establish
+  a new state; an angle change alone does not reset it."""
 H3_WRITING_GUIDANCE = ("Shot-writing guidance, subordinate to the creative Guide, supplied mode, schema and timing:\n"
                        + H3_WRITING_RULES)
 

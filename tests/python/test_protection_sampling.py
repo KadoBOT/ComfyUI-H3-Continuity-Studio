@@ -30,10 +30,12 @@ def patcher():
 
 
 class CpuGuider(comfy.samplers.CFGGuider):
-    """Run the real core pack/mask/wrapper/callback dispatch; only weight evaluation is synthetic."""
+    """Run the real core pack/mask/wrapper/post-cfg/callback dispatch; only weight evaluation is synthetic."""
     def __init__(self, model):
         super().__init__(model)
         self.calls = []
+        self.denoised_outputs = []
+        self.raw_predictions = []
         self.fail = False
         self.extra_sigmas = []
         self.cfg_batch = False
@@ -65,6 +67,16 @@ class CpuGuider(comfy.samplers.CFGGuider):
                 prediction = fn(predict,dict(input=xx,timestep=torch.full((xx.shape[0],),float(s)),c=c,
                                            cond_or_uncond=[0,1] if self.cfg_batch else [0]))
                 assert prediction.shape == xx.shape
+                self.raw_predictions.append(prediction.clone())
+                if self.cfg_batch:
+                    cond_p, uncond_p = prediction.chunk(2, dim=0)
+                else:
+                    cond_p, uncond_p = prediction, torch.zeros_like(prediction)
+                denoised = comfy.samplers.cfg_function(
+                    core, cond_p, uncond_p, self.cfg, x,
+                    torch.full((x.shape[0],), float(s)), model_options=self.model_options)
+                assert denoised.shape == x.shape
+                self.denoised_outputs.append(denoised.clone())
             if self.fail:
                 raise RuntimeError('sampler failed')
             if callback:
@@ -72,11 +84,15 @@ class CpuGuider(comfy.samplers.CFGGuider):
         return core.process_latent_out(x+5)
 
 
-def run(model, latent, *, steps=8, callback=None, fail=False, extra_sigmas=(), cfg_batch=False, payload=None):
+def run(model, latent, *, steps=8, callback=None, fail=False, extra_sigmas=(), cfg_batch=False,
+        cfg=1.0, payload=None, custom_predict=None):
     guider = CpuGuider(model)
     guider.fail = fail
     guider.extra_sigmas = extra_sigmas
     guider.cfg_batch = cfg_batch
+    guider.set_cfg(cfg)
+    if custom_predict is not None:
+        guider.custom_predict = custom_predict
     if payload is not None:
         guider.extra_payload = payload
         guider.seen_payloads = []
@@ -153,18 +169,29 @@ class ProtectionSamplingTest(unittest.TestCase):
         quiet_out = protection._stabilize_video(quiet, stats, abs_offset=12, strength=1.0, match_mean=False)
         self.assertTrue(torch.allclose(quiet_out, quiet, atol=1e-4))
 
-    def test_video_memory_refs_stabilize_while_keyframes_and_images_stay_untouched(self):
+    def test_video_memory_refs_stabilize_while_user_refs_keyframes_and_images_stay_untouched(self):
+        torch.manual_seed(11)
         latent, segment, front = carried()
         prepared, originals = protection.prepare_latent(latent, segment, front)
         anchor = torch.randn(1, 24, 12, 4, 4) * 0.4 + 0.5
         kf_t = torch.randn(1, 24, 1, 4, 4)
         img_t = torch.randn(1, 24, 1, 4, 4)
-        vid_t = torch.randn(1, 24, 5, 4, 4) * 2.0 - 1.5
-        va_t = torch.randn(1, 24, 5, 4, 4) * 2.0 - 1.5
+        user_vid_t = torch.randn(1, 24, 5, 4, 4) * 2.0 - 1.5
+        user_va_t = torch.randn(1, 24, 5, 4, 4) * 2.0 - 1.5
+        mem_vid_t = torch.randn(1, 24, 5, 4, 4) * 2.0 - 1.5
+        mem_va_t = torch.randn(1, 24, 5, 4, 4) * 2.0 - 1.5
+        mem_short_t = torch.randn(1, 24, 2, 4, 4) * 2.0 - 1.5
         payload = {
             'keyframes': [{'latent': kf_t}],
-            'refs': [{'kind': 'image', 'latent': img_t}, {'kind': 'video', 'latent': vid_t}, {'kind': 'video_audio', 'latent': va_t}],
-            'cond_video_latents': [kf_t, img_t, vid_t, va_t],
+            'refs': [
+                {'kind': 'image', 'latent': img_t},
+                {'kind': 'video', 'latent': user_vid_t},
+                {'kind': 'video_audio', 'latent': user_va_t},
+                {'kind': 'video', 'latent': mem_vid_t, 'h3c_memory': True},
+                {'kind': 'video_audio', 'latent': mem_va_t, 'h3c_memory': True},
+                {'kind': 'video', 'latent': mem_short_t, 'h3c_memory': True},
+            ],
+            'cond_video_latents': [kf_t, img_t, user_vid_t, user_va_t, mem_vid_t, mem_va_t, mem_short_t],
         }
         base = patcher()
         with mock.patch.object(protection, '_current_source'):
@@ -173,11 +200,196 @@ class ProtectionSamplingTest(unittest.TestCase):
                 anchor_video=anchor, anchor_offset=0, strength=0.70, mode='full')
             _, guider = run(model, prepared, steps=2, payload=payload)
         seen = guider.seen_payloads[0]['cond_video_latents']
+        # Keyframes, images, and user-supplied @video* refs (without h3c_memory) stay untouched.
         self.assertTrue(torch.equal(seen[0], kf_t))
         self.assertTrue(torch.equal(seen[1], img_t))
-        self.assertFalse(torch.equal(seen[2], vid_t))
-        self.assertFalse(torch.equal(seen[3], va_t))
-        self.assertLess((seen[2].mean() - anchor.mean()).abs().item(), (vid_t.mean() - anchor.mean()).abs().item())
+        self.assertTrue(torch.equal(seen[2], user_vid_t))
+        self.assertTrue(torch.equal(seen[3], user_va_t))
+        # H3 Continuity visual-memory refs stabilize toward the anchor.
+        self.assertFalse(torch.equal(seen[4], mem_vid_t))
+        self.assertFalse(torch.equal(seen[5], mem_va_t))
+        self.assertFalse(torch.equal(seen[6], mem_short_t))
+        self.assertLess((seen[4].mean() - anchor.mean()).abs().item(), (mem_vid_t.mean() - anchor.mean()).abs().item())
+        # Tiny 2-token memory windows keep std damped but cap mean forcing (never 100% forced to anchor mean).
+        self.assertLess(seen[6].std().item(), mem_short_t.std().item())
+        full_shift = (seen[4].mean() - mem_vid_t.mean()).abs().item()
+        short_shift = (seen[6].mean() - mem_short_t.mean()).abs().item()
+        self.assertLess(short_shift, full_shift * 0.5)
+        self.assertGreater((seen[6].mean() - anchor.mean()).abs().item(), 0.5)
+
+    def test_memory_references_tags_h3c_memory_blocks(self):
+        from h3_continuity import conditioning
+        class FakeVae:
+            def decode(self, video):
+                return torch.zeros(1, 17, 8, 8, 3)
+        vid5 = torch.randn(1, 24, 5, 4, 4)
+        vid2 = torch.randn(1, 24, 2, 4, 4)
+        _, blocks = conditioning.memory_references(object(), FakeVae(), [vid5, vid2], memory_frames=(17, 5))
+        self.assertEqual(len(blocks), 2)
+        for blk, src in zip(blocks, (vid5, vid2)):
+            self.assertIs(blk['h3c_memory'], True)
+            self.assertEqual(blk['kind'], 'video')
+            self.assertIs(blk['latent'], src)
+
+    def test_sawtooth_snap_eliminated_and_feathered_on_same_shot_continuation(self):
+        torch.manual_seed(21)
+        # Clean scene anchor is bright (+0.8), carried tail drifted darker (-0.8): a 1.6 latent mean gap.
+        anchor = torch.randn(1, 24, 15, 6, 6) * 0.35 + 0.8
+        carried_tail = torch.randn(1, 24, 12, 6, 6) * 0.35 - 0.8
+        stats = protection.compute_phase_stats(anchor, abs_offset=0)
+        tail_stats = protection.compute_carried_tail_stats(carried_tail)
+        # Case 1: DiT opens smoothly at carried tail mean (-0.8). Opening token must NOT snap toward +0.8!
+        gen_smooth = torch.randn(1, 24, 14, 6, 6) * 0.35 - 0.8
+        out_smooth = protection._stabilize_video(
+            gen_smooth, stats, abs_offset=12, strength=0.70, mean_strength=0.70, match_mean=True,
+            tail_stats=tail_stats, same_shot=True, seam_feather=protection.SEAM_FEATHER_TOKENS,
+            seam_ramp=protection.SEAM_RAMP_TOKENS, local_mean=True,
+            phase1_std_headroom=protection.PHASE1_STD_HEADROOM)
+        tail_p1_mean = tail_stats[1][0].mean().item()
+        anc_p1_mean = stats[1][0].mean().item()
+        tok0_mean = out_smooth[:, :, 0].mean().item()
+        tok_far_mean = out_smooth[:, :, 10].mean().item()
+        # Opening token stays right at carried tail mean (eliminating the sawtooth snap).
+        self.assertLess(abs(tok0_mean - tail_p1_mean), 0.12)
+        # Downstream tokens feather gently toward anchor, soft-clamped by ROOT_PULL_MAX_STD * anc_std.
+        self.assertGreater(tok_far_mean, tok0_mean)
+        self.assertLess(abs(tok_far_mean - tail_p1_mean), 0.35 * protection.ROOT_PULL_MAX_STD * 1.5 + 0.15)
+        self.assertLess(tok_far_mean, anc_p1_mean - 1.0)
+        # Case 2: Raw DiT jumps +1.5 brighter at the opening seam; opening token is pulled back toward tail_mean.
+        gen_jump = gen_smooth + 1.5
+        out_jump = protection._stabilize_video(
+            gen_jump, stats, abs_offset=12, strength=0.70, mean_strength=0.70, match_mean=True,
+            tail_stats=tail_stats, same_shot=True, seam_feather=protection.SEAM_FEATHER_TOKENS,
+            seam_ramp=protection.SEAM_RAMP_TOKENS, local_mean=True,
+            phase1_std_headroom=protection.PHASE1_STD_HEADROOM)
+        self.assertLess(abs(out_jump[:, :, 0].mean().item() - tail_p1_mean), 0.65)
+        # Case 3: Contrast/std clamping ramps smoothly over seam_ramp tokens (idx=0 damped less than idx=2).
+        gen_hot = torch.randn(1, 24, 10, 6, 6) * 2.0 - 0.8
+        out_hot = protection._stabilize_video(
+            gen_hot, stats, abs_offset=12, strength=1.0, mean_strength=1.0, match_mean=False,
+            tail_stats=tail_stats, same_shot=True, seam_feather=8, seam_ramp=2, local_mean=True)
+        std0 = out_hot[:, :, 0].std().item()
+        std1 = out_hot[:, :, 1].std().item()
+        std2 = out_hot[:, :, 2].std().item()
+        self.assertGreater(std0, std1)
+        self.assertGreater(std1, std2)
+
+    def test_post_cut_continuation_anchors_mean_to_carried_tail_and_clamps_std_from_root(self):
+        torch.manual_seed(22)
+        root_anchor = torch.randn(1, 24, 15, 6, 6) * 0.3 + 1.0
+        carried_tail = torch.randn(1, 24, 12, 6, 6) * 0.3 - 1.0
+        stats = protection.compute_phase_stats(root_anchor, abs_offset=0)
+        tail_stats = protection.compute_carried_tail_stats(carried_tail)
+        gen = torch.randn(1, 24, 14, 6, 6) * 1.8 - 1.0
+        gen[:, :12, :, ::2, ::2] += 1.2
+        out = protection._stabilize_video(
+            gen, stats, abs_offset=12, strength=0.85, mean_strength=0.85, match_mean=True,
+            tail_stats=tail_stats, same_shot=False, seam_feather=8, seam_ramp=2, local_mean=True)
+        tail_p1_mean = tail_stats[1][0].mean().item()
+        # Even deep into the clip (idx=10), post-cut continuation mean stays pinned to carried tail, never pulled to +1.0.
+        self.assertLess(abs(out[:, :, 0].mean().item() - tail_p1_mean), 0.18)
+        self.assertLess(abs(out[:, :, 10].mean().item() - tail_p1_mean), 0.18)
+        # Std and HF overshoot are still damped down toward root stats.
+        self.assertLess(out[:, :, 4:].std().item(), gen[:, :, 4:].std().item() * 0.6)
+
+    def test_intra_clip_pan_preserves_opening_seam_mean(self):
+        torch.manual_seed(23)
+        anchor = torch.randn(1, 24, 15, 6, 6) * 0.4
+        carried_tail = torch.randn(1, 24, 12, 6, 6) * 0.4
+        stats = protection.compute_phase_stats(anchor, abs_offset=0)
+        tail_stats = protection.compute_carried_tail_stats(carried_tail)
+        # Smooth brightening pan from 0.0 at idx=0 to +3.0 at idx=19.
+        ramp = torch.linspace(0.0, 3.0, 20).view(1, 1, 20, 1, 1)
+        gen = torch.randn(1, 24, 20, 6, 6) * 0.4 + ramp
+        out_local = protection._stabilize_video(
+            gen, stats, abs_offset=12, strength=0.70, mean_strength=0.70, match_mean=True,
+            tail_stats=tail_stats, same_shot=True, seam_feather=8, seam_ramp=2, local_mean=True)
+        out_global = protection._stabilize_video(
+            gen, stats, abs_offset=12, strength=0.70, mean_strength=0.70, match_mean=True,
+            tail_stats=tail_stats, same_shot=True, seam_feather=8, seam_ramp=2, local_mean=False)
+        # Local temporal mean keeps idx=0 near 0.0 instead of shifting it backward to -1.0 like clip-wide mean.
+        self.assertLess(abs(out_local[:, :, 0].mean().item()), 0.25)
+        self.assertLess(out_global[:, :, 0].mean().item(), -0.6)
+
+    def test_split_final_step_schedule_and_phase1_motion_headroom(self):
+        self.assertAlmostEqual(protection._schedule_weight(0.70, 1.0), 0.35)
+        self.assertAlmostEqual(protection._mean_schedule_weight(0.70, 0.0), 0.70)
+        self.assertAlmostEqual(protection._mean_schedule_weight(0.70, 0.75), 0.70)
+        self.assertAlmostEqual(protection._mean_schedule_weight(0.70, 1.0), 0.70 * protection.MEAN_TAIL_FLOOR)
+        self.assertEqual(protection._schedule_weights(0.70, 1.0), (0.70 * protection.MEAN_TAIL_FLOOR, 0.35))
+
+        # Construct smooth low-frequency spatial field (minimal HF) to isolate std headroom per phase.
+        torch.manual_seed(24)
+        grid_y = torch.linspace(-1.0, 1.0, 8).view(1, 1, 1, 8, 1)
+        grid_x = torch.linspace(-1.0, 1.0, 8).view(1, 1, 1, 1, 8)
+        base_field = (grid_y + grid_x).expand(1, 24, 10, 8, 8).clone()
+        stats = protection.compute_phase_stats(base_field, abs_offset=0)
+        # 1.10x std on both phases: below PHASE1_STD_HEADROOM (1.15) for phase-1, above 1.0 for phase-0.
+        gen_motion = base_field * 1.10
+        out = protection._stabilize_video(
+            gen_motion, stats, abs_offset=0, strength=1.0, match_mean=False,
+            phase1_std_headroom=protection.PHASE1_STD_HEADROOM)
+        p0_ratio = (out[:, :, [0, 5]].std() / base_field[:, :, [0, 5]].std()).item()
+        p1_ratio = (out[:, :, [1, 2, 3, 4, 6, 7, 8, 9]].std() / base_field[:, :, [1, 2, 3, 4, 6, 7, 8, 9]].std()).item()
+        self.assertLess(p0_ratio, 1.03)
+        self.assertGreater(p1_ratio, 1.08)
+
+        # Even with phase-1 std headroom, checkerboard HF overshoot on phase-1 is still damped down.
+        gen_hf = base_field.clone()
+        gen_hf[:, :, [1, 2, 3, 4, 6, 7, 8, 9], ::2, ::2] += 0.35
+        out_hf = protection._stabilize_video(
+            gen_hf, stats, abs_offset=0, strength=1.0, match_mean=False,
+            phase1_std_headroom=protection.PHASE1_STD_HEADROOM)
+        _, raw_high = protection._split_hf(gen_hf[:, :, [1, 2, 3, 4, 6, 7, 8, 9]])
+        _, out_high = protection._split_hf(out_hf[:, :, [1, 2, 3, 4, 6, 7, 8, 9]])
+        self.assertLess(out_high.pow(2).mean().sqrt().item(), raw_high.pow(2).mean().sqrt().item() * 0.5)
+
+    def test_post_cfg_stabilizes_cfg_gt_1_without_distorting_uncond_and_runs_at_cfg_1(self):
+        torch.manual_seed(25)
+        latent, segment, front = carried()
+        prepared, originals = protection.prepare_latent(latent, segment, front)
+        # Anchor and carried tail both sit near 0.0.
+        anchor = torch.randn(1, 24, 15, 4, 4) * 0.3
+        base = patcher()
+        # Case A: BasicGuider (cfg=1.0, cfg_batch=False) runs post_cfg and never leaks options onto base.
+        with mock.patch.object(protection, '_current_source'):
+            model_cfg1, receipt_cfg1 = protection.patch_model(
+                base, prepared, segment, originals, front, dict(method=protection.METHOD, source_stamp=[1, 2]),
+                anchor_video=anchor, anchor_offset=0, strength=0.70, mode='full')
+            outputs_cfg1, _ = run(model_cfg1, prepared, steps=4, cfg=1.0, cfg_batch=False)
+        self.assertTrue(receipt_cfg1.complete)
+        self.assertGreater(receipt_cfg1.post_cfg_calls, 0)
+        self.assertNotIn('sampler_post_cfg_function', base.model_options)
+        for out in outputs_cfg1:
+            self.assertTrue(torch.equal(out['samples'].tensors[0][:, :, :12], originals))
+
+        # Case B: CFGGuider (cfg=4.0, cfg_batch=True) leaves raw uncond/cond untouched pre-CFG,
+        # and stabilizes the post-CFG amplified denoised x0.
+        def biased_predict(xx, tt, **c):
+            v, a = comfy.utils.unpack_latents(xx, c['latent_shapes'])
+            v_out = v.clone()
+            v_out[0, :, 12:] = 2.0   # cond drifted bright
+            v_out[1, :, 12:] = -0.5  # uncond sits at -0.5 -> raw CFG(4) = -0.5 + 4*(2.5) = +9.5
+            return comfy.utils.pack_latents((v_out, a))[0]
+
+        with mock.patch.object(protection, '_current_source'):
+            model_cfg4, receipt_cfg4 = protection.patch_model(
+                base, prepared, segment, originals, front, dict(method=protection.METHOD, source_stamp=[1, 2]),
+                anchor_video=anchor, anchor_offset=0, strength=0.80, mode='full')
+            outputs_cfg4, guider_cfg4 = run(
+                model_cfg4, prepared, steps=4, cfg=4.0, cfg_batch=True, custom_predict=biased_predict)
+        self.assertTrue(receipt_cfg4.complete)
+        self.assertEqual(receipt_cfg4.post_cfg_calls, len(guider_cfg4.denoised_outputs))
+        self.assertNotIn('sampler_post_cfg_function', base.model_options)
+        # Pre-CFG raw predictions remain completely unmodified (uncond is NOT warped toward anchor).
+        raw_v, _ = comfy.utils.unpack_latents(guider_cfg4.raw_predictions[-1], guider_cfg4.model_patcher.model.latent_shapes)
+        self.assertAlmostEqual(raw_v[0, :, 12:].mean().item(), 2.0, places=4)
+        self.assertAlmostEqual(raw_v[1, :, 12:].mean().item(), -0.5, places=4)
+        # Post-CFG denoised x0 was stabilized strongly down from raw CFG +9.5 toward tail/anchor (~0.0).
+        post_v, _ = comfy.utils.unpack_latents(guider_cfg4.denoised_outputs[-1], guider_cfg4.model_patcher.model.latent_shapes)
+        self.assertLess(post_v[0, :, 12:].mean().item(), 4.0)
+        for out in outputs_cfg4:
+            self.assertTrue(torch.equal(out['samples'].tensors[0][:, :, :12], originals))
 
     def test_existing_wrappers_cfg_batches_and_audio_survive(self):
         latent,segment,front=carried()

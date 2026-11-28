@@ -28,8 +28,22 @@ on the ComfyUI server, never in the workflow.
   drafts and never replace a prompt.
 - The writer prefers short, independently editable boxes, even for a continuous
   take, and existing boundaries and cut flags stay authoritative. A continuing box
-  starts from the pose and motion actually reached. Appearance is read-only for box
-  writers: change a look in Cast first.
+  starts from the pose, lighting/exposure, framing scale, camera speed, and ongoing
+  subject pace actually reached (`terminal_state` carries `setting`, `lighting`,
+  `positions`, `camera_motion`, `subject_motion`, and `props` into the next box).
+  Continuing exits emit carry-through motion targets rather than brake-and-hold
+  endings, and stage scheduling rejects both over-compression and severe under-fill
+  (stretching a brief move into slow motion). Appearance is read-only for box writers:
+  change a look in Cast first.
+- **Clean-frame prompt hygiene (CFG=1 turbo):** Turbo/distilled H3 graphs run under
+  `BasicGuider` (`CFG=1`) with no negative prompt, so unsolicited analog/FX tokens
+  (`35mm`, `16mm`, `anamorphic`, `film grain`, `vignette`, `crackle`, `vintage`,
+  `lens flare`, `overlays`) in `bible.style` or box prompts cause spontaneous corner
+  vignettes and grain/crackle spikes (and `crackling` audio on `room_tone`/ambience
+  can cross-modally induce visual crackle). Keep clean modern digital/animation
+  defaults unless the user or Guide explicitly requests film/vintage FX, and check
+  `h3_inspect` `prompt_fields` warnings for unsolicited FX triggers or cross-box
+  framing/speed/lighting contradictions.
 - The `guide` input holds creative requirements, checked against the final prompts.
   It ranks first: then the idea, the bible, the box's plan, the shot rules and last
   the general H3 guidance.
@@ -117,12 +131,19 @@ After rendering, the Story's **vision model** can check each rendered box agains
 bible, its pictures and the box before it. It looks at the middle of each shot (up to
 five) and the last frame, the pictures of the box's scheduled characters, props and
 place, and the join with the previous box's last frame, unless the box starts a new
-scene. It reports only differences a viewer would notice in a character, prop, place
-or join. Camera, framing, motion, blur and artefacts are out of its scope.
+scene. It reports differences a viewer would notice in a character, prop, place, join
+(including same-scene exposure/brightness shifts and broken framing on continuations),
+or unrequested screen FX (`fx`: vignette, darkened corners, heavy film grain, crackle,
+dust, scratches, lens flares, borders, letterboxing, or overlays).
 
-- **Drift** compares a box's mean CIELAB colour with its scene's first box. A shift
-  of 8 or more on a\*b\*, or 10 or more in L\*, is named, for example "warmer and 12%
-  darker than box 1". Without a vision model the check measures drift only.
+- **Drift & continuity metrics:** Drift compares a box's mean CIELAB colour with its
+  scene's first box (naming shifts of `>= 8` on a\*b\* or `>= 4.5` in L\*, plus `>= 25%`
+  finer texture rises). Each check also measures adjacent-box (`Box N-1` end vs `Box N`
+  start) L\* exposure jumps, symmetric corner-vs-edge **vignette** and vignette steps,
+  smooth-region high-frequency **grain/crackle** spikes, and at **native segment FPS**
+  both **1-step duplicate/freeze** hitches and **exit-vs-entry motion speed ratios**
+  (`v_after / v_before`). Without a vision model the check runs these quantitative
+  checks only.
 - **Check** checks one box, and **Check all rendered clips** checks every box
   without a current result. Both need a linked H3 Story node and an empty ComfyUI
   queue. Results are stored in `checks.json`, and a re-render makes a result stale.

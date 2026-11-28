@@ -11,7 +11,9 @@ Select only the images relevant to this clip, within H3's total nine-image allow
 from several images. Keep these images out of cast, on_screen, place and native first/last frames.
 Use image_guidance to state exactly what each selected image contributes: palette, lighting, texture,
 style, atmosphere, composition or another requested attribute. Do not reproduce the source image,
-its layout, people, objects or visible text merely because they occur in it. Describe the original scene
+its layout, people, objects or visible text merely because they occur in it. Never carry over borders,
+frames, vignetting, film grain, crackle, dust, scratches, lens flares, color grading overlays, or
+watermarks from a guide image unless explicitly requested. Describe the original scene
 from the idea and creative Guide. The compiler cites image sources inside reusable guidance Subject
 definitions, uses reference generation and weak_reference, and creates no standalone Picture anchor.
 Use [] when a selected image contributes nothing; its file will not be attached to the rendered clip."""
@@ -19,7 +21,9 @@ Use [] when a selected image contributes nothing; its file will not be attached 
 PLANNING = """Optional Idea-image references may guide Ref2VA style, palette, lighting, texture, atmosphere or
 composition without their source image or depicted people/objects appearing in the video. Select relevant
 image slots in a box's references even when they show no on-screen cast. State their intended contribution
-in the beat. Do not assign them to cast, on_screen, place or first/last frames. Omit unused images.
+in the beat. Keep clean full-frame output; do not import borders, vignetting, grain, crackle, lens flares,
+or overlays from idea images unless explicitly requested. Do not assign them to cast, on_screen, place or
+first/last frames. Omit unused images.
 They count toward the same nine-image allowance as identity and other image references."""
 
 

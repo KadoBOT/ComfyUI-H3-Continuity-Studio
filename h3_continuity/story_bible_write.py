@@ -365,8 +365,12 @@ def frame(ctx, index, context, schedule, left_out, wording):
     """What compiling box `index` needs besides its reply and the bible; `wording` ({entity id: wording}) is what the
     box is written with."""
     slots = context.slots
+    after = rules.following_index(ctx.timeline, index) if getattr(ctx, "timeline", None) is not None else (
+        index + 1 if index + 1 < len(ctx.boxes) else None)
+    continues_next = after is not None and after < len(ctx.boxes) and not ctx.boxes[after].fresh
     return {"mode": context.mode,
             **({"renderer": "image"} if ctx.renderer == "image" else {}),
+            **({"continues_next": True} if continues_next else {}),
             **({"image_guidance": list(context.image_guidance)} if context.image_guidance else {}),
             "slots": {"mode": slots.mode, "references": list(slots.references), "audios": list(slots.audios),
                       "first": slots.first, "last": slots.last},
@@ -385,14 +389,16 @@ def _framed(source, bible, ids, index):
     return context, *box_cast(bible, ids, index, shape["schedule"], context, shape["left_out"], shape.get("wording"))
 
 
-def compile_source(source, bible, ids, index, notes=None):
+def compile_source(source, bible, ids, index, notes=None, allowed_context=""):
     """(text, details): box `index` compiled from `source` and `bible` alone, the Timeline's audio lines included."""
     context, subjects, compile = _framed(source, bible, ids, index)
     if "stages" in source["frame"]:
         story_stages.validate_source(source["reply"], source["frame"]["stages"], context.generated_frames,
                                      context.carried_frames)
+    continues_next = source["frame"].get("continues_next")
     text, details = story_fast.compile_prompt(copy.deepcopy(source["reply"]), None, None, index, context, subjects,
-                                              notes, None, compile, image=source["frame"].get("renderer") == "image")
+                                              notes, None, compile, image=source["frame"].get("renderer") == "image",
+                                              continues_next=continues_next, allowed_context=allowed_context)
     if source["frame"].get("renderer") == "image":
         return text, details
     return prompts.add_timeline_audio(text, [tuple(entry) for entry in source["frame"]["audio"]]), details
@@ -403,8 +409,11 @@ def source_schema(source, bible, ids, index):
     context, subjects, _ = _framed(source, bible, ids, index)
     schema = story_fast.response_schema(context, subjects, "summary" in source["reply"],
                                         any("opening_state" in shot for shot in source["reply"].get("shots", [])), endings=True)
-    # Feedback may patch a saved reply written before shots had an explicit cut choice.
+    # Feedback may patch a saved reply written before shots had an explicit cut choice or extended terminal_state.
     schema["properties"]["shots"]["items"]["required"].remove("cut")
+    for key in ("lighting", "camera_motion", "subject_motion"):
+        if key in schema["properties"]["terminal_state"]["required"]:
+            schema["properties"]["terminal_state"]["required"].remove(key)
     return schema
 
 
@@ -531,7 +540,7 @@ def _ending(reply):
     """The log's ' Ended: …' from a reply's terminal state and ' Said: …' with its dialogue quoted in shot order, each
     left out when the reply has none. A saved reply is only known to be a dict."""
     state = reply.get("terminal_state") if isinstance(reply.get("terminal_state"), dict) else {}
-    ended = " ".join(_sentence(state[key]) for key in ("setting", "positions", "props")
+    ended = " ".join(_sentence(state[key]) for key in story_fast.TERMINAL_STATE_KEYS
                      if isinstance(state.get(key), str) and state[key].strip())
     said = " ".join(f'"{line["text"].strip()}"' for shot in _dicts(reply.get("shots"))
                     for line in _dicts(shot.get("dialogue")) if isinstance(line.get("text"), str) and line["text"].strip())
@@ -603,7 +612,10 @@ async def write_box(chat, ctx, plan, index, final, neighbors, work):
     subjects, compile = box_cast(work.bible, ids, index, schedule, context, left_out)
     shown = {key: {name: value for name, value in item.items() if name != "wording"} for key, item in subjects.items()}
     summary = bool(compile.voice_clips)
-    stages = (story_stages.freeze(beat.stages, box.frames, box.carried, subjects, beat.ends)
+    after = rules.following_index(ctx.timeline, index)
+    continues_next = after is not None and not ctx.boxes[after].fresh
+    stages = (story_stages.freeze(beat.stages, box.frames, box.carried, subjects, beat.ends,
+                                  continues_next=continues_next)
               if ctx.renderer != "image" else None)
     messages = story_fast.messages(ctx, plan, index, final, context, shown, neighbors, bible=True, summary=summary,
                                    stages=stages)
@@ -626,8 +638,15 @@ async def write_box(chat, ctx, plan, index, final, neighbors, work):
     source = {"reply": data, "frame": frame(ctx, index, context, schedule, left_out, written)}
     if stages is not None:
         source["frame"]["stages"] = stages
-    text, details = compile_source(source, candidate, ids, index, chat.job.notes)
+    allowed_context = "\n".join(part for part in (ctx.guide, ctx.idea, ctx.shared) if isinstance(part, str) and part)
+    text, details = compile_source(source, candidate, ids, index, chat.job.notes, allowed_context=allowed_context)
     checked = prompts.prompt_text(text, ctx, index, context, None, chat.job.notes)
+    prev_index = rules.previous_index(ctx.timeline, index)
+    if prev_index is not None and ctx.renderer != "image":
+        prev_prompt = final.get(ctx.boxes[prev_index].id, "")
+        for item in validate.lint_continuation_pair(prev_prompt, checked, same_scene=not box.new_scene,
+                                                    continuous=not box.fresh):
+            chat.job.notes.append(f"Box {box.number}: Warning: {item['message']} Prompt kept; edit it in the Timeline.")
     work.bible = candidate
     fields["cast"] = details["cast"]
     work.replies[box.id] = data

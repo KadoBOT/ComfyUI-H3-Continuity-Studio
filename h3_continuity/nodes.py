@@ -402,6 +402,15 @@ class H3C_SaveSegment(io.ComfyNode):
                     _write_video(folder, entry, images, fps, crf, waveform, sample_rate, notes, color_space, codec)
                 if guide_frames is not None:
                     store.save_guide_frame(folder, entry, guide_frame(guide_frames, entry))
+                    end_idx = entry["context_frames"] + played if played is not None else entry["frames"]
+                    entry["exit_motion"] = round(media.exit_motion_score(guide_frames[:end_idx], fps=24.0), 4)
+                elif images is not None and entry.get("video"):
+                    v = entry["video"]
+                    if (abs(float(fps) - 24.0) > 1e-3
+                            or abs(int(v["width"]) - int(width)) > 1 or abs(int(v["height"]) - int(height)) > 1):
+                        notes.append("Warning: guide_frames is not connected on a post-processed/interpolated clip; "
+                                     "connect the 24 fps first-pass decode to guide_frames so continuing clips do not "
+                                     "guide from finished frames.")
                 store.save_segment(folder, entry, video, audio_latent, waveform)
                 if segment.regeneration:
                     manifest = regeneration.commit(folder, entry, segment.regeneration, now)
@@ -615,35 +624,60 @@ def guide_frame(frames, entry):
 
 
 def _write_video(folder, entry, images, fps, crf, waveform, sample_rate, notes, color_space="sRGB", codec="H.264"):
-    """Writes the video of the entry's new frames, without the carried ones, and its last frame."""
+    """Writes the video of the entry's new frames, without the carried ones, its last frame, and (for continuing
+    segments) the trailing decoded overlap frames right before `trim` for seamless full-video blending."""
     context, frames, played = entry["context_frames"], entry["frames"], entry.get("played")
     trim = timing.frames_at_fps(context, fps)
     if images.shape[0] <= trim:
         raise ValueError(f"H3 Save Segment: got {images.shape[0]} images, but the first {trim} repeat the "
                          "previous segment. Connect all frames of this run.")
     expected = timing.frames_at_fps(frames - context, fps)
-    new_images = images[trim:]
+    raw_new_images = images[trim:]
+    new_images = raw_new_images
     if new_images.shape[0] != expected:
         fix = "repeated the last frame" if new_images.shape[0] < expected else "dropped the extra frames"
         notes.append(f"{new_images.shape[0]} new images for {expected} frames: {fix}.")
         new_images = media.fit_frame_count(new_images, expected)
     last_image = images[-1]
     end_sample = None
+    tail_source = raw_new_images
     if played is not None:
         expected = max(1, timing.frames_at_fps(played, fps))
         new_images = new_images[:expected]
+        tail_source = raw_new_images[:expected]
         last_image = new_images[-1]
         if waveform is not None:
             end_sample = timing.sample_at_frame(context + played, sample_rate)
+    entry["exit_motion"] = round(media.exit_motion_score(tail_source, fps=fps), 4)
     segment_audio = None
     if waveform is not None:
         segment_audio = (waveform[:, timing.sample_at_frame(context, sample_rate):end_sample], sample_rate)
     file = entry["stem"] + ".mp4"
     encoded = media.write_segment_video(os.path.join(folder, file), new_images, fps, crf, segment_audio,
                                         color_space=color_space, codec=codec)
+    overlap_record = None
+    if context > 0 and trim > 0:
+        overlap_count = min(trim, max(4, round(float(fps) / 24.0) * 4))
+        overlap_images = images[trim - overlap_count:trim]
+        if overlap_images.shape[0] > 0:
+            overlap_file = entry["stem"] + store.OVERLAP_SUFFIX
+            overlap_path = os.path.join(folder, overlap_file)
+            overlap_tmp = overlap_path + ".tmp.mp4"
+            try:
+                media.write_segment_video(overlap_tmp, overlap_images, fps, min(int(crf), 10), None,
+                                          color_space=color_space, codec=codec)
+                os.replace(overlap_tmp, overlap_path)
+            except BaseException:
+                if os.path.exists(overlap_tmp):
+                    os.remove(overlap_tmp)
+                raise
+            overlap_record = {"file": overlap_file, "frames": int(overlap_images.shape[0]), "fps": fps,
+                              "color_space": color_space, "codec": codec}
     store.save_last_frame(folder, entry, last_image)
     entry["video"] = {"file": file, "fps": fps, "width": encoded[0], "height": encoded[1], "frames": expected,
                       "color_space": color_space, "codec": codec}
+    if overlap_record is not None:
+        entry["video"]["overlap"] = overlap_record
 
 
 def _replaced(folder, manifest, record):
@@ -725,6 +759,29 @@ def _generated_audio(folder, parts):
 def _video_windows(folder, parts):
     return [(os.path.join(folder, e["video"]["file"]), *media.window_at_fps(first, count, e["video"].get("fps")))
             for e, first, count, *_ in parts]
+
+
+def _video_seams(folder, parts):
+    """Per-part incoming continuation seam descriptor aligned with `parts`, or None where no overlap blend applies."""
+    seams = [None] * len(parts)
+    for idx in range(1, len(parts)):
+        prev_entry, prev_first, prev_count, prev_inserted = parts[idx - 1]
+        entry, first, _, inserted = parts[idx]
+        if inserted or prev_inserted or first != 0:
+            continue
+        if int(entry.get("context_frames") or 0) <= 0:
+            continue
+        if prev_first + prev_count != store.played_frames(prev_entry):
+            continue
+        if not store.has_overlap_video(folder, entry):
+            continue
+        overlap_meta = (entry.get("video") or {}).get("overlap") or {}
+        seams[idx] = {
+            "overlap": store.overlap_video_path(folder, entry),
+            "fps": overlap_meta.get("fps") or (entry.get("video") or {}).get("fps") or 24.0,
+            "color_space": overlap_meta.get("color_space") or (entry.get("video") or {}).get("color_space") or "sRGB",
+        }
+    return seams
 
 
 def write_previews(folder, manifest, candidate, crf, spliced=(), soundtrack=()):
@@ -899,7 +956,8 @@ def _plan_full_video(folder, name, manifest, crf, spliced, soundtrack, replaced)
         audio = _generated_audio(folder, ordered)
     return {"folder": folder, "name": name, "manifest": manifest, "segments": copy.deepcopy(segments),
             "bridges": [copy.deepcopy(entry) for entry in [*spliced, *replaced]], "sources": sources,
-            "fingerprint": fingerprint, "windows": _video_windows(folder, ordered), "audio": audio, "crf": crf,
+            "fingerprint": fingerprint, "windows": _video_windows(folder, ordered),
+            "seams": _video_seams(folder, ordered), "audio": audio, "crf": crf,
             "heard": audio_tracks.named(soundtrack) if soundtrack else ""}, ""
 
 
@@ -907,8 +965,12 @@ def _finish_full_video(plan):
     folder, name = plan["folder"], plan["name"]
     key, suffix = VIDEO_KINDS[plan.get("kind", "full")]
     temporary = os.path.join(folder, f"{name}{suffix.removesuffix('.mp4')}.{threading.get_ident()}.tmp.mp4")
+    seams = plan.get("seams")
+    kwargs = {"temporary": temporary}
+    if seams and any(item is not None for item in seams):
+        kwargs["seams"] = seams
     written, note = media.build_full_video(os.path.join(folder, f"{name}{suffix}"), plan["windows"], plan["audio"],
-                                           plan["crf"], temporary=temporary)
+                                           plan["crf"], **kwargs)
     if written is None:
         return note
     record = {"file": os.path.basename(written), "sources": plan["fingerprint"]}

@@ -6,9 +6,11 @@ from fractions import Fraction
 
 import av
 import numpy as np
+import torch
+from comfy_api.latest._input_impl.video_types import set_video_color_properties
 from PIL import Image, ImageDraw
 
-from . import tracks, timeline as rules, media, store, stacks, audio_tracks
+from . import tracks, timeline as rules, media, store, stacks, audio_tracks, color
 from .timing import FPS
 
 _LOCK = threading.RLock()
@@ -108,6 +110,34 @@ def _missing(folder, parsed, row, entries):
     return None
 
 
+def _track_frames(path, picks, size, source_space):
+    """Decode picked frames of `path` to sRGB uint8 [H, W, 3] at `size`, using BT.709/BT.2020 matrix and
+    converting HDR sources through `color.convert`."""
+    hdr = source_space in color.HDR_SPACES
+    src_cs = 'bt2020' if hdr else 'itu709'
+    fmt = 'rgb48le' if hdr else 'rgb24'
+    position, last = 0, None
+    with av.open(path) as container:
+        for number, frame in enumerate(container.decode(video=0)):
+            if position >= len(picks):
+                break
+            if number < picks[position]:
+                continue
+            arr = frame.reformat(width=size[0], height=size[1], format=fmt, src_colorspace=src_cs).to_ndarray()
+            if hdr:
+                rgb = color.convert(torch.from_numpy(arr.astype(np.float32) / 65535.0), source_space, 'sRGB')
+                last = (rgb * 255.0).round().clamp(0, 255).to(torch.uint8).numpy()
+            else:
+                last = arr
+            while position < len(picks) and picks[position] == number:
+                yield last
+                position += 1
+    if last is None:
+        raise ValueError(f'{os.path.basename(path)} has no frames')
+    for _ in range(position, len(picks)):
+        yield last
+
+
 def build(folder, name, parsed, manifest, crf, mode='full'):
     """Write a CPU-composed movie, return its record and a user-facing note. Does not mutate the manifest."""
     key = fingerprint(folder, parsed, manifest, mode, crf)
@@ -135,18 +165,16 @@ def build(folder, name, parsed, manifest, crf, mode='full'):
         rows.append(row)
     if not rows: return None, note or 'No visible footage is ready.'
     used = {s['id'] for row in rows for s in row['sources']}
-    paths = [os.path.join(folder, entries[i]['video']['file']) for i in used]
-    signatures = [media._signature(path) for path in paths]
-    width = min((s[2] for s in signatures), default=256)
-    height = min((s[3] for s in signatures), default=144)
-    # Consistent SDR conversion is performed by PyAV when decoding each source, including mixed source encodings.
+    sig_by_id = {identity: media._signature(os.path.join(folder, entries[identity]['video']['file'])) for identity in used}
+    width = min((s[2] for s in sig_by_id.values()), default=256)
+    height = min((s[3] for s in sig_by_id.values()), default=144)
     picks = {identity: [] for identity in used}
     for row in rows:
         for source in row['sources']:
             fps = entries[source['id']]['video'].get('fps') or FPS
             picks[source['id']].extend(int((source['first']+f)*fps/FPS) for f in range(row['outputEnd']-row['outputStart']))
-    streams = {identity: stacks._frames(os.path.join(folder, entries[identity]['video']['file']), frames,
-                                       (width, height), 'rgb24') for identity, frames in picks.items()}
+    streams = {identity: _track_frames(os.path.join(folder, entries[identity]['video']['file']), frames,
+                                       (width, height), sig_by_id[identity][5]) for identity, frames in picks.items()}
     source_sound=None
     if source and source.get('audio'):
         from safetensors import safe_open
@@ -187,6 +215,9 @@ def build(folder, name, parsed, manifest, crf, mode='full'):
                     if row['sources']:
                         picture = sum(next(streams[s['id']]).astype(np.float32)*s['weight'] for s in row['sources'])
                     frame = av.VideoFrame.from_ndarray(np.clip(np.rint(picture),0,255).astype(np.uint8),format='rgb24')
+                    frame = frame.reformat(width=width, height=height, format=video.pix_fmt,
+                                           dst_colorspace=video.codec_context.colorspace)
+                    set_video_color_properties(frame, 'sRGB')
                     container.mux(video.encode(frame))
             container.mux(video.encode(None))
             if audio is not None: media._mux_audio(container,audio,*sound)

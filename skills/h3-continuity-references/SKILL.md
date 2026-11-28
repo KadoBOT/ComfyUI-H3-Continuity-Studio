@@ -95,12 +95,21 @@ audio references alone do not rule out `flf2va`.
   `End state:`. A value runs until the next cue (the Studio indents its
   continuation lines two spaces). A repeated cue is left as plain text. Cues are a Studio editing convention, not an H3 format
   requirement; use them only where they help. `h3_inspect` `prompt_fields` shows
-  how the form reads a prompt; `unstructured_text` counts what it cannot edit as fields.
+  how the form reads a prompt (`unstructured_text` counts what it cannot edit as fields)
+  and reports structured `warnings` for unsolicited screen-FX triggers (`vignette`,
+  `grain`, `crackle`, `35mm`, `16mm`, `anamorphic`, `vintage`, `analog`, `scratches`,
+  `light leak`, `lens flare`, `letterbox`, `VHS`, `CRT`, `flicker`, `overlay`) and
+  cross-box framing/speed/lighting contradictions. Because CFG=1 turbo renders have no
+  negative prompt, use clean full-frame, even-illumination positive phrasing unless
+  film/vintage FX are explicitly requested.
 - Dialogue and sung words go in `<d>…</d>`. Visible on-screen text is timed text
   (see `h3-continuity-sound`), never `<d>`.
-- Give each distinct action or view its own `[Shot N]` with time to play. A turn, a
-  gaze change or a step needs playable time. Name the camera move and its speed
-  when it matters; quiet holds and static framing are valid.
+- Give each distinct action or view its own `[Shot N]` with playable natural-speed time.
+  A turn, a gaze change or a step needs ~0.8–1.5 s; avoid stretching a brief move into
+  slow motion or braking to a stop on a box whose next box continues seamlessly. Name
+  the camera move and its speed when it matters; quiet holds and static framing are
+  valid. Keep exposure, light sources, and colour temperature locked across adjacent
+  boxes of the same scene.
 - The Timeline's shared `prompt` goes before every box's prompt and every bridge's:
   say style, setting and who `@image1` is there once.
 - Text can't guarantee pixels. For exact prop counts or strict start and end poses,

@@ -16,7 +16,10 @@ has cut=false: the box's own cut/join controls its opening. Only later stages ca
 Sequential lines need separate stages; multiple lines in one stage are simultaneous, with overlap=true on
 every line after the first, only for requested group speech or interruption. Never overlap a speaker with themself.
 Preserve ALL mandatory dialogue verbatim, including its order and repetitions. Assign each occurrence once,
-to one stage of one box. Budget at least 400 ms per spoken word and time for the action; do not rush content.
+to one stage of one box. Budget at least 400 ms per spoken word and natural real-world time for every action
+(a step, reach, or turn takes ~0.8-1.5 s; nothing visible finishes in under 500 ms). Match total stage duration_ms
+to the box's NEW time without compressing fast beats or stretching a brief ~1 s move across a much longer box.
+Keep movement pace, camera speed, framing scale, and lighting consistent across continuing boxes (new_shot=false).
 Code allocates stages inside the final box length, after replay. The writer only stages those events and
 performs those exact lines; it cannot create timestamps or additional speech. Code copies each action verbatim
 into its box's prompt, and H3 renders each box alone. Write each action as one present-tense sentence that reads
@@ -32,13 +35,25 @@ Use the typed audio fields for sound and vocal performance; never repeat spoken 
 The action and speech share that stage's interval and happen together. Describe only its assigned action;
 do not add speech in descriptions or change the planned events. No timestamps or durations in descriptions.
 The first stage's composition is the clip's opening image, written out in full, because H3 reads nothing
-else about it: shot size and camera position, the place and its light, where each subject is, their pose,
-what each hand holds and any movement under way with its direction. In a box that opens with replayed frames,
-that image is the intended ending of the box before, stated as a present state, and its camera line states
-that framing and movement explicitly. Do not restage it as a new event or repeat a completed action.
+else about it: shot size and camera position, the place and its exact lighting/exposure, where each subject is,
+their pose, what each hand holds and any movement under way with its direction and pace. In a box that opens with
+replayed frames, that image matches the intended ending of the box before (exact lighting, exposure, framing scale,
+camera speed, and ongoing subject pace), stated as a present state, and its camera line states that framing and
+movement explicitly. Do not restage it as a new event or repeat a completed action.
 The ending is a target for this box, not an observation of a rendered clip. Reach it without starting the
-next box's event. Keep each named prop the same physical item as it moves. terminal_state records the
-intended endpoint.""" + "\n" + audio.RULES
+next box's event; when the next box continues seamlessly, maintain steady ongoing motion and camera pace through
+the end instead of braking to a stop. Keep each named prop the same physical item as it moves.
+terminal_state records the intended endpoint: setting, lighting (exact light source/exposure), positions,
+camera_motion (framing, movement, speed), subject_motion (ongoing trajectory and pace), and props.""" + "\n" + audio.RULES
+
+MIN_FILL_RATIO = 0.5
+UNDERFILL_MIN_FRAMES = 48
+HOLD_ACTION = re.compile(
+    r"\b(?:holds?\s+(?:still|steady|the\s+frame|a\s+pose|position)|"
+    r"quiet\s+hold|static\s+(?:hold|shot|frame)|remains?\s+still|"
+    r"pauses?\b|lingers?\b|waits?\b|preserve\s+the\s+ongoing|continue\s+the\s+existing)\b",
+    re.I,
+)
 
 
 def plan_schema():
@@ -90,13 +105,20 @@ def allocate(weights, minimums, frames):
     return [assigned[index] for index in range(len(weights))]
 
 
-def freeze(stages, frames, carried, subjects, ending=""):
+def freeze(stages, frames, carried, subjects, ending="", continues_next=False, allow_underfill=False):
     stages = read(stages)
     names = {re.sub(r"^(?:the|a|an)\s+", "", item["name"].casefold()): key for key, item in subjects.items()}
     durations = [stage["duration_ms"] for stage in stages]
     natural = [max(1, round(duration * FPS / 1000)) for duration in durations]
     if sum(natural) > frames + GRID:
         raise ValueError("The planned stages exceed this box's new time; split or replan instead of accelerating the action")
+    if (not allow_underfill and frames >= UNDERFILL_MIN_FRAMES
+            and sum(natural) < math.floor(frames * MIN_FILL_RATIO)
+            and not any(HOLD_ACTION.search(stage["action"]) for stage in stages)):
+        raise ValueError(
+            f"The planned stages only cover {sum(natural) / FPS:.2f} s of this box's {frames / FPS:.2f} s new time; "
+            "add playable beats or shorten the box instead of stretching a brief move into slow motion"
+        )
     # Only the Timeline's frame-grid rounding may reduce the planner's natural duration estimates.
     scale = min(1, frames / sum(natural))
     minimums = [max([1, math.floor(length * scale),
@@ -122,7 +144,10 @@ def freeze(stages, frames, carried, subjects, ending=""):
                                     "action_owned": True, "audio_owned": True, "dialogue": lines}
         start += length
     if ending:
-        result[f"stage_{len(stages)}"]["ending"] = ending
+        last = result[f"stage_{len(stages)}"]
+        last["ending"] = ending
+        if continues_next:
+            last["continues_next"] = True
     # The writer always writes the opening composition and camera: H3 reads each box alone. A schedule saved
     # with a code-owned "opening" still expands and validates with it.
     return result
@@ -183,6 +208,8 @@ def expand(reply, stages):
         shot.update(copy.deepcopy(stage.get("opening") or {name: value[name] for name in ("composition", "camera")}))
         if stage.get('ending'):
             shot['ending_state'] = stage['ending']
+        if stage.get('continues_next'):
+            shot['continues_next'] = True
         action = dict(value["action"])
         if typed:
             action['sound'] = audio.effects(action['sound'])
@@ -238,6 +265,8 @@ def validate_source(reply, stages, frames=None, carried=None):
             raise ValueError("The source changed the continuation's opening boundary")
         if shot.get('ending_state', '') != stage.get('ending', ''):
             raise ValueError("The source changed the code-owned ending goal")
+        if bool(shot.get('continues_next', False)) != bool(stage.get('continues_next', False)):
+            raise ValueError("The source changed the code-owned ending continuation flag")
         if typed:
             if 'audio' not in stage:
                 raise ValueError('The source is missing its typed stage audio')
@@ -261,7 +290,7 @@ def required_dialogue(stages):
     return [line["text"] for stage in stages for line in stage["dialogue"]]
 
 
-def from_saved(beat, source, text):
+def from_saved(beat, source, text, frames=None):
     """Partition a legacy source at its existing event boundaries, without repeating speech or actions."""
     shots = (source or {}).get("reply", {}).get("shots", [])
     frame = (source or {}).get("frame", {})
@@ -292,7 +321,15 @@ def from_saved(beat, source, text):
     action = "Continue the existing action and preserve its ending." if validate.SYNTAX.search(beat) else beat
     lines = [dict(text=words, language=language) for language,words in
              re.findall(r"<d>\s*\[([^\]]+)\]\s*(.*?)</d>",text,re.S)]
-    return [dict(duration_ms=500,cut=False,action=action if index == 0 else "Preserve the ongoing motion and view.",
+    entries = lines or [None]
+    if frames is not None and frames > 0:
+        max_ms = round(MAX_FRAMES * 1000 / FPS)
+        total_ms = min(max_ms * len(entries), max(len(entries), round(frames * 1000 / FPS)))
+        base, rem = divmod(total_ms, len(entries))
+        durations = [min(max_ms, max(1, base + (1 if index < rem else 0))) for index in range(len(entries))]
+    else:
+        durations = [500] * len(entries)
+    return [dict(duration_ms=durations[index],cut=False,action=action if index == 0 else "Preserve the ongoing motion and view.",
                  dialogue=[dict(speaker="the existing speaker",voice="the existing voice",language=line["language"],
                                 text=line["text"],voiceover=False,overlap=False)] if line else [])
-            for index,line in enumerate(lines or [None])]
+            for index,line in enumerate(entries)]

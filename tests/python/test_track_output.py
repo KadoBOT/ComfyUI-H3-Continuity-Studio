@@ -118,3 +118,54 @@ class TrackOutputTest(unittest.TestCase):
    for name in ['tracks@old.mp4','tracks@full.mp4','tracks@so.mp4','other.mp4']:Path(folder,name).write_bytes(b'x')
    track_output.discard_superseded(folder,dict(track_full=dict(file='tracks@full.mp4'),track_so_far=dict(file='tracks@so.mp4'),segments=[]))
    self.assertEqual(sorted(os.listdir(folder)),['other.mp4','tracks@full.mp4','tracks@so.mp4'])
+
+ def test_output_writes_bt709_color_properties_and_converts_hdr_sources(self):
+  from av.video.reformatter import ColorPrimaries, ColorRange, ColorTrc
+  from comfy_api.latest._input_impl.video_types import BT709_NCL
+  from h3_continuity import color
+  with tempfile.TemporaryDirectory() as folder:
+   # Track v1 (A): sRGB neutral grey 0.6; Track v2 (B): HDR HLG carrying exact SDR-converted 0.6 grey.
+   srgb_img = torch.full((90, 32, 48, 3), 0.6, dtype=torch.float32)
+   hlg_img = color.convert(torch.full((33, 32, 48, 3), 0.6, dtype=torch.float32), 'sRGB', 'HDR')
+   media.write_segment_video(os.path.join(folder, 'A.mp4'), srgb_img, 24, 16, color_space='sRGB')
+   media.write_segment_video(os.path.join(folder, 'B.mp4'), hlg_img, 24, 16, color_space='HDR')
+   entries = [
+    dict(index=1, stem='A', frames=90, context_frames=0, timeline=dict(box='A'), video=dict(file='A.mp4', fps=24, frames=90, color_space='sRGB')),
+    dict(index=2, stem='B', frames=33, context_frames=0, timeline=dict(box='B'), video=dict(file='B.mp4', fps=24, frames=33, color_space='HDR')),
+   ]
+   record, note = track_output.build(folder, 'test', parsed(), dict(segments=entries), 16, 'full')
+   self.assertTrue(record, note)
+   with av.open(os.path.join(folder, record['file'])) as container:
+    stream = container.streams.video[0]
+    ctx = stream.codec_context
+    self.assertEqual(ctx.colorspace, BT709_NCL)
+    self.assertEqual(ctx.color_primaries, ColorPrimaries.BT709)
+    self.assertEqual(ctx.color_trc, ColorTrc.IEC61966_2_1)
+    self.assertEqual(ctx.color_range, ColorRange.MPEG)
+    frames = [f.reformat(format='rgb24', src_colorspace='itu709').to_ndarray() for f in container.decode(video=0)]
+   self.assertEqual(len(frames), 90)
+   # Both sRGB track (frame 10) and converted HDR track (frame 35) must match ~0.6 * 255 = 153 with no jump.
+   sdr_luma = float(frames[10].mean())
+   hdr_converted_luma = float(frames[35].mean())
+   self.assertAlmostEqual(sdr_luma, 153.0, delta=4.0)
+   self.assertAlmostEqual(hdr_converted_luma, 153.0, delta=6.0)
+   self.assertLess(abs(hdr_converted_luma - sdr_luma), 5.0)
+
+ def test_output_converts_hdr_pq_source_without_brightness_jump(self):
+  from h3_continuity import color
+  with tempfile.TemporaryDirectory() as folder:
+   srgb_img = torch.full((90, 32, 48, 3), 0.5, dtype=torch.float32)
+   pq_img = color.convert(torch.full((33, 32, 48, 3), 0.5, dtype=torch.float32), 'sRGB', 'HDR PQ')
+   media.write_segment_video(os.path.join(folder, 'A.mp4'), srgb_img, 24, 16, color_space='sRGB')
+   media.write_segment_video(os.path.join(folder, 'B.mp4'), pq_img, 24, 16, color_space='HDR PQ')
+   entries = [
+    dict(index=1, stem='A', frames=90, context_frames=0, timeline=dict(box='A'), video=dict(file='A.mp4', fps=24, frames=90, color_space='sRGB')),
+    dict(index=2, stem='B', frames=33, context_frames=0, timeline=dict(box='B'), video=dict(file='B.mp4', fps=24, frames=33, color_space='HDR PQ')),
+   ]
+   record, note = track_output.build(folder, 'test', parsed(), dict(segments=entries), 16, 'full')
+   self.assertTrue(record, note)
+   with av.open(os.path.join(folder, record['file'])) as container:
+    frames = [f.reformat(format='rgb24', src_colorspace='itu709').to_ndarray() for f in container.decode(video=0)]
+   self.assertAlmostEqual(float(frames[10].mean()), 127.5, delta=4.0)
+   self.assertAlmostEqual(float(frames[35].mean()), 127.5, delta=6.0)
+   self.assertLess(abs(float(frames[35].mean()) - float(frames[10].mean())), 5.0)

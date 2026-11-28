@@ -24,13 +24,28 @@ function checkbox(onChange) {
   return input;
 }
 
+function select(options, onChange) {
+  const input = el('select');
+  for (const [value, label] of options) {
+    const option = el('option', null, label);
+    option.value = value;
+    input.append(option);
+  }
+  input.addEventListener('change', () => onChange(input.value));
+  return input;
+}
+
 export class ChainSettings {
   // editor: the Timeline editor; commit() saves its state, host.connected() lists the reference videos.
   constructor(editor) {
     this.editor = editor;
     this.root = el('details', 'h3ct-advanced');
     this.noiseInput = checkbox((on) => this.set('context_noise', on || undefined));
-    this.guideInput = checkbox((on) => this.set('continuation_guide', on ? undefined : false));
+    this.guideInput = select([
+      ['auto', 'Auto (static exits only)'],
+      ['on', 'On'],
+      ['off', 'Off'],
+    ], (mode) => this.set('continuation_guide', mode === 'on' ? true : mode === 'off' ? false : undefined));
     this.featherInput = el('input', 'h3ct-number');
     Object.assign(this.featherInput, {type: 'number', min: '0', max: String(MAX_FEATHER), step: '1'});
     // On change, not input: a redraw while typing would put 0 back into a field just cleared.
@@ -47,8 +62,9 @@ export class ChainSettings {
         + 'graph renders them again.'),
       field('Context noise', 'Adds fading noise to the frames each continuing clip carries, so fine texture builds up '
         + 'less ("burn") over a long chain. About 10% slower per continuing clip.', this.noiseInput),
-      field('Guide from the last frame', "Guides each continuing clip's first new frame with the previous clip's last "
-        + 'frame, so the pose does not reset. In moving shots it holds about 3 frames at the join: untick it there.',
+      field('Guide from the last frame', "Guides a continuing clip's first new frame with the previous clip's last "
+        + 'frame so static poses do not drift. Auto enables the guide only when the previous clip exits near-static, '
+        + 'avoiding the 3-frame motion hitch on moving shots.',
       this.guideInput),
       field('Audio feather', 'The last carried audio regenerates over this many ticks of 25 ms, rising from frozen to '
         + 'free. 0 keeps all carried audio frozen.', this.featherInput, el('span', 'h3ct-hint', 'ticks of 25 ms, 0–16')),
@@ -71,7 +87,7 @@ export class ChainSettings {
   render() {
     const state = this.editor.state;
     this.noiseInput.checked = state.context_noise === true;
-    this.guideInput.checked = state.continuation_guide !== false;
+    this.guideInput.value = state.continuation_guide === true ? 'on' : state.continuation_guide === false ? 'off' : 'auto';
     if (document.activeElement !== this.featherInput) this.featherInput.value = String(state.audio_feather ?? 0);
     const listed = state.video_slices ?? [];
     const connected = (this.editor.host.connected().videos ?? []).filter((ref) => !ref.problem).map((ref) => ref.name);

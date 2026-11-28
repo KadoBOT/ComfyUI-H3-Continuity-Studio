@@ -23,7 +23,8 @@ test('a Timeline without the keys shows the defaults and saves none of them', ()
   const panel = new ChainSettings(target);
   panel.render();
   assert.equal(panel.noiseInput.checked, false);
-  assert.equal(panel.guideInput.checked, true);
+  assert.equal(panel.guideInput.value, 'auto');
+  assert.deepEqual(panel.guideInput.options.map((opt) => opt.value), ['auto', 'on', 'off']);
   assert.equal(panel.featherInput.value, '0');
   assert.deepEqual(slices(panel), []);
   assert.match(panel.slicesEl.textContent, /Connect a video/);
@@ -35,9 +36,13 @@ test('saved values are drawn', () => {
     video_slices: ['video1']}, [video('video1')]));
   panel.render();
   assert.equal(panel.noiseInput.checked, true);
-  assert.equal(panel.guideInput.checked, false);
+  assert.equal(panel.guideInput.value, 'off');
   assert.equal(panel.featherInput.value, '6');
   assert.deepEqual(slices(panel).map((input) => input.checked), [true]);
+
+  const alwaysOn = new ChainSettings(editor({continuation_guide: true}));
+  alwaysOn.render();
+  assert.equal(alwaysOn.guideInput.value, 'on');
 });
 
 test('context noise and the last-frame guide write their key only when not the default', () => {
@@ -46,14 +51,17 @@ test('context noise and the last-frame guide write their key only when not the d
   panel.render();
   panel.noiseInput.checked = true;
   panel.noiseInput.fire('change');
-  panel.guideInput.checked = false;
+  panel.guideInput.value = 'off';
   panel.guideInput.fire('change');
   assert.equal(target.commits, 2);
   assert.equal(target.saved().context_noise, true);
   assert.equal(target.saved().continuation_guide, false);
+  panel.guideInput.value = 'on';
+  panel.guideInput.fire('change');
+  assert.equal(target.saved().continuation_guide, true);
   panel.noiseInput.checked = false;
   panel.noiseInput.fire('change');
-  panel.guideInput.checked = true;
+  panel.guideInput.value = 'auto';
   panel.guideInput.fire('change');
   assert.equal('context_noise' in target.saved(), false);
   assert.equal('continuation_guide' in target.saved(), false);

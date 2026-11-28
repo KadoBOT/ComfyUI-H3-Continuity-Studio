@@ -42,22 +42,26 @@ JOINS = {"continue": "Join: continue from box {before}'s last frame.",
          "cut": "Join: a cut from box {before}, in the same scene.",
          "new_scene": "Join: a cut to a new scene, so box {before} needn't match."}
 CHECK_INSTRUCTION = """You check one box of a generated video for continuity. First come the pictures it must keep \
-to: the last frame of the box before, when the box continues from it, and the pictures of the box's characters, \
-props and place. Then come frames from the box, each labelled with its shot and its time in the box.
+to: the last frame of the box before, when the box continues from it or cuts within the same scene, and the pictures \
+of the box's characters, props and place. Then come frames from the box, each labelled with its shot and its time \
+in the box.
 
 Report only differences a viewer would notice:
 - a character, prop or place that doesn't match its pictures or its wording: another face, hair, build, outfit, \
 colour, shape or material, or a missing or extra detail that the wording names;
-- a broken join: a box that continues from the box before but doesn't match its last frame and its ending in place, \
-positions, light or props.
+- a broken join or same-scene exposure jump: a box that continues from the box before (or cuts within the same \
+scene) but shifts exposure, brightness, colour temperature, or lighting, or breaks place, positions, framing scale, \
+or props across a continuation;
+- unrequested screen FX or overlays: visible vignette or darkened corners, heavy film grain, crackle, dust, \
+scratches, lens flares, light leaks, borders, letterboxing, or overlays that the style or wording did not ask for.
 
-Don't report camera moves, framing, composition, motion, blur or artefacts, anything the wording doesn't settle, or \
-how the story goes on.
+Don't report minor motion blur during fast movement, anything the wording doesn't settle, or how the story goes on.
 
 Answer with one JSON object and nothing else: {"problems": [{"about": "...", "what": "...", "shot": 0}]}. "about" is \
-the id of the character or prop the problem is about, "place" for the place, or "join" for the join. "what" is one \
-short sentence that says what differs and names it. "shot" is the number of the shot where it shows, or 0 when it \
-isn't in one shot. Give at most 12 problems, the clearest first. With none, answer {"problems": []}."""
+the id of the character or prop the problem is about, "place" for the place, "fx" for unrequested screen FX or \
+overlays, or "join" for a broken join or same-scene exposure/lighting jump. "what" is one short sentence that says \
+what differs and names it. "shot" is the number of the shot where it shows, or 0 when it isn't in one shot. Give \
+at most 12 problems, the clearest first. With none, answer {"problems": []}."""
 
 
 @dataclasses.dataclass
@@ -239,7 +243,8 @@ def _ending(source):
     state = reply.get("terminal_state") if isinstance(reply, dict) else None
     if not isinstance(state, dict):
         return ""
-    return "; ".join(state[key].strip().rstrip(".") for key in ("setting", "positions", "props")
+    return "; ".join(state[key].strip().rstrip(".")
+                     for key in ("setting", "lighting", "positions", "camera_motion", "subject_motion", "props")
                      if isinstance(state.get(key), str) and state[key].strip())
 
 
@@ -263,20 +268,21 @@ def request(ctx, index, picks, frames, previous):
                   for item in cast]
         if place:
             lines.append(f"- Place {place['id']}, {place['name']}: {story_bible.wording(place, ids, index)}")
-    kind = story_bible.join_kind(raw) if index else None
+    prev_index = rules.previous_index(ctx.timeline, index)
+    kind = story_bible.join_kind(raw) if prev_index is not None else None
     if kind:
         note = ((raw.get("join") or {}).get("note") or "").strip()
-        lines.append(JOINS[kind].format(before=index) + (f" Note: {note}" if note else ""))
+        lines.append(JOINS[kind].format(before=prev_index + 1) + (f" Note: {note}" if note else ""))
         if kind != "new_scene" and previous:
             try:
                 url = llm.picture_url(previous)
             except (OSError, ValueError):
                 url = None
             if url:
-                pictures.append({"label": f"Box {index}'s last frame", "url": url})
-            ending = _ending(ctx.raw[index - 1].get("source"))
+                pictures.append({"label": f"Box {prev_index + 1}'s last frame", "url": url})
+            ending = _ending(ctx.raw[prev_index].get("source"))
             if ending:
-                lines.append(f"Box {index} ended: {ending}.")
+                lines.append(f"Box {prev_index + 1} ended: {ending}.")
     for item in [*cast, *filter(None, [place])]:
         prefix = "Place " if item is place else ""
         for slot in story_bible.pictures_at(item, ids, index):
@@ -292,7 +298,7 @@ def request(ctx, index, picks, frames, previous):
         else:
             label = f"Box {number} at {_seconds(frame)}"
         pictures.append({"label": label, "url": _frame_url(image)})
-    allowed = [item["id"] for item in cast] + ["place"] + (["join"] if index else [])
+    allowed = [item["id"] for item in cast] + ["place", "fx"] + (["join"] if prev_index is not None else [])
     lines.append(f"Then come {len(frames)} frames of box {number}"
                  + (f", which has {shots} shot{'s' if shots > 1 else ''}." if shots else "."))
     lines.append('"about" can be ' + ", ".join(f'"{value}"' for value in allowed)
@@ -404,10 +410,85 @@ def _drift(ctx, index, frames, firsts):
             "texture": ratios}
 
 
+def _native_edge_frames(ctx, entry, *, tail=False, count=10):
+    """Read up to `count` frames from the start or end of `entry`'s segment video at its native FPS."""
+    video = entry["video"]
+    total = video.get("frames") or 0
+    if total <= 0:
+        return []
+    n = min(count, total)
+    indices = list(range(total - n, total)) if tail else list(range(n))
+    found = media.read_frames(os.path.join(ctx.folder, video["file"]), indices)
+    return [found[idx] for idx in indices]
+
+
+def _continuity_metrics(ctx, index, entry, frames):
+    """Per-box screen-FX (vignette, smooth-area crackle) and adjacent-box native-FPS seam metrics."""
+    vignette = round(check_frames.vignette_mean(frames), 4)
+    crackle = round(check_frames.crackle_mean(frames), 5)
+    warnings = []
+    if vignette >= check_frames.VIGNETTE_THRESHOLD:
+        warnings.append(f"vignette detected ({round(vignette * 100)}% symmetric corner darkening)")
+    if crackle >= check_frames.CRACKLE_THRESHOLD:
+        warnings.append(f"smooth-area grain/crackle spike ({crackle:.4f})")
+    metrics = {"vignette": vignette, "crackle": crackle, "warnings": warnings}
+    prev_index = rules.previous_index(ctx.timeline, index)
+    before = ctx.rendered.get(ctx.timeline.boxes[prev_index].id) if prev_index is not None else None
+    if before is None:
+        return metrics
+    same_scene = not (ctx.timeline.boxes[index].cut and ctx.timeline.boxes[index].new_scene)
+    continuous = not rules.is_fresh(ctx.timeline, index)
+    try:
+        before_tail = _native_edge_frames(ctx, before, tail=True, count=10)
+        after_head = _native_edge_frames(ctx, entry, tail=False, count=10)
+    except (ValueError, OSError, av.error.FFmpegError):
+        return metrics
+    if not before_tail or not after_head:
+        return metrics
+    prev_id = ctx.timeline.boxes[prev_index].id
+    metrics["previous_box"] = prev_id
+    if same_scene:
+        fps_b = before["video"].get("fps") or rules.FPS
+        fps_a = entry["video"].get("fps") or rules.FPS
+        wb = max(2, min(len(before_tail), round(fps_b / 12)))
+        adj_luma = round(check_frames.adjacent_luma_step(before_tail[-wb:], after_head, fps=fps_a), 2)
+        vig_step = round(check_frames.vignette_step(before_tail[-wb:], frames), 4)
+        prev_crackle = check_frames.crackle_mean(before_tail[-wb:])
+        metrics["adjacent_luma_step"] = adj_luma
+        metrics["vignette_step"] = vig_step
+        if abs(adj_luma) >= check_frames.LIGHTNESS_STEP:
+            direction = "brighter" if adj_luma > 0 else "darker"
+            warnings.append(f"exposure jumped {abs(adj_luma):.1f} L* {direction} from box {prev_index + 1}")
+        if abs(vig_step) >= check_frames.VIGNETTE_STEP:
+            sign = "+" if vig_step > 0 else "-"
+            warnings.append(f"vignette shifted {sign}{round(abs(vig_step) * 100)}% from box {prev_index + 1}")
+        if prev_crackle >= check_frames.CRACKLE_FLOOR:
+            ratio = round(crackle / prev_crackle, 3)
+            metrics["crackle_ratio"] = ratio
+            if ratio >= check_frames.CRACKLE_RATIO:
+                warnings.append(f"smooth-area grain/crackle jumped {ratio:.2f}x from box {prev_index + 1}")
+    if continuous:
+        fps_b = before["video"].get("fps") or rules.FPS
+        fps_a = entry["video"].get("fps") or rules.FPS
+        freeze = check_frames.seam_freeze(before_tail, after_head, before_fps=fps_b, after_fps=fps_a)
+        speed = check_frames.motion_speed_ratio(
+            before_tail, after_head,
+            before_fps=fps_b,
+            after_fps=fps_a,
+        )
+        metrics["seam_freeze"] = freeze
+        metrics["speed_ratio"] = speed
+        if freeze["frozen"]:
+            warnings.append(f"1-step native-FPS freeze at join from box {prev_index + 1}")
+        if speed["flagged"]:
+            warnings.append(f"motion speed changed {speed['ratio']:.2f}x at join from box {prev_index + 1}")
+    return metrics
+
+
 def _holds(ctx, index, entry):
     """checks.json holds of box `index`'s played frames, preceded by the box before's last played frame when this box
-    continues it; None when a video can't be read. Frames are counted on the 24 fps Timeline clock: a video saved at
-    another rate (frame interpolation) gives the frame shown at each of those moments."""
+    continues it; None when a video can't be read. Frames are counted on the 24 fps Timeline clock for interior holds,
+    and native segment FPS is also checked for 1-step duplicate/freezes at continuing joins."""
     def frames_of(item, wanted):
         video = item["video"]
         fps = video.get("fps") or rules.FPS
@@ -417,13 +498,29 @@ def _holds(ctx, index, entry):
 
     try:
         frames = frames_of(entry, list(range(store.played_frames(entry))))
-        before = ctx.rendered.get(ctx.timeline.boxes[index - 1].id) if index else None
+        prev_index = rules.previous_index(ctx.timeline, index)
+        before = ctx.rendered.get(ctx.timeline.boxes[prev_index].id) if prev_index is not None else None
         joined = bool(entry.get("context_frames")) and before is not None
+        prepended = False
         if joined:
-            frames = frames_of(before, [store.played_frames(before) - 1]) + frames
+            prev_last = frames_of(before, [store.played_frames(before) - 1])
+            if prev_last and frames and prev_last[0].shape[:2] == frames[0].shape[:2]:
+                frames = prev_last + frames
+                prepended = True
+        records = check_frames.hold_records(check_frames.holds(frames), prepended)
+        if joined and not any(item.get("join") for item in records):
+            before_tail = _native_edge_frames(ctx, before, tail=True, count=6)
+            after_head = _native_edge_frames(ctx, entry, tail=False, count=6)
+            freeze = check_frames.seam_freeze(
+                before_tail, after_head,
+                before_fps=before["video"].get("fps") or rules.FPS,
+                after_fps=entry["video"].get("fps") or rules.FPS,
+            )
+            if freeze["frozen"]:
+                records.insert(0, {"start_ms": 0, "frames": 2, "join": True, "native_fps": True})
     except (ValueError, OSError, av.error.FFmpegError):
         return None
-    return check_frames.hold_records(check_frames.holds(frames), joined)
+    return records
 
 
 async def _ask(job, messages, reply_format):
@@ -460,9 +557,11 @@ async def _check(job, tally):
             continue
         drift = await asyncio.to_thread(_drift, ctx, index, frames, firsts)
         held = await asyncio.to_thread(_holds, ctx, index, entry)
+        metrics = await asyncio.to_thread(_continuity_metrics, ctx, index, entry, frames)
         problems = error = None
         if ctx.vision_model:
-            before = ctx.rendered.get(ids[index - 1]) if index else None
+            prev_index = rules.previous_index(ctx.timeline, index)
+            before = ctx.rendered.get(ids[prev_index]) if prev_index is not None else None
             previous = os.path.join(ctx.folder, before["stem"] + "_last.png") if before else None
             messages, reply_format, allowed, shots = await asyncio.to_thread(request, ctx, index, picks, frames, previous)
             reply = await _ask(job, messages, reply_format)
@@ -470,12 +569,14 @@ async def _check(job, tally):
                 problems = parse(reply, allowed, shots)
             except ValueError:
                 error = UNREADABLE
-        box_checks.save(ctx.folder, box_id, box_checks.record(entry, ctx.vision_model, problems, drift, error,
-                                                                held))
+        saved_record = box_checks.record(entry, ctx.vision_model, problems, drift, error, held)
+        if metrics:
+            saved_record["continuity"] = metrics
+        box_checks.save(ctx.folder, box_id, saved_record)
         tally["checked"].append(box_id)
         tally["problems"] += bool(problems)
         tally["unreadable"] += error is not None
-        tally["drifted"] += bool(drift and drift["words"])
+        tally["drifted"] += bool((drift and drift["words"]) or (metrics and metrics.get("warnings")))
         tally["held"] += bool(held)
         job.updated(job)
 

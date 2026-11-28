@@ -191,7 +191,10 @@ async def write_box(chat, ctx, plan, index, final, neighbors=None, work=None):
     context = prompt_ir.resolve(ctx, index, plan.beats[index].references)
     subjects = story_fast.bindings(ctx, plan, index, context, kept)
     box = ctx.boxes[index]
-    stages = (story_stages.freeze(plan.beats[index].stages, box.frames, box.carried, subjects, plan.beats[index].ends)
+    after = rules.following_index(ctx.timeline, index)
+    continues_next = after is not None and not ctx.boxes[after].fresh
+    stages = (story_stages.freeze(plan.beats[index].stages, box.frames, box.carried, subjects, plan.beats[index].ends,
+                                  continues_next=continues_next)
               if ctx.renderer != "image" else None)
     messages = story_fast.messages(ctx, plan, index, final, context, subjects, neighbors, stages=stages)
     reply_schema = story_fast.response_schema(context, subjects, image=ctx.renderer == "image", stages=stages)
@@ -202,7 +205,14 @@ async def write_box(chat, ctx, plan, index, final, neighbors=None, work=None):
         story_fast.validate.shape(data if stages is not None else story_fast.validate.shot_cuts(data), reply_schema)
         if stages is not None:
             data = story_stages.expand(data, stages)
-        text, ending = story_fast.compile_prompt(data, ctx, plan, index, context, subjects, chat.job.notes, kept)
+        text, ending = story_fast.compile_prompt(data, ctx, plan, index, context, subjects, chat.job.notes, kept,
+                                                 continues_next=continues_next)
+        prev_index = rules.previous_index(ctx.timeline, index)
+        if prev_index is not None and ctx.renderer != "image":
+            prev_prompt = final.get(ctx.boxes[prev_index].id, "")
+            for item in story_fast.validate.lint_continuation_pair(prev_prompt, text, same_scene=not box.new_scene,
+                                                                   continuous=not box.fresh):
+                chat.job.notes.append(f"Box {box.number}: Warning: {item['message']} Prompt kept; edit it in the Timeline.")
         neighbors[ctx.boxes[index].id] = ending
         beat = plan.beats[index]
         beat.terminal_state, beat.looks, beat.definitions = ending["ending"], ending["looks"], ending["definitions"]
@@ -233,7 +243,7 @@ async def write_standard(job, ctx):
         for box, entry in zip(ctx.boxes, saved_plan["boxes"]):
             if box.status == "write" and not entry.get("stages"):
                 entry["stages"] = story_stages.from_saved(entry["beat"],
-                    ctx.box_fields.get(box.id, {}).get("source"), box.prompt)
+                    ctx.box_fields.get(box.id, {}).get("source"), box.prompt, frames=box.frames)
         ctx = dataclasses.replace(ctx, saved_plan=saved_plan)
     if ctx.total_seconds and not planning:
         job.notes.append(LENGTH_KEPT)
