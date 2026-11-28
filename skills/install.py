@@ -1,6 +1,6 @@
 """Link every skill of the H3 Continuity pack into agent skill folders.
 
-    python skills/install.py                  # every existing ~/.agents, ~/.claude and ~/.codex skill folder
+    python skills/install.py                  # every existing global agent skill folder (~/.agents, ~/.claude, ~/.codex, etc.)
     python skills/install.py --target DIR     # these folders instead (created when missing)
 
 Each skill becomes a link (a junction on Windows) to its folder in this checkout, so it follows the checkout
@@ -13,7 +13,10 @@ import sys
 from pathlib import Path
 
 PACK = Path(__file__).resolve().parent
-DEFAULTS = [Path.home() / folder / "skills" for folder in (".agents", ".claude", ".codex")]
+DEFAULTS = [
+    Path.home() / folder / "skills"
+    for folder in (".agents", ".claude", ".claude-work", ".codex", ".cursor", ".dsh", ".gemini", ".gemini/config")
+]
 
 
 def skills():
